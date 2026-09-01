@@ -13,8 +13,8 @@ export default function Wardrobe() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl md:text-4xl font-bold text-slate-800">Digital Wardrobe</h2>
-          <p className="text-lg text-slate-600">Manage your logged items and custom tags.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-content">Digital Wardrobe</h2>
+          <p className="text-lg text-content-muted">Manage your logged items and custom tags.</p>
         </div>
         <button 
           className="bg-brand-teal text-white px-6 py-3 rounded-xl font-bold hover:bg-brand-teal/90 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-4 focus:ring-brand-teal/50 shadow-md"
@@ -26,18 +26,18 @@ export default function Wardrobe() {
       </header>
 
       {/* Toolbar */}
-      <section className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100" aria-label="Wardrobe tools">
+      <section className="flex flex-col md:flex-row gap-4 bg-surface p-4 rounded-xl shadow-sm border border-border" aria-label="Wardrobe tools">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-content-muted w-5 h-5" />
           <input 
             type="text" 
             placeholder="Search items, colors, or tags..." 
-            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal transition-all"
+            className="w-full pl-10 pr-4 py-3 bg-surface-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal transition-all"
             aria-label="Search wardrobe"
           />
         </div>
         <button 
-          className="flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="flex items-center gap-2 px-6 py-3 bg-surface-raised hover:bg-slate-200 text-content font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
           aria-label="Filter wardrobe"
         >
           <Filter className="w-5 h-5" />
@@ -48,29 +48,29 @@ export default function Wardrobe() {
       {/* Grid */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-label="Wardrobe items list">
         {wardrobeItems.map(item => (
-          <article key={item.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow focus-within:ring-2 focus-within:ring-brand-teal">
+          <article key={item.id} className="bg-surface rounded-2xl p-5 shadow-sm border border-border hover:shadow-md transition-shadow focus-within:ring-2 focus-within:ring-brand-teal">
             <div className="flex justify-between items-start mb-4">
               <div 
                 className="w-16 h-16 rounded-xl shadow-inner" 
                 style={{ backgroundColor: item.color }}
                 aria-label={`Color swatch for ${item.name}`}
               ></div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+              <span className="text-xs font-bold uppercase tracking-wider text-content-muted bg-surface-raised px-2 py-1 rounded-md">
                 {item.category}
               </span>
             </div>
             
-            <h3 className="font-bold text-xl text-slate-800 mb-1">
+            <h3 className="font-bold text-xl text-content mb-1">
               {/* Anchor for focus-within */}
               <a href="#" className="focus:outline-none">
                 {item.name}
               </a>
             </h3>
-            <p className="text-slate-600 mb-4">{item.material}</p>
+            <p className="text-content-muted mb-4">{item.material}</p>
             
             <div className="flex flex-wrap gap-2">
               {item.tags.map(tag => (
-                <span key={tag} className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 text-slate-600 text-xs px-2 py-1 rounded-full">
+                <span key={tag} className="inline-flex items-center gap-1 bg-surface-muted border border-border text-content-muted text-xs px-2 py-1 rounded-full">
                   <Tag className="w-3 h-3" />
                   {tag}
                 </span>

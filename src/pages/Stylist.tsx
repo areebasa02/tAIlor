@@ -42,20 +42,20 @@ export default function Stylist() {
     <div className="h-[calc(100vh-100px)] md:h-[calc(100vh-64px)] flex flex-col space-y-4 animate-in fade-in duration-500">
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl md:text-4xl font-bold text-slate-800">AI Stylist</h2>
-          <p className="text-lg text-slate-600">Chat about measurements, quirks, and needs.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-content">AI Stylist</h2>
+          <p className="text-lg text-content-muted">Chat about measurements, quirks, and needs.</p>
         </div>
         <button 
-          className="p-3 bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-teal"
+          className="p-3 bg-surface border border-border rounded-full hover:bg-surface-muted transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-teal"
           aria-label="Stylist Settings"
         >
-          <Settings2 className="w-6 h-6 text-slate-600" />
+          <Settings2 className="w-6 h-6 text-content-muted" />
         </button>
       </header>
 
       {/* Chat Area */}
       <section 
-        className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden"
+        className="flex-1 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden"
         aria-label="Chat window"
       >
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -76,7 +76,7 @@ export default function Stylist() {
                 className={`p-4 rounded-2xl text-lg ${
                   msg.sender === 'user' 
                     ? 'bg-brand-orange text-white rounded-tr-none' 
-                    : 'bg-slate-100 text-slate-800 rounded-tl-none'
+                    : 'bg-surface-raised text-content rounded-tl-none'
                 }`}
               >
                 {msg.text}
@@ -87,14 +87,14 @@ export default function Stylist() {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200">
+        <div className="p-4 bg-surface-muted border-t border-border">
           <form onSubmit={handleSend} className="flex gap-2 relative">
             <input 
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="e.g., I need something easy to put on for physical therapy..."
-              className="flex-1 pl-4 pr-12 py-4 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-teal transition-shadow text-lg"
+              className="flex-1 pl-4 pr-12 py-4 bg-surface border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-teal transition-shadow text-lg"
               aria-label="Message your AI stylist"
             />
             <button 

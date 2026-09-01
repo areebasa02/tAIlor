@@ -3,7 +3,37 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Brand Colors (Customizable via inline styles on :root) */
+    --brand-magenta: #C20050;
+    --brand-rose: #DE838E;
+    --brand-mustard: #F5C642;
+    --brand-orange: #D9481E;
+    --brand-skyblue: #69CFE6;
+    --brand-teal: #00707B;
+    --brand-green: #46AE69;
+    --brand-mint: #7AD798;
+
+    /* Light Theme (Default) */
+    --surface: #ffffff;
+    --surface-muted: #f8fafc; /* slate-50 */
+    --surface-raised: #f1f5f9; /* slate-100 */
+    --content: #1e293b; /* slate-800 */
+    --content-muted: #475569; /* slate-600 */
+    --border-color: #e2e8f0; /* slate-200 */
+  }
+
+  .dark {
+    /* Dark Theme */
+    --surface: #0f172a; /* slate-900 */
+    --surface-muted: #1e293b; /* slate-800 */
+    --surface-raised: #334155; /* slate-700 */
+    --content: #f8fafc; /* slate-50 */
+    --content-muted: #cbd5e1; /* slate-300 */
+    --border-color: #334155; /* slate-700 */
+  }
+
   body {
-    @apply text-slate-800 bg-slate-50 font-sans antialiased;
+    @apply bg-surface-muted text-content font-sans antialiased transition-colors duration-200;
   }
 }
