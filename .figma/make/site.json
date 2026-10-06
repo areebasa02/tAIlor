@@ -1,0 +1,10 @@
+{
+  "description": "This AI-powered wardrobe assistant helps users curate outfits, optimize their wardrobe choices, and enhance personal style with personalized recommendations.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
