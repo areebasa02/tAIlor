@@ -759,7 +759,19 @@ export default function AIComponentsTab() {
       {/* ── Section 2: Voice Input ── */}
       <SectionTitle>2 · Voice Input</SectionTitle>
       <SubTitle>Used in: Outfit Generator, accessibility mode — tap to cycle states</SubTitle>
-      <ComponentFrame flow="Generator · Voice" state={voiceState} stateColor={S[voiceState === 'idle' ? 'empty' : voiceState === 'captured' ? 'success' : voiceState]}>
+      <ComponentFrame
+        flow="Generator · Voice"
+        state={voiceState}
+        stateColor={
+          voiceState === 'idle'
+            ? S.empty
+            : voiceState === 'captured'
+              ? S.success
+              : voiceState === 'error'
+                ? S.error
+                : S.loading
+        }
+      >
         <div className="flex flex-col items-center">
           <VoiceButton state={voiceState} />
           <button

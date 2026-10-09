@@ -29,7 +29,6 @@ const RESULTS: GeneratedOutfit[] = [
       { type: 'Bottom', desc: 'Camel wide-leg trousers', color: '#C8965A' },
       { type: 'Shoes',  desc: 'Tan loafers',             color: '#B8825A' },
     ],
-    why: 'A monochromatic warm-toned look reads as authoritative without being stiff — ideal for a networking dinner where you want to leave an impression.',
   },
   {
     id: 2,
@@ -79,7 +78,10 @@ export default function GeneratorTab() {
     } else if (voiceState === 'listening') {
       // user pressed to stop — start 1s transcription countdown
       setVoiceState('processing')
-      setTimeout(() => setVoiceState('captured'), 1000)
+      setTimeout(() => {
+        setEventDesc('Networking dinner at a rooftop venue, 7pm Thursday, business-casual')
+        setVoiceState('captured')
+      }, 1000)
     }
   }
 
@@ -126,22 +128,15 @@ export default function GeneratorTab() {
               >
                 {voiceState === 'captured' ? (
                   <>
-                    <span className="text-[10px] flex-1 truncate italic" style={{ color: 'var(--muted-foreground)' }}>
-                      "Networking dinner, rooftop, 7pm Thursday, business-casual"
+                    <span className="text-[10px] flex-1" style={{ color: 'var(--green)' }}>
+                      Transcript added above
                     </span>
                     <button
-                      onClick={() => { setEventDesc('Networking dinner at a rooftop venue, 7pm Thursday, business-casual'); setVoiceState('idle') }}
-                      className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                      style={{ background: 'rgba(59,191,108,0.2)', color: '#3BBF6C' }}
-                    >
-                      Use
-                    </button>
-                    <button
-                      onClick={() => setVoiceState('idle')}
+                      onClick={() => { setEventDesc(''); setVoiceState('idle') }}
                       className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
                       style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                     >
-                      Discard
+                      Clear
                     </button>
                   </>
                 ) : (

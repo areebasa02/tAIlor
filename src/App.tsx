@@ -2,16 +2,17 @@ import { useState } from 'react'
 import HomeTab from './tabs/HomeTab'
 import WardrobeTab from './tabs/WardrobeTab'
 import GeneratorTab from './tabs/GeneratorTab'
-import ColorsTab from './tabs/ColorsTab'
 import TryOnTab from './tabs/TryOnTab'
+import LaundryTab from './tabs/LaundryTab'
+import ProfileTab from './tabs/ProfileTab'
 
-type Tab = 'home' | 'wardrobe' | 'generator' | 'colors' | 'tryon'
+type Tab = 'home' | 'wardrobe' | 'generator' | 'laundry' | 'tryon' | 'profile'
 
 const NAV = [
   { id: 'home' as Tab, label: 'Today', icon: '✦' },
   { id: 'wardrobe' as Tab, label: 'Wardrobe', icon: '👔' },
   { id: 'generator' as Tab, label: 'Stylist', icon: '✧' },
-  { id: 'colors' as Tab, label: 'Colors', icon: '🎨' },
+  { id: 'laundry' as Tab, label: 'Laundry', icon: '🧺' },
   { id: 'tryon' as Tab, label: 'Try-On', icon: '🪞' },
 ]
 
@@ -19,7 +20,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home')
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: 'var(--background)' }}>
+    <div
+      className="flex flex-col min-h-screen w-full md:w-[72vw] md:max-w-3xl mx-auto"
+      style={{ background: 'var(--background)' }}
+    >
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
         <div>
@@ -43,12 +47,15 @@ export default function App() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div
+          <button
+            type="button"
+            onClick={() => setTab('profile')}
+            aria-label="Open Eliora Browning's profile"
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
             style={{ background: 'var(--magenta)', color: '#fff' }}
           >
             EB
-          </div>
+          </button>
         </div>
       </header>
 
@@ -57,13 +64,14 @@ export default function App() {
         {tab === 'home' && <HomeTab />}
         {tab === 'wardrobe' && <WardrobeTab />}
         {tab === 'generator' && <GeneratorTab />}
-        {tab === 'colors' && <ColorsTab />}
+        {tab === 'laundry' && <LaundryTab />}
         {tab === 'tryon' && <TryOnTab />}
+        {tab === 'profile' && <ProfileTab onBack={() => setTab('home')} />}
       </main>
 
       {/* Bottom nav */}
       <nav
-        className="fixed bottom-0 left-0 right-0 flex items-stretch"
+        className="fixed bottom-0 left-0 right-0 md:left-1/2 md:right-auto md:w-[72vw] md:max-w-3xl md:-translate-x-1/2 flex items-stretch"
         style={{
           background: 'rgba(13,15,24,0.96)',
           backdropFilter: 'blur(20px)',

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ImageUploadWidget, type UploadState, AIErrorBanner } from '../components/AIComponents'
+import { ImageUploadWidget, type UploadState } from '../components/AIComponents'
+import ColorsTab from './ColorsTab'
 
 type Category = 'All' | 'Tops' | 'Bottoms' | 'Shoes' | 'Outerwear' | 'Accessories'
 
@@ -40,6 +41,7 @@ const CATS: Category[] = ['All', 'Tops', 'Bottoms', 'Shoes', 'Outerwear', 'Acces
 type AddStep = 'closed' | 'photo' | 'manual'
 
 export default function WardrobeTab() {
+  const [section, setSection] = useState<'wardrobe' | 'colors'>('wardrobe')
   const [cat, setCat] = useState<Category>('All')
   const [search, setSearch] = useState('')
   const [favorites, setFavorites] = useState<Set<number>>(
@@ -75,9 +77,27 @@ export default function WardrobeTab() {
           setTimeout(() => setUploadState('success'), 2000)
           return 100
         }
-        return p + 18
+        return Math.min(100, p + 18)
       })
     }, 300)
+  }
+
+  if (section === 'colors') {
+    return (
+      <div>
+        <div className="px-5 pb-2">
+          <button
+            type="button"
+            onClick={() => setSection('wardrobe')}
+            className="text-xs font-semibold"
+            style={{ color: 'var(--sky)' }}
+          >
+            ← Back to wardrobe
+          </button>
+        </div>
+        <ColorsTab />
+      </div>
+    )
   }
 
   return (
@@ -90,13 +110,25 @@ export default function WardrobeTab() {
             {ITEMS.length} items · {ITEMS.filter((i) => i.worn < 5).length} rarely worn
           </p>
         </div>
-        <button
-          onClick={() => { setAddStep('photo'); setUploadState('empty') }}
-          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg"
-          style={{ background: 'var(--magenta)', color: '#fff' }}
-        >
-          +
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSection('colors')}
+            className="h-8 rounded-full px-3 flex items-center justify-center gap-1.5 text-xs font-semibold"
+            style={{ background: 'var(--muted)', color: 'var(--sky)', border: '1px solid var(--border)' }}
+          >
+            <span aria-hidden="true">🎨</span>
+            Colors
+          </button>
+          <button
+            onClick={() => { setAddStep('photo'); setUploadState('empty') }}
+            aria-label="Add wardrobe item"
+            className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg"
+            style={{ background: 'var(--magenta)', color: '#fff' }}
+          >
+            +
+          </button>
+        </div>
       </div>
 
       {/* Add item — photo flow */}

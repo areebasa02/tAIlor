@@ -270,11 +270,13 @@ export function ImageUploadWidget({
   onSave?: () => void
   onCorrect?: () => void
 }) {
+  const safeProgress = Math.min(100, Math.max(0, progress))
+
   if (state === 'empty') return (
     <div
       className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-8 cursor-pointer"
       style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-      onClick={onRetake}
+      onClick={() => window.alert('Camera features have not been added yet. This is where your image will show up when they are available.')}
     >
       <span className="text-3xl">📷</span>
       <p className="text-xs font-medium">Take a photo or upload</p>
@@ -290,10 +292,10 @@ export function ImageUploadWidget({
       <div className="space-y-1">
         <div className="flex justify-between text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
           <span>Uploading…</span>
-          <span>{progress}%</span>
+          <span>{safeProgress}%</span>
         </div>
         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--muted)' }}>
-          <div className="h-full rounded-full transition-all" style={{ background: AI_COLORS.loading, width: `${progress}%` }} />
+          <div className="h-full rounded-full transition-all" style={{ background: AI_COLORS.loading, width: `${safeProgress}%` }} />
         </div>
       </div>
     </div>
@@ -387,7 +389,7 @@ export function ImageUploadWidget({
       </div>
       <div className="flex gap-2">
         <button
-          onClick={onRetake}
+          onClick={() => window.alert('Camera features have not been added yet. This is where your image will show up when they are available.')}
           className="flex-1 py-2 rounded-xl text-[10px] font-semibold"
           style={{ background: AI_COLORS.error, color: '#fff' }}
         >
@@ -501,6 +503,7 @@ interface ControlBarProps {
   onUndo?: () => void
   onWhy?: () => void
   approveLabel?: string
+  showWhy?: boolean
 }
 
 export function UserControlBar({
@@ -512,6 +515,7 @@ export function UserControlBar({
   onUndo,
   onWhy,
   approveLabel = 'Approve & wear',
+  showWhy = true,
 }: ControlBarProps) {
   const statusBanner: Record<Exclude<ControlMode, 'default'>, { color: string; text: string }> = {
     editing:      { color: AI_COLORS.loading,   text: '✏ Editing — swap any item to update the suggestion.' },
@@ -560,13 +564,15 @@ export function UserControlBar({
           </button>
         ))}
       </div>
-      <button
-        onClick={onWhy}
-        className="w-full py-2 rounded-xl text-[10px]"
-        style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-      >
-        Why this outfit?
-      </button>
+      {showWhy && (
+        <button
+          onClick={onWhy}
+          className="w-full py-2 rounded-xl text-[10px]"
+          style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+        >
+          Why this outfit?
+        </button>
+      )}
     </div>
   )
 }

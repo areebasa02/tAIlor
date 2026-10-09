@@ -27,11 +27,11 @@ const IDENTIFIED: IdentifiedColor = {
 }
 
 const SAMPLE_ITEMS = [
-  { name: 'Teal trench coat',  color: '#007A8A' },
-  { name: 'Magenta blouse',    color: '#D40067' },
-  { name: 'Camel trousers',    color: '#C8965A' },
-  { name: 'Navy tee',          color: '#2B4B8C' },
-  { name: 'Mint mock-neck',    color: '#B4F0C0' },
+  { name: 'Teal trench coat', color: '#007A8A', emoji: '🧥', description: 'Water-resistant outerwear · cool teal' },
+  { name: 'Magenta blouse', color: '#D40067', emoji: '👚', description: 'Oversized button-down · vivid magenta' },
+  { name: 'Camel trousers', color: '#C8965A', emoji: '👖', description: 'Wide-leg bottoms · warm camel' },
+  { name: 'Navy tee', color: '#2B4B8C', emoji: '👕', description: 'Relaxed crew top · deep navy' },
+  { name: 'Mint mock-neck', color: '#B4F0C0', emoji: '🧶', description: 'Ribbed knit top · soft mint' },
 ]
 
 type IdentifyStep = 'select' | 'uploading' | 'analyzing' | 'result' | 'error' | 'correct'
@@ -75,7 +75,7 @@ export default function ColorsTab() {
           setTimeout(() => setIdentifyStep('result'), 2000)
           return 100
         }
-        return p + 20
+        return Math.min(100, p + 20)
       })
     }, 250)
   }
@@ -206,8 +206,16 @@ export default function ColorsTab() {
                   className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-left"
                   style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
                 >
-                  <div className="w-8 h-8 rounded-lg" style={{ background: item.color, border: '1px solid rgba(255,255,255,0.1)' }} />
-                  <span className="text-sm font-medium flex-1" style={{ color: 'var(--foreground)' }}>{item.name}</span>
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                    style={{ background: item.color, border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <span aria-hidden="true">{item.emoji}</span>
+                  </div>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium" style={{ color: 'var(--foreground)' }}>{item.name}</span>
+                    <span className="block text-[10px] truncate" style={{ color: 'var(--muted-foreground)' }}>{item.description}</span>
+                  </span>
                   <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Analyze →</span>
                 </button>
               ))}

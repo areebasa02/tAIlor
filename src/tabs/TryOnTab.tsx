@@ -36,27 +36,7 @@ export default function TryOnTab() {
   }
 
   const handleConsent = () => {
-    setStep('uploading')
-    setUploadProgress(0)
-    // Simulate upload
-    const tick = setInterval(() => {
-      setUploadProgress((p) => {
-        if (p >= 100) {
-          clearInterval(tick)
-          setStep('processing')
-          // Cycle processing labels
-          const labels = ['Preparing images', 'Generating preview', 'Finishing details']
-          let i = 0
-          const labelTick = setInterval(() => {
-            i++
-            if (i >= labels.length) { clearInterval(labelTick); setTimeout(() => setStep('preview'), 600) }
-            else setProcessingLabel(labels[i])
-          }, 1400)
-          return 100
-        }
-        return p + 14
-      })
-    }, 280)
+    window.alert('Camera features have not been added yet. This is where your image will show up when they are available.')
   }
 
   const reset = () => { setStep('outfit'); setSelectedOutfit(null); setUploadProgress(0) }
@@ -166,12 +146,12 @@ export default function TryOnTab() {
           </p>
           <div className="space-y-1">
             <div className="flex justify-between text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-              <span>Uploading</span><span>{uploadProgress}%</span>
+              <span>Uploading</span><span>{Math.min(100, Math.max(0, uploadProgress))}%</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--muted)' }}>
               <div
                 className="h-full rounded-full transition-all"
-                style={{ background: 'var(--magenta)', width: `${uploadProgress}%` }}
+                style={{ background: 'var(--magenta)', width: `${Math.min(100, Math.max(0, uploadProgress))}%` }}
               />
             </div>
           </div>
