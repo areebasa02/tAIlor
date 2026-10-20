@@ -212,38 +212,11 @@ export default function GeneratorTab() {
         </button>
       </div>
 
-      {/* Input Form (Flow 01 Ethan) */}
+      {/* Input Form (Flow 01 Ethan) - Responsive Grid on Presentation Screens */}
       {step === "input" && (
-        <div className="space-y-4">
-          {/* Quick Preset Prompts */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
-              Quick Event Scenarios:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {PRESET_EVENTS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => {
-                    setEventDesc(preset)
-                    if (preset.includes("business-casual"))
-                      setDresscode("Smart-casual")
-                    if (preset.includes("formal")) setDresscode("Formal")
-                    if (preset.includes("creative")) setDresscode("Creative")
-                  }}
-                  className="px-2.5 py-1 rounded-xl text-[10px] text-left border transition-all hover:border-[#72D4F0]"
-                  style={{
-                    background: "var(--muted)",
-                    borderColor: "var(--border)",
-                    color: "var(--foreground)",
-                  }}
-                >
-                  {preset.split(",")[0]}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column on Desktop: Event Description & Voice & Dress Code */}
+          <div className="lg:col-span-7 space-y-4">
 
           {/* Text Area with Embedded Voice Input */}
           <div>
@@ -387,19 +360,55 @@ export default function GeneratorTab() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!inputReady}
-            className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all hover:brightness-110 active:scale-99 disabled:opacity-50"
-            style={{
-              background: inputReady ? "var(--magenta)" : "var(--muted)",
-              color: inputReady ? "#fff" : "var(--muted-foreground)",
-            }}
-          >
-            <span>✧</span>
-            <span>Generate Context Outfits</span>
-          </button>
+          </div>
+
+          {/* Right Column on Desktop: Quick Scenarios & Action */}
+          <div className="lg:col-span-5 space-y-4">
+            {/* Quick Preset Prompts */}
+            <div className="p-4 rounded-3xl border space-y-2.5 shadow-sm" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">
+                ⚡ Quick Event Scenarios
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {PRESET_EVENTS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      setEventDesc(preset)
+                      if (preset.includes("business-casual"))
+                        setDresscode("Smart-casual")
+                      if (preset.includes("formal")) setDresscode("Formal")
+                      if (preset.includes("creative")) setDresscode("Creative")
+                    }}
+                    className="p-2.5 rounded-xl text-[11px] text-left border transition-all hover:border-[#72D4F0] hover:scale-[1.01]"
+                    style={{
+                      background: "var(--muted)",
+                      borderColor: "var(--border)",
+                      color: "var(--foreground)",
+                    }}
+                  >
+                    <p className="font-bold text-white">{preset.split(",")[0]}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{preset.split(",").slice(1).join(",")}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!inputReady}
+              className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all hover:brightness-110 active:scale-99 disabled:opacity-50"
+              style={{
+                background: inputReady ? "var(--magenta)" : "var(--muted)",
+                color: inputReady ? "#fff" : "var(--muted-foreground)",
+              }}
+            >
+              <span>✧</span>
+              <span>Generate Context Outfits</span>
+            </button>
+          </div>
         </div>
       )}
 

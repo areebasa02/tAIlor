@@ -102,11 +102,11 @@ export default function LoginScreen() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col justify-center px-4 sm:px-6 lg:px-8 py-6 lg:py-10"
+      className="min-h-screen w-full flex flex-col justify-center px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 lg:py-12"
       style={{ background: "var(--background)" }}
     >
-      <div className="w-full max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+      <div className="w-full max-w-7xl 2xl:max-w-[1700px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 2xl:gap-24 items-center">
           {/* Left Column on Desktop / Top on Mobile: Hero & Project Proposal Pitch */}
           <div className="lg:col-span-5 flex flex-col space-y-5 text-center lg:text-left">
             <div>
@@ -286,12 +286,12 @@ export default function LoginScreen() {
                 </div>
 
                 {/* Persona Buttons - ONLY FIRST NAMES */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
                   {[
                     {
                       id: "eliora" as PersonaId,
                       label: "Eliora",
-                      sub: "Senior IT (Default)",
+                      sub: "Front-End & Research",
                       bg: "#D40067",
                       initials: "EB",
                     },

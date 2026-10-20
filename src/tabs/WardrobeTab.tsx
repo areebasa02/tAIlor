@@ -601,7 +601,7 @@ export default function WardrobeTab() {
         </div>
 
         {/* Category Pills */}
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto md:flex-wrap pb-1 no-scrollbar">
           {CATS.map((c) => {
             const active = cat === c
             return (
@@ -626,8 +626,8 @@ export default function WardrobeTab() {
         </div>
       </div>
 
-      {/* Wardrobe Items Grid - 2 cols on mobile, up to 5 cols on presentation screens */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+      {/* Wardrobe Items Grid - 2 cols on mobile, up to 7 cols on presentation screens */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
         {filtered.map((item) => (
           <div
             key={item.id}

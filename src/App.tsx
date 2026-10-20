@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { AppProvider, useApp } from "./context/AppContext"
+import { getContrastTextColor } from "./types"
 import LoginScreen from "./components/LoginScreen"
 import HomeTab from "./tabs/HomeTab"
 import WardrobeTab from "./tabs/WardrobeTab"
@@ -31,7 +32,7 @@ function MainApp() {
 
   return (
     <div
-      className="flex flex-col min-h-screen w-full max-w-5xl lg:max-w-6xl mx-auto relative px-3 sm:px-6 lg:px-8"
+      className="flex flex-col min-h-screen w-full max-w-7xl 2xl:max-w-[1700px] mx-auto relative px-3.5 sm:px-6 lg:px-8 xl:px-12 2xl:px-16"
       style={{ background: "var(--background)" }}
     >
       {/* Toast notifications float */}
@@ -108,6 +109,40 @@ function MainApp() {
           </span>
         </div>
 
+        {/* Desktop & Presentation Screen Top Navigation Bar */}
+        <nav
+          className="hidden md:flex items-center gap-1 p-1 rounded-2xl border backdrop-blur-md"
+          style={{
+            background: "rgba(22, 25, 36, 0.8)",
+            borderColor: "rgba(255, 255, 255, 0.08)",
+          }}
+        >
+          {NAV.map((n) => {
+            const active = tab === n.id
+            return (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => {
+                  setTab(n.id)
+                  setUserMenuOpen(false)
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                style={{
+                  background: active ? "var(--magenta)" : "transparent",
+                  color: active ? "#ffffff" : "var(--muted-foreground)",
+                  boxShadow: active
+                    ? "0 2px 10px rgba(212,0,103,0.35)"
+                    : "none",
+                }}
+              >
+                <span className="text-sm leading-none">{n.icon}</span>
+                <span>{n.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+
         {/* Right Header Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Active User Persona Pill */}
@@ -118,8 +153,11 @@ function MainApp() {
             title="Active Persona Profile"
           >
             <div
-              className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-              style={{ background: user.avatarBg }}
+              className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold"
+              style={{
+                background: user.avatarBg,
+                color: getContrastTextColor(user.avatarBg),
+              }}
             >
               {user.initials}
             </div>
@@ -138,7 +176,7 @@ function MainApp() {
               }}
               title="Low Decision Mode Active"
             >
-              🧠 Low Fatigue
+              🧠 Decision Fatigue
             </span>
           )}
 
@@ -176,7 +214,7 @@ function MainApp() {
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-transform active:scale-95 border"
               style={{
                 background: user.avatarBg,
-                color: "#fff",
+                color: getContrastTextColor(user.avatarBg),
                 borderColor: "rgba(255,255,255,0.25)",
               }}
             >
@@ -312,7 +350,7 @@ function MainApp() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto pb-28 md:pb-24">
+      <main className="flex-1 overflow-y-auto pb-24 md:pb-10">
         {tab === "home" && <HomeTab />}
         {tab === "wardrobe" && <WardrobeTab />}
         {tab === "generator" && <GeneratorTab />}
@@ -321,18 +359,15 @@ function MainApp() {
         {tab === "profile" && <ProfileTab onBack={() => setTab("home")} />}
       </main>
 
-      {/* Bottom Navigation: Edge-to-edge on Mobile, Floating Centered Dock on Desktop/Presentation */}
+      {/* Bottom Navigation: Edge-to-edge on Mobile Only (Hidden on Desktop / Presentation) */}
       <nav
-        className="fixed bottom-0 left-0 right-0 md:bottom-4 md:left-1/2 md:right-auto md:w-full md:max-w-lg md:-translate-x-1/2 flex items-stretch md:rounded-2xl z-40 transition-all"
+        className="md:hidden fixed bottom-0 left-0 right-0 flex items-stretch z-40 transition-all"
         style={{
           background: "rgba(13,15,24,0.95)",
           backdropFilter: "blur(24px)",
           borderTop: "1px solid rgba(255,255,255,0.12)",
-          borderLeft: "1px solid rgba(255,255,255,0.12)",
-          borderRight: "1px solid rgba(255,255,255,0.12)",
-          borderBottom: "1px solid rgba(255,255,255,0.12)",
           paddingBottom: "calc(env(safe-area-inset-bottom) + 2px)",
-          boxShadow: "0 -4px 25px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.7)",
+          boxShadow: "0 -4px 25px rgba(0,0,0,0.5)",
         }}
       >
         {NAV.map((n) => {
@@ -344,12 +379,12 @@ function MainApp() {
                 setTab(n.id)
                 setUserMenuOpen(false)
               }}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 sm:py-2 text-xs font-medium relative transition-all hover:bg-white/[0.03] md:rounded-xl"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium relative transition-all active:scale-95"
               style={{
                 color: active ? "var(--magenta)" : "rgba(255,255,255,0.65)",
               }}
             >
-              <span className="text-base sm:text-lg leading-none">
+              <span className="text-base leading-none">
                 {n.icon}
               </span>
               <span className="text-[10px] tracking-wide uppercase font-bold">

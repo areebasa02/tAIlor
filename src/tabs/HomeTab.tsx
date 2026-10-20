@@ -4,135 +4,9 @@ import {
   UserControlBar,
   type ControlMode,
 } from "../components/AIComponents"
+import { AddStyleModal } from "../components/AddStyleModal"
 import { useApp } from "../context/AppContext"
-import type { Outfit, OutfitItem } from "../types"
-
-type Direction = "safe" | "stylish" | "rediscover"
-
-const BASE_OUTFITS: Record<Direction, Outfit> = {
-  safe: {
-    direction: "safe",
-    label: "Safe",
-    tagline: "Familiar favorites · zero morning stress",
-    rationale:
-      "These are your most-worn, high-comfort pieces. They match effortlessly and are calibrated for today's 68°F forecast.",
-    accent: "var(--sky)",
-    bg: "rgba(114,212,240,0.08)",
-    items: [
-      {
-        type: "Top",
-        desc: "Navy relaxed crew tee",
-        color: "#2B4B8C",
-        emoji: "👕",
-        reason: "Reliable, breathable Pima cotton base.",
-      },
-      {
-        type: "Bottom",
-        desc: "Slim medium jeans",
-        color: "#4A6FA5",
-        emoji: "👖",
-        reason: "Easy stretch structure for all-day wear.",
-      },
-      {
-        type: "Shoes",
-        desc: "White leather sneakers",
-        color: "#F2F2F2",
-        emoji: "👟",
-        reason: "Maximum cushioning for time on your feet.",
-      },
-    ],
-    whyDetails: {
-      weatherReason:
-        "Optimal for 68°F mild weather; breathable layers prevent overheating.",
-      colorHarmony:
-        "Tonal Navy & Medium Indigo blue create a calming monochromatic foundation.",
-      wearFrequency: "Your signature comfort staple — high confidence rating.",
-      sensoryComfort: "Tagless crew neck, zero friction on neck and waist.",
-    },
-  },
-  stylish: {
-    direction: "stylish",
-    label: "Stylish",
-    tagline: "Bold contrast · intentional statement",
-    rationale:
-      "Vivid magenta and warm camel form a sophisticated complementary pairing. You haven't worn this blouse in over a week — prime time to shine.",
-    accent: "var(--magenta)",
-    bg: "rgba(212,0,103,0.08)",
-    items: [
-      {
-        type: "Top",
-        desc: "Magenta button-down",
-        color: "#D40067",
-        emoji: "👚",
-        reason: "Adds an authoritative, confident focal color.",
-      },
-      {
-        type: "Bottom",
-        desc: "Camel wide trousers",
-        color: "#C8965A",
-        emoji: "👖",
-        reason: "Balances the vibrant hue with grounded earthiness.",
-      },
-      {
-        type: "Shoes",
-        desc: "Tan leather loafers",
-        color: "#B8825A",
-        emoji: "👞",
-        reason: "Brings refined structure without being rigid.",
-      },
-    ],
-    whyDetails: {
-      weatherReason:
-        "Drapey rayon blouse with lined trousers keeps you cozy in air conditioning and mild outdoor breeze.",
-      colorHarmony:
-        "Complementary color triad: Magenta (cold red) harmonizes with Camel (warm neutral).",
-      wearFrequency:
-        "Blouse worn 12 times; trousers worn 18 times. Well-balanced rotation.",
-      sensoryComfort: "Loose wide-leg cut eliminates constriction when seated.",
-    },
-  },
-  rediscover: {
-    direction: "rediscover",
-    label: "Rediscover",
-    tagline: "Something you haven't worn lately",
-    rationale:
-      "Your mint mock-neck knit hasn't been logged in 21 days! Paired with midnight black wide trousers, the pastel hue pops effortlessly.",
-    accent: "var(--green)",
-    bg: "rgba(59,191,108,0.08)",
-    items: [
-      {
-        type: "Top",
-        desc: "Mint ribbed mock-neck",
-        color: "#B4F0C0",
-        emoji: "🧶",
-        reason: "Brings an unworn gem back into rotation.",
-      },
-      {
-        type: "Bottom",
-        desc: "Black wide-leg trousers",
-        color: "#1A1A2E",
-        emoji: "👖",
-        reason: "Keeps the light mint knit visually anchored.",
-      },
-      {
-        type: "Shoes",
-        desc: "Chunky platform sneakers",
-        color: "#E8E8E8",
-        emoji: "👟",
-        reason: "Mirrors the crisp, fresh lightness of the top.",
-      },
-    ],
-    whyDetails: {
-      weatherReason:
-        "Ribbed knit keeps core temperature steady during morning chill.",
-      colorHarmony:
-        "Pastel Mint against deep Black achieves high visual accessibility and clarity.",
-      wearFrequency:
-        "Mint mock-neck worn only 4 times this season. AI recommends rediscovery.",
-      sensoryComfort: "100% organic cotton knit; non-scratchy ribbed texture.",
-    },
-  },
-}
+import type { Direction } from "../types"
 
 const GENERATION_STEPS = [
   "Reading digital wardrobe & local forecast…",
@@ -147,82 +21,38 @@ export default function HomeTab() {
     recentLooks,
     logOutfitWorn,
     sendOutfitToLaundry,
-    showToast,
     wardrobe,
+    outfits,
+    selectedDirection,
+    setSelectedDirection,
+    defaultDirection,
+    removeCustomStyle,
+    currentOutfit,
+    wornToday,
+    setWornToday,
+    regenerateOutfit,
+    swapOutfitItem,
+    undoOutfit,
+    weather,
+    refreshWeather,
   } = useApp()
-  const [selectedDirection, setSelectedDirection] =
-    useState<Direction>("stylish")
-  const [activeOutfits, setActiveOutfits] = useState(BASE_OUTFITS)
-  const [previousOutfits, setPreviousOutfits] = useState<Outfit[]>([])
+
   const [loading, setLoading] = useState(false)
   const [ctrlMode, setCtrlMode] = useState<ControlMode>("default")
-  const [wornToday, setWornToday] = useState(false)
   const [whyModalOpen, setWhyModalOpen] = useState(false)
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
   const [swapModalOpen, setSwapModalOpen] = useState(false)
   const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null)
-  const [weatherCity] = useState("Hammond, LA")
-  const [weatherTemp, setWeatherTemp] = useState("68°F")
-  const [weatherDesc, setWeatherDesc] = useState("Partly Cloudy · Mild breeze")
-
-  const currentOutfit = activeOutfits[selectedDirection]
+  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false)
 
   const handleRegenerate = (reasonConstraint?: string) => {
-    setPreviousOutfits((prev) => [currentOutfit, ...prev])
-    setCtrlMode("regenerating")
     setLoading(true)
-    setWornToday(false)
-
+    setCtrlMode("regenerating")
     setTimeout(() => {
-      setActiveOutfits((prev) => {
-        const target = prev[selectedDirection]
-        const alternateTops: OutfitItem[] = [
-          {
-            type: "Top",
-            desc: "Cream linen blouse",
-            color: "#F5EFD8",
-            emoji: "👚",
-            reason: "Crisp light layer with gentle drape.",
-          },
-          {
-            type: "Top",
-            desc: "Teal trench coat",
-            color: "#007A8A",
-            emoji: "🧥",
-            reason: "Polished statement top layer.",
-          },
-          {
-            type: "Top",
-            desc: "Navy relaxed crew tee",
-            color: "#2B4B8C",
-            emoji: "👕",
-            reason: "Minimalist neutral base.",
-          },
-        ]
-        const randomTop =
-          alternateTops[Math.floor(Math.random() * alternateTops.length)]
-        const newItems = [randomTop, target.items[1], target.items[2]]
-        return {
-          ...prev,
-          [selectedDirection]: {
-            ...target,
-            rationale: reasonConstraint
-              ? `Adjusted for "${reasonConstraint}". Updated palette with ${randomTop.desc}.`
-              : target.rationale,
-            items: newItems,
-          },
-        }
-      })
+      regenerateOutfit(reasonConstraint)
       setLoading(false)
       setCtrlMode("default")
-      showToast(
-        "Outfit Regenerated",
-        reasonConstraint
-          ? `Re-styled for: ${reasonConstraint}`
-          : "New variation generated.",
-        "info",
-      )
-    }, 1500)
+    }, 900)
   }
 
   const handleApprove = () => {
@@ -237,74 +67,17 @@ export default function HomeTab() {
   }
 
   const handleUndo = () => {
-    if (previousOutfits.length > 0) {
-      const [reverted, ...rest] = previousOutfits
-      setActiveOutfits((prev) => ({
-        ...prev,
-        [reverted.direction]: reverted,
-      }))
-      setPreviousOutfits(rest)
-      setCtrlMode("undone")
-      showToast(
-        "Suggestion Restored",
-        "Reverted back to your previous outfit option.",
-        "info",
-      )
-    } else {
+    const success = undoOutfit()
+    if (success) {
       setCtrlMode("undone")
     }
   }
 
   const handleSwapItem = (replacementItem: typeof wardrobe[0]) => {
     if (swapTargetIndex === null) return
-    setActiveOutfits((prev) => {
-      const target = prev[selectedDirection]
-      const updatedItems = [...target.items]
-      updatedItems[swapTargetIndex] = {
-        type: replacementItem.category.slice(0, -1) || "Piece",
-        desc: replacementItem.name,
-        color: replacementItem.color,
-        emoji:
-          replacementItem.category === "Tops"
-            ? "👚"
-            : replacementItem.category === "Bottoms"
-              ? "👖"
-              : "👟",
-        reason: `Manually swapped for ${replacementItem.colorName}.`,
-      }
-      return {
-        ...prev,
-        [selectedDirection]: {
-          ...target,
-          items: updatedItems,
-        },
-      }
-    })
+    swapOutfitItem(swapTargetIndex, replacementItem)
     setSwapModalOpen(false)
     setSwapTargetIndex(null)
-    showToast(
-      "Piece Swapped",
-      `Replaced with ${replacementItem.name}.`,
-      "success",
-    )
-  }
-
-  const refreshWeather = () => {
-    const temps = ["68°F", "72°F", "65°F", "70°F"]
-    const descs = [
-      "Partly Cloudy · Mild breeze",
-      "Sunny & Clear · 72°F",
-      "Light Scattered Showers · Bring umbrella",
-    ]
-    const nextTemp = temps[Math.floor(Math.random() * temps.length)]
-    const nextDesc = descs[Math.floor(Math.random() * descs.length)]
-    setWeatherTemp(nextTemp)
-    setWeatherDesc(nextDesc)
-    showToast(
-      "Weather Refreshed",
-      `Updated forecast for ${weatherCity}: ${nextTemp}`,
-      "info",
-    )
   }
 
   return (
@@ -324,8 +97,8 @@ export default function HomeTab() {
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {user.accessibility.lowDecisionMode
-                  ? "Low Decision Mode active · AI selected single best look"
-                  : "Choose a direction — your AI stylist handles color theory & comfort"}
+                  ? "Low Decision Mode active · AI highlighted top match or switch anytime"
+                  : "Choose a style direction — your AI stylist handles color theory & comfort"}
               </p>
             </div>
 
@@ -343,41 +116,113 @@ export default function HomeTab() {
             )}
           </div>
 
-          {/* Direction Pills */}
-          {!user.accessibility.lowDecisionMode && (
-            <div className="grid grid-cols-3 gap-2">
-              {(["safe", "stylish", "rediscover"] as Direction[]).map((dir) => {
-                const o = activeOutfits[dir]
-                const active = selectedDirection === dir
+          {/* Direction Pills / Styles Recommendation Bar */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Recommendation Styles
+              </span>
+              {user.accessibility.lowDecisionMode && (
+                <span className="text-[10px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20">
+                  ⚡ AI Recommended Look
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center">
+              {Object.entries(outfits).map(([dirKey, o]) => {
+                const active = selectedDirection === dirKey
+                const isDefaultPick = dirKey === defaultDirection
+                const isLightAccent =
+                  o.accent.includes("yellow") ||
+                  o.accent.includes("mint") ||
+                  o.accent.includes("pink") ||
+                  o.accent.includes("sky") ||
+                  o.accent === "#FFD83D" ||
+                  o.accent === "#B4F0C0" ||
+                  o.accent === "#FFB4D8" ||
+                  o.accent === "#72D4F0"
+
                 return (
-                  <button
-                    key={dir}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDirection(dir)
-                      setCtrlMode("default")
-                      setWornToday(false)
-                    }}
-                    className="py-2.5 px-2 rounded-2xl text-xs font-bold tracking-wide uppercase transition-all duration-200"
-                    style={{
-                      background: active ? o.accent : "var(--muted)",
-                      color: active
-                        ? dir === "safe"
-                          ? "#0D0F18"
-                          : "#fff"
-                        : "var(--muted-foreground)",
-                      border: active
-                        ? `1px solid ${o.accent}`
-                        : "1px solid transparent",
-                      boxShadow: active ? `0 4px 12px ${o.accent}35` : "none",
-                    }}
+                  <div
+                    key={dirKey}
+                    className="relative group flex items-center"
                   >
-                    {o.label}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDirection(dirKey)
+                        setCtrlMode("default")
+                        setWornToday(false)
+                      }}
+                      className="py-2 px-3.5 rounded-2xl text-xs font-bold tracking-wide transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
+                      style={{
+                        background: active ? o.accent : "var(--muted)",
+                        color: active
+                          ? isLightAccent
+                            ? "#0D0F18"
+                            : "#ffffff"
+                          : "var(--muted-foreground)",
+                        border: active
+                          ? `1px solid ${o.accent}`
+                          : "1px solid rgba(255,255,255,0.06)",
+                        boxShadow: active
+                          ? `0 4px 14px ${
+                              o.accent.startsWith("var")
+                                ? "rgba(212,0,103,0.3)"
+                                : `${o.accent}40`
+                            }`
+                          : "none",
+                      }}
+                    >
+                      {user.accessibility.lowDecisionMode && isDefaultPick && (
+                        <span className="text-[11px] leading-none" title="AI Primary Recommendation">⚡</span>
+                      )}
+                      <span>{o.label}</span>
+                      {o.isCustom && (
+                        <span
+                          className="text-[9px] px-1 py-0.2 rounded font-normal uppercase ml-0.5 opacity-80"
+                          style={{
+                            background: active
+                              ? "rgba(0,0,0,0.15)"
+                              : "rgba(255,255,255,0.1)",
+                          }}
+                        >
+                          Custom
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Delete Custom Style Button */}
+                    {o.isCustom && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeCustomStyle(dirKey)
+                        }}
+                        className="ml-1 w-5 h-5 rounded-full bg-white/10 hover:bg-red-500/20 text-white/50 hover:text-red-400 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                        title={`Remove custom style "${o.label}"`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 )
               })}
+
+              {/* Add Custom Style Button */}
+              <button
+                type="button"
+                onClick={() => setAddStyleModalOpen(true)}
+                className="py-2 px-3 rounded-2xl text-xs font-bold tracking-wide flex items-center gap-1.5 border border-dashed border-white/25 text-white/80 hover:text-white hover:border-pink-400/60 hover:bg-pink-500/5 transition-all duration-200 cursor-pointer"
+                title="Add a custom outfit recommendation style"
+              >
+                <span className="text-base leading-none font-bold text-pink-400">+</span>
+                <span>Add Style</span>
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Loading State */}
           {loading && (
@@ -400,7 +245,7 @@ export default function HomeTab() {
           )}
 
           {/* Main Outfit Card */}
-          {!loading && (
+          {!loading && currentOutfit && (
             <div
               className="rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl border transition-all"
               style={{
@@ -461,9 +306,22 @@ export default function HomeTab() {
                         <span>{item.emoji}</span>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {item.type}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                            {item.type}
+                          </p>
+                          {user.accessibility.highContrastColors && (
+                            <span
+                              className="text-[8px] font-bold px-1.5 py-0.2 rounded-full uppercase"
+                              style={{
+                                background: "rgba(114,212,240,0.15)",
+                                color: "var(--sky)",
+                              }}
+                            >
+                              Color: {item.color}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs sm:text-sm font-semibold text-white truncate">
                           {item.desc}
                         </p>
@@ -519,7 +377,7 @@ export default function HomeTab() {
                 </span>
               </div>
 
-              {/* Control Bar */}
+              {/* Control Bar - hide redundant bottom why button since it's already in the top-right header */}
               <UserControlBar
                 mode={ctrlMode}
                 approveLabel={
@@ -533,7 +391,7 @@ export default function HomeTab() {
                 onRegenerate={() => handleRegenerate()}
                 onUndo={handleUndo}
                 onWhy={() => setWhyModalOpen(true)}
-                showWhy={true}
+                showWhy={false}
               />
 
               {/* Post-Approve Laundry Prompt */}
@@ -556,17 +414,12 @@ export default function HomeTab() {
                   <button
                     type="button"
                     onClick={() => {
-                      sendOutfitToLaundry(["Navy tee", "Slim jeans"])
-                      showToast(
-                        "Laundry Updated",
-                        "Yesterday's clothes moved to hamper.",
-                        "info",
-                      )
+                      sendOutfitToLaundry([currentOutfit.items[0]?.desc || "Top", currentOutfit.items[1]?.desc || "Bottom"])
                     }}
                     className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white shrink-0"
                     style={{ background: "var(--secondary)" }}
                   >
-                    🧺 Send Yesterday's to Hamper
+                    🧺 Send Items to Hamper
                   </button>
                 </div>
               )}
@@ -604,18 +457,18 @@ export default function HomeTab() {
               <button
                 type="button"
                 onClick={refreshWeather}
-                className="flex items-center gap-2 p-2 rounded-2xl border transition-transform active:scale-95 shrink-0"
+                className="flex items-center gap-2 p-2 rounded-2xl border transition-transform active:scale-95 shrink-0 hover:border-sky-400/50"
                 style={{
                   background: "var(--muted)",
                   borderColor: "var(--border)",
                 }}
                 title="Click to refresh local forecast"
               >
-                <span className="text-2xl leading-none">⛅</span>
+                <span className="text-2xl leading-none">{weather.icon}</span>
                 <div className="text-right">
-                  <p className="text-xs font-bold text-white">{weatherTemp}</p>
+                  <p className="text-xs font-bold text-white">{weather.temp}</p>
                   <p className="text-[9px] text-muted-foreground">
-                    {weatherCity.split(",")[0]}
+                    {weather.city.split(",")[0]}
                   </p>
                 </div>
               </button>
@@ -637,14 +490,14 @@ export default function HomeTab() {
                   ✦
                 </span>
                 <p className="text-[11px] text-muted-foreground leading-snug">
-                  {weatherDesc}. Soft layers will keep you comfortable across
-                  transitions.
+                  {weather.advice}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={refreshWeather}
                 className="text-[10px] font-bold text-sky-400 hover:underline shrink-0 ml-2"
+                title="Refresh climate advice"
               >
                 ↻
               </button>
@@ -673,7 +526,8 @@ export default function HomeTab() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
+            {/* Natural responsive grid without inner scroll clipping */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3 gap-2.5">
               {recentLooks.slice(0, 6).map((r) => (
                 <div
                   key={r.id}
@@ -684,7 +538,7 @@ export default function HomeTab() {
                   }}
                 >
                   <div
-                    className="h-12 w-full relative p-2 flex items-start justify-between"
+                    className="h-10 w-full relative p-2 flex items-start justify-between"
                     style={{ background: r.color }}
                   >
                     <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-black/60 text-white backdrop-blur-xs">
@@ -717,7 +571,7 @@ export default function HomeTab() {
       </div>
 
       {/* Deep-Dive "Why this outfit?" Modal */}
-      {whyModalOpen && (
+      {whyModalOpen && currentOutfit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
           <div
             className="rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border"
@@ -748,7 +602,7 @@ export default function HomeTab() {
             <div className="space-y-2.5">
               <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
-                  ⛅ Weather Alignment ({weatherTemp})
+                  ⛅ Weather Alignment ({weather.temp})
                 </span>
                 <p className="text-xs text-foreground">
                   {currentOutfit.whyDetails?.weatherReason ||
@@ -937,6 +791,12 @@ export default function HomeTab() {
           </div>
         </div>
       )}
+
+      {/* Add Custom Style Recommendation Modal */}
+      <AddStyleModal
+        isOpen={addStyleModalOpen}
+        onClose={() => setAddStyleModalOpen(false)}
+      />
     </div>
   )
 }
