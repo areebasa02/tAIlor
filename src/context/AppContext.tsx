@@ -14,17 +14,17 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Eliora Browning",
     initials: "EB",
     email: "eliora.browning@example.com",
-    avatarBg: "#D40067",
-    roleTitle: "Front-End & Proposal Research · IT Senior",
+    avatarBg: "#ffb4d8ff",
+    roleTitle: "Front-End & Proposal Research",
     preferredStyle: "Polished · colorful · comfortable",
-    typicalSizes: "Tops M · Bottoms 8 · Shoes 8",
-    homeClimate: "Mild and changeable (68°F)",
+    typicalSizes: "Tops 3XL · Bottoms 26/28 · Shoes 9",
+    homeClimate: "Preferably cold (50-65°F)",
     stylistNotes:
-      "Likes bold magenta & teal focal points grounded by warm camel and black neutrals.",
+      "Prefers pastel goth outfits. Likes pastel pinks, burgundies, black, as well as occasional unexpected splashes of color and unique accessories. Very picky about fabric textures.",
     accessibility: {
       highContrastColors: false,
       sensorySensitive: true,
-      lowDecisionMode: false,
+      lowDecisionMode: true,
       voiceNarration: false,
     },
   },
@@ -91,12 +91,12 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "AA",
     email: "areeba.ahmad@example.com",
     avatarBg: "#E84B1A",
-    roleTitle: "Team Leader & Project Planner · IT Senior",
+    roleTitle: "Team Leader & Project Planner",
     preferredStyle: "Creative chic · dynamic layers · statement accents",
     typicalSizes: "Tops S · Bottoms 4 · Shoes 7",
     homeClimate: "Humid subtropical (75°F)",
     stylistNotes:
-      "Loves bold creative palettes with gold accents and digital wardrobe curation.",
+      "Loves bold creative palettes with gold accents and Snoopy-themed outfits.",
     accessibility: {
       highContrastColors: false,
       sensorySensitive: false,
@@ -396,7 +396,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem("tailor_user")
       if (stored) return JSON.parse(stored)
-    } catch {}
+    } catch { }
     return PRESET_PERSONAS.eliora
   })
 
@@ -404,7 +404,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem("tailor_wardrobe")
       if (stored) return JSON.parse(stored)
-    } catch {}
+    } catch { }
     return INITIAL_ITEMS
   })
 
@@ -412,7 +412,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem("tailor_recent_looks")
       if (stored) return JSON.parse(stored)
-    } catch {}
+    } catch { }
     return INITIAL_RECENT_LOOKS
   })
 
@@ -423,19 +423,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem("tailor_auth", JSON.stringify(isAuthenticated))
       localStorage.setItem("tailor_user", JSON.stringify(currentUser))
-    } catch {}
+    } catch { }
   }, [isAuthenticated, currentUser])
 
   useEffect(() => {
     try {
       localStorage.setItem("tailor_wardrobe", JSON.stringify(wardrobe))
-    } catch {}
+    } catch { }
   }, [wardrobe])
 
   useEffect(() => {
     try {
       localStorage.setItem("tailor_recent_looks", JSON.stringify(recentLooks))
-    } catch {}
+    } catch { }
   }, [recentLooks])
 
   const showToast = (
