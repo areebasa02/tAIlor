@@ -71,7 +71,7 @@ const INITIAL_LOADS: LaundryLoad[] = [
   },
 ]
 
-const STATE_META: Record<LaundryState, { label: string color: string }> = {
+const STATE_META: Record<LaundryState, { label: string; color: string }> = {
   clean: { label: "Clean", color: "var(--green)" },
   dirty: { label: "In Hamper", color: "var(--pink)" },
   washing: { label: "Washing…", color: "var(--sky)" },

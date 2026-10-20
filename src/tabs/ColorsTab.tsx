@@ -11,7 +11,7 @@ interface IdentifiedColor {
   name: string
   hex: string
   category: string
-  compatible: { name: string hex: string reason: string }[]
+  compatible: { name: string; hex: string; reason: string }[]
 }
 
 const IDENTIFIED: IdentifiedColor = {

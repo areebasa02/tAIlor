@@ -12,7 +12,7 @@ interface TryOnOutfit {
   id: number
   label: string
   tagline: string
-  items: { type: string name: string color: string emoji: string }[]
+  items: { type: string; name: string; color: string; emoji: string }[]
   colors: string[]
 }
 

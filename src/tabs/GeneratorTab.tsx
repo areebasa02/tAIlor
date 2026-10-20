@@ -17,7 +17,7 @@ interface GeneratedOutfit {
   label: string
   dresscodeMatch: string
   rationale: string
-  items: { type: string desc: string color: string emoji: string }[]
+  items: { type: string; desc: string; color: string; emoji: string }[]
   whyExplanation: string
 }
 

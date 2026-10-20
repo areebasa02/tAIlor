@@ -259,7 +259,7 @@ export function AIErrorBanner({
 }: {
   title: string
   message: string
-  actions?: { label: string primary?: boolean onClick?: () => void }[]
+  actions?: { label: string; primary?: boolean; onClick?: () => void }[]
 }) {
   return (
     <div
@@ -323,7 +323,7 @@ export function ImageUploadWidget({
 }: {
   state: UploadState
   progress?: number
-  result?: { name: string hex: string category: string }
+  result?: { name: string; hex: string; category: string }
   onRetake?: () => void
   onManual?: () => void
   onSave?: () => void
