@@ -22,14 +22,20 @@ pnpm preview   # serve the production build locally
 - `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
 - `index.html` - Vite HTML shell (title, meta tags, `#root`, loads `src/main.tsx`)
 - `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and the `@` alias for `src`
-- `.mise.toml` - Optional toolchain versions for Node.js and pnpm
+- `.node-version` - Node.js major version used by Render (and nvm/fnm locally)
 
 ## Dependencies
 
 - Runtime: React 19 and React DOM 19
 - Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
 - Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
+
+## Deployment
+
+Deployed as a **Render Static Site**:
+
+- Build command: `pnpm install && pnpm build` (or `npm install && npm run build`)
+- Publish directory: `dist`
 
 ## Styling
 
