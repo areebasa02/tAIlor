@@ -279,7 +279,7 @@ function MannequinFigure({
   // Head smaller; shoulders wider; limbs longer/thinner; snug nesting
 
   return (
-    {/* Lift so soles sit on y=0 studio floor */}
+    // Lift so soles sit on y=0 studio floor
     <group position={[0, 0.18, 0]}>
       {/* —— HEAD (human scale ~1/7.5) —— */}
       <mesh position={[0, 1.58, 0]} scale={[1, 1.18, 0.95]} castShadow>
