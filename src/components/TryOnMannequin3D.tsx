@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react"
 import { Canvas } from "@react-three/fiber"
-import { OrbitControls, ContactShadows, Html } from "@react-three/drei"
+import { OrbitControls, ContactShadows } from "@react-three/drei"
 import * as THREE from "three"
 
 export type FitStyle = "fitted" | "standard" | "relaxed"
@@ -52,11 +52,17 @@ function Plastic({ color }: { color: string }) {
   return <meshStandardMaterial color={color} {...MATTE} />
 }
 
-/** Tapered lathe limb — action-figure / PolyOne segment, not a plain capsule */
+function darken(hex: string, amount: number): string {
+  const c = new THREE.Color(hex)
+  c.multiplyScalar(1 - amount)
+  return `#${c.getHexString()}`
+}
+
+/** Mild taper limb — ends stay wide enough to nest into joints (no gaps) */
 function TaperLimb({
   length,
   rMid,
-  rEnd = 0.72,
+  rEnd = 0.88,
   position,
   rotation,
   color,
@@ -70,15 +76,14 @@ function TaperLimb({
 }) {
   const geo = useMemo(() => {
     const pts: THREE.Vector2[] = []
-    const n = 18
+    const n = 16
     for (let i = 0; i <= n; i++) {
       const t = i / n
-      // Fat mid, tapered ends (toy limb silhouette)
       const flare = Math.sin(t * Math.PI)
       const r = rMid * (rEnd + (1 - rEnd) * flare)
-      pts.push(new THREE.Vector2(Math.max(r, 0.008), (t - 0.5) * length))
+      pts.push(new THREE.Vector2(Math.max(r, 0.01), (t - 0.5) * length))
     }
-    const g = new THREE.LatheGeometry(pts, 20)
+    const g = new THREE.LatheGeometry(pts, 18)
     g.computeVertexNormals()
     return g
   }, [length, rMid, rEnd])
@@ -113,7 +118,51 @@ function JointBall({
   )
 }
 
-/** Simplified hand with finger stubs */
+/** Segment spanning two joints — length overshoots so ends nest into balls */
+function LimbBetween({
+  from,
+  to,
+  rMid,
+  color,
+  rEnd = 0.9,
+}: {
+  from: [number, number, number]
+  to: [number, number, number]
+  rMid: number
+  color: string
+  rEnd?: number
+}) {
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const dz = to[2] - from[2]
+  const dist = Math.hypot(dx, dy, dz)
+  // Overlap into joints (~12% each end) so no visible gap
+  const length = dist + rMid * 1.1
+  const mid: [number, number, number] = [
+    (from[0] + to[0]) / 2,
+    (from[1] + to[1]) / 2,
+    (from[2] + to[2]) / 2,
+  ]
+  // Orient lathe (Y-up) along from→to
+  const dir = new THREE.Vector3(dx, dy, dz).normalize()
+  const quat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    dir,
+  )
+  const euler = new THREE.Euler().setFromQuaternion(quat)
+
+  return (
+    <TaperLimb
+      length={length}
+      rMid={rMid}
+      rEnd={rEnd}
+      position={mid}
+      rotation={[euler.x, euler.y, euler.z]}
+      color={color}
+    />
+  )
+}
+
 function Hand({
   position,
   side,
@@ -125,37 +174,35 @@ function Hand({
   scale?: number
   color?: string
 }) {
-  const s = scale
+  const s = scale * 0.92
   return (
     <group position={position} scale={[s, s, s]}>
-      <mesh castShadow position={[0, 0, 0.01]}>
-        <boxGeometry args={[0.07, 0.09, 0.045]} />
+      <mesh castShadow position={[0, -0.01, 0.01]}>
+        <boxGeometry args={[0.055, 0.075, 0.032]} />
         <Plastic color={color} />
       </mesh>
       {[0, 1, 2, 3].map((i) => (
         <mesh
           key={i}
           castShadow
-          position={[(i - 1.5) * 0.018, -0.065, 0.01]}
+          position={[(i - 1.5) * 0.014, -0.055, 0.01]}
         >
-          <capsuleGeometry args={[0.008, 0.028, 3, 6]} />
+          <capsuleGeometry args={[0.006, 0.022, 3, 6]} />
           <Plastic color={color} />
         </mesh>
       ))}
-      {/* Thumb */}
       <mesh
         castShadow
-        position={[side * 0.04, -0.02, 0.02]}
-        rotation={[0, 0, side * 0.7]}
+        position={[side * 0.032, -0.015, 0.015]}
+        rotation={[0, 0, side * 0.65]}
       >
-        <capsuleGeometry args={[0.009, 0.022, 3, 6]} />
+        <capsuleGeometry args={[0.007, 0.018, 3, 6]} />
         <Plastic color={color} />
       </mesh>
     </group>
   )
 }
 
-/** Contoured foot / shoe */
 function Foot({
   position,
   color,
@@ -165,16 +212,16 @@ function Foot({
 }) {
   return (
     <group position={position}>
-      <mesh castShadow receiveShadow position={[0, 0.02, 0.04]}>
-        <boxGeometry args={[0.09, 0.055, 0.2]} />
+      <mesh castShadow receiveShadow position={[0, 0.018, 0.045]}>
+        <boxGeometry args={[0.075, 0.042, 0.18]} />
         <Plastic color={color} />
       </mesh>
-      <mesh castShadow position={[0, 0.035, -0.05]}>
-        <sphereGeometry args={[0.045, 12, 10]} />
+      <mesh castShadow position={[0, 0.028, -0.04]}>
+        <sphereGeometry args={[0.036, 12, 10]} />
         <Plastic color={color} />
       </mesh>
-      <mesh castShadow position={[0, 0.025, 0.12]} scale={[1, 0.7, 1.1]}>
-        <sphereGeometry args={[0.04, 12, 10]} />
+      <mesh castShadow position={[0, 0.02, 0.11]} scale={[1, 0.65, 1]}>
+        <sphereGeometry args={[0.032, 12, 10]} />
         <Plastic color={color} />
       </mesh>
     </group>
@@ -201,7 +248,6 @@ function MannequinFigure({
   const showShoes = Boolean(activeLayers.Shoes && shoes)
   const showOuter = Boolean(activeLayers.Outerwear && outer)
 
-  // Clothing segments tint with garment color; joints stay DARK two-tone
   const chestColor = showOuter
     ? outer!.color
     : showTop
@@ -212,7 +258,6 @@ function MannequinFigure({
     : showTop
       ? top!.color
       : LIGHT
-  // Chest plate / pelvis stay darker accent unless outerwear covers
   const chestPlateColor = showOuter
     ? outer!.color
     : showTop
@@ -228,178 +273,150 @@ function MannequinFigure({
   const shinColor = showBottom ? bottom!.color : LIGHT
   const shoeColor = showShoes ? shoes!.color : DARK
 
-  const labelItems = useMemo(() => {
-    const labels: {
-      name: string
-      position: [number, number, number]
-      color: string
-    }[] = []
-    if (showOuter && outer) {
-      labels.push({
-        name: outer.name,
-        position: [1.15, 1.25, 0],
-        color: outer.color,
-      })
-    } else if (showTop && top) {
-      labels.push({
-        name: top.name,
-        position: [1.1, 1.15, 0],
-        color: top.color,
-      })
-    }
-    if (showBottom && bottom) {
-      labels.push({
-        name: bottom.name,
-        position: [1.0, 0.25, 0],
-        color: bottom.color,
-      })
-    }
-    if (showShoes && shoes) {
-      labels.push({
-        name: shoes.name,
-        position: [0.9, -0.75, 0],
-        color: shoes.color,
-      })
-    }
-    return labels
-  }, [showOuter, showTop, showBottom, showShoes, outer, top, bottom, shoes])
-
   const ls = fit.limb
 
+  // Human-ish proportions (~1.72m figure, feet near y=0)
+  // Head smaller; shoulders wider; limbs longer/thinner; snug nesting
+
   return (
-    <group position={[0, 0, 0]}>
-      {/* —— HEAD (featureless ovoid, toy proportion) —— */}
-      <mesh position={[0, 1.62, 0]} scale={[1, 1.15, 0.92]} castShadow>
-        <sphereGeometry args={[0.145, 28, 24]} />
+    {/* Lift so soles sit on y=0 studio floor */}
+    <group position={[0, 0.18, 0]}>
+      {/* —— HEAD (human scale ~1/7.5) —— */}
+      <mesh position={[0, 1.58, 0]} scale={[1, 1.18, 0.95]} castShadow>
+        <sphereGeometry args={[0.105, 28, 24]} />
         <Plastic color={LIGHT} />
       </mesh>
-      {/* Neck */}
-      <TaperLimb
-        length={0.08}
-        rMid={0.042}
-        rEnd={0.85}
-        position={[0, 1.45, 0]}
+      <JointBall radius={0.038} position={[0, 1.445, 0]} />
+      <LimbBetween
+        from={[0, 1.445, 0]}
+        to={[0, 1.36, 0]}
+        rMid={0.034}
         color={LIGHT}
+        rEnd={0.92}
       />
-      <JointBall radius={0.048} position={[0, 1.4, 0]} />
 
       {/* —— TORSO —— */}
       <group scale={[fit.torsoX, 1, fit.torsoZ]}>
-        {/* Upper chest shell */}
-        <mesh position={[0, 1.22, 0]} castShadow receiveShadow>
-          <sphereGeometry args={[0.2, 24, 18]} />
+        {/* Broader shoulders / upper chest */}
+        <mesh
+          position={[0, 1.28, 0]}
+          scale={[1.35, 0.85, 0.72]}
+          castShadow
+          receiveShadow
+        >
+          <sphereGeometry args={[0.175, 24, 18]} />
           <Plastic color={chestColor} />
         </mesh>
-        {/* Flatten / widen chest */}
+        {/* Ribcage volume */}
         <mesh
-          position={[0, 1.2, 0.02]}
-          scale={[1.25, 0.95, 0.85]}
+          position={[0, 1.14, 0.01]}
+          scale={[1.05, 1.15, 0.78]}
           castShadow
         >
-          <sphereGeometry args={[0.175, 20, 16]} />
+          <sphereGeometry args={[0.155, 22, 16]} />
           <Plastic color={chestColor} />
         </mesh>
-        {/* Dark chest plate (PolyOne two-tone) */}
-        <mesh position={[0, 1.18, 0.09]} scale={[0.95, 0.7, 0.35]} castShadow>
-          <sphereGeometry args={[0.14, 16, 12]} />
+        {/* Dark chest plate */}
+        <mesh position={[0, 1.2, 0.08]} scale={[0.9, 0.75, 0.32]} castShadow>
+          <sphereGeometry args={[0.12, 16, 12]} />
           <Plastic color={chestPlateColor} />
         </mesh>
-        {/* Mid torso / abdomen */}
-        <TaperLimb
-          length={0.22}
-          rMid={0.13}
-          rEnd={0.78}
-          position={[0, 0.95, 0]}
-          color={abdomenColor}
-        />
+        {/* Abdomen — elongated, meets pelvis */}
+        <mesh
+          position={[0, 0.92, 0]}
+          scale={[0.95, 1.2, 0.75]}
+          castShadow
+          receiveShadow
+        >
+          <sphereGeometry args={[0.125, 20, 16]} />
+          <Plastic color={abdomenColor} />
+        </mesh>
+        {/* Waist bridge into pelvis (closes gap) */}
+        <mesh position={[0, 0.8, 0]} scale={[1.05, 0.55, 0.85]} castShadow>
+          <sphereGeometry args={[0.12, 16, 12]} />
+          <Plastic color={abdomenColor} />
+        </mesh>
       </group>
 
-      {/* Outerwear volume */}
       {showOuter && (
-        <group scale={[fit.torsoX * 1.18, 1.05, fit.torsoZ * 1.22]}>
-          <mesh position={[0, 1.1, 0]} castShadow>
-            <sphereGeometry args={[0.24, 24, 18]} />
+        <group scale={[fit.torsoX * 1.16, 1.04, fit.torsoZ * 1.2]}>
+          <mesh position={[0, 1.12, 0]} castShadow>
+            <sphereGeometry args={[0.22, 24, 18]} />
             <meshStandardMaterial
               color={outer!.color}
               roughness={0.78}
               metalness={0.05}
               transparent
-              opacity={0.9}
+              opacity={0.88}
               side={THREE.DoubleSide}
             />
           </mesh>
-          <mesh position={[0, 0.95, 0]} scale={[1, 1.1, 1]} castShadow>
-            <sphereGeometry args={[0.2, 20, 16]} />
+          <mesh position={[0, 0.92, 0]} scale={[1, 1.15, 1]} castShadow>
+            <sphereGeometry args={[0.18, 20, 16]} />
             <meshStandardMaterial
               color={outer!.color}
               roughness={0.78}
               metalness={0.05}
               transparent
-              opacity={0.85}
+              opacity={0.82}
             />
           </mesh>
         </group>
       )}
 
-      {/* —— PELVIS (dark accent) —— */}
+      {/* —— PELVIS —— */}
       <group scale={[fit.hipX, 1, fit.hipZ]}>
-        <mesh position={[0, 0.74, 0]} castShadow receiveShadow>
-          <sphereGeometry args={[0.15, 22, 16]} />
-          <Plastic color={pelvisColor} />
-        </mesh>
         <mesh
           position={[0, 0.7, 0]}
-          scale={[1.15, 0.65, 0.95]}
+          scale={[1.2, 0.72, 0.95]}
           castShadow
+          receiveShadow
         >
-          <sphereGeometry args={[0.14, 18, 14]} />
+          <sphereGeometry args={[0.135, 22, 16]} />
           <Plastic color={pelvisColor} />
         </mesh>
       </group>
 
-      {/* —— ARMS —— */}
+      {/* —— ARMS (snug joint nesting) —— */}
       {([-1, 1] as const).map((side) => {
         const sh: [number, number, number] = [
-          side * 0.28 * fit.torsoX,
+          side * 0.3 * fit.torsoX,
           1.3,
           0,
         ]
-        const upper: [number, number, number] = [
-          side * 0.4 * ls,
-          1.05,
+        const el: [number, number, number] = [
+          side * 0.42 * ls,
+          0.95,
           0.02,
         ]
-        const el: [number, number, number] = [side * 0.46 * ls, 0.82, 0.04]
-        const fore: [number, number, number] = [side * 0.5 * ls, 0.58, 0.05]
-        const wr: [number, number, number] = [side * 0.52 * ls, 0.38, 0.05]
-        const z = side * 0.18
+        const wr: [number, number, number] = [
+          side * 0.46 * ls,
+          0.62,
+          0.03,
+        ]
+        const handPos: [number, number, number] = [
+          side * 0.47 * ls,
+          0.52,
+          0.04,
+        ]
         return (
           <group key={`arm-${side}`}>
-            <JointBall radius={0.062 * ls} position={sh} />
-            <TaperLimb
-              length={0.28}
-              rMid={0.055 * ls}
-              rEnd={0.7}
-              position={upper}
-              rotation={[0.08, 0, z]}
+            <JointBall radius={0.052 * ls} position={sh} />
+            <LimbBetween
+              from={sh}
+              to={el}
+              rMid={0.042 * ls}
               color={sleeveColor}
             />
-            <JointBall radius={0.05 * ls} position={el} />
-            <TaperLimb
-              length={0.24}
-              rMid={0.045 * ls}
-              rEnd={0.72}
-              position={fore}
-              rotation={[0.1, 0, z * 0.4]}
+            <JointBall radius={0.042 * ls} position={el} />
+            <LimbBetween
+              from={el}
+              to={wr}
+              rMid={0.034 * ls}
               color={LIGHT}
             />
-            <JointBall radius={0.04 * ls} position={wr} />
-            <Hand
-              position={[side * 0.52 * ls, 0.28, 0.06]}
-              side={side}
-              scale={ls}
-              color={LIGHT}
-            />
+            <JointBall radius={0.034 * ls} position={wr} />
+            <Hand position={handPos} side={side} scale={ls} color={LIGHT} />
           </group>
         )
       })}
@@ -407,88 +424,46 @@ function MannequinFigure({
       {/* —— LEGS —— */}
       {([-1, 1] as const).map((side) => {
         const hip: [number, number, number] = [
-          side * 0.105 * fit.hipX,
+          side * 0.1 * fit.hipX,
           0.62,
           0,
         ]
-        const thigh: [number, number, number] = [
-          side * 0.11 * fit.hipX,
-          0.38,
-          0,
-        ]
         const knee: [number, number, number] = [
-          side * 0.11 * fit.hipX,
-          0.14,
-          0,
-        ]
-        const shin: [number, number, number] = [
-          side * 0.11 * fit.hipX,
-          -0.1,
+          side * 0.105 * fit.hipX,
+          0.28,
           0,
         ]
         const ankle: [number, number, number] = [
-          side * 0.11 * fit.hipX,
-          -0.32,
+          side * 0.105 * fit.hipX,
+          -0.08,
           0.01,
         ]
         return (
           <group key={`leg-${side}`}>
-            <JointBall radius={0.068 * ls} position={hip} />
-            <TaperLimb
-              length={0.34}
-              rMid={0.078 * ls}
-              rEnd={0.68}
-              position={thigh}
+            <JointBall radius={0.058 * ls} position={hip} />
+            <LimbBetween
+              from={hip}
+              to={knee}
+              rMid={0.058 * ls}
               color={thighColor}
             />
-            <JointBall radius={0.055 * ls} position={knee} />
-            <TaperLimb
-              length={0.3}
-              rMid={0.058 * ls}
-              rEnd={0.7}
-              position={shin}
+            <JointBall radius={0.048 * ls} position={knee} />
+            <LimbBetween
+              from={knee}
+              to={ankle}
+              rMid={0.045 * ls}
               color={shinColor}
             />
-            <JointBall radius={0.045 * ls} position={ankle} />
+            <JointBall radius={0.038 * ls} position={ankle} />
             <Foot
-              position={[side * 0.11 * fit.hipX, -0.42, 0]}
+              position={[side * 0.105 * fit.hipX, -0.16, 0.02]}
               color={shoeColor}
             />
           </group>
         )
       })}
-
-      {labelItems.map((label) => (
-        <Html
-          key={label.name}
-          position={label.position}
-          distanceFactor={6}
-          style={{ pointerEvents: "none", userSelect: "none" }}
-        >
-          <div
-            className="px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-lg"
-            style={{
-              background: "rgba(13,15,24,0.9)",
-              color: "#fff",
-              border: `1.5px solid ${label.color}`,
-            }}
-          >
-            <span
-              className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle"
-              style={{ background: label.color }}
-            />
-            {label.name}
-          </div>
-        </Html>
-      ))}
     </group>
   )
-}
-
-function darken(hex: string, amount: number): string {
-  const c = new THREE.Color(hex)
-  c.multiplyScalar(1 - amount)
-  return `#${c.getHexString()}`
 }
 
 function Studio() {
@@ -499,16 +474,15 @@ function Studio() {
         position={[0, -0.001, 0]}
         receiveShadow
       >
-        <circleGeometry args={[6, 64]} />
+        <circleGeometry args={[7, 64]} />
         <meshStandardMaterial
           color="#12151c"
           roughness={0.55}
           metalness={0.15}
         />
       </mesh>
-      {/* Curved dark backdrop */}
-      <mesh position={[0, 1.6, -3.2]}>
-        <planeGeometry args={[14, 8]} />
+      <mesh position={[0, 1.6, -3.5]}>
+        <planeGeometry args={[16, 9]} />
         <meshStandardMaterial color="#0c0e14" roughness={1} metalness={0} />
       </mesh>
     </group>
@@ -523,12 +497,11 @@ function SceneContent(props: {
   return (
     <>
       <color attach="background" args={["#0e1118"]} />
-      <fog attach="fog" args={["#0e1118", 7, 16]} />
+      <fog attach="fog" args={["#0e1118", 8, 18]} />
 
       <ambientLight intensity={0.28} />
       <hemisphereLight args={["#6a7a98", "#0a0c12", 0.35]} />
 
-      {/* Key */}
       <directionalLight
         position={[2.8, 5.2, 3]}
         intensity={1.15}
@@ -536,16 +509,18 @@ function SceneContent(props: {
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
         shadow-camera-far={14}
-        shadow-camera-left={-3}
-        shadow-camera-right={3}
+        shadow-camera-left={-3.5}
+        shadow-camera-right={3.5}
         shadow-camera-top={4}
         shadow-camera-bottom={-2}
         shadow-bias={-0.00025}
       />
-      {/* Fill */}
       <directionalLight position={[-3, 2.2, 1.5]} intensity={0.35} />
-      {/* Soft rim — PolyOne hallmark */}
-      <directionalLight position={[-1.2, 2.5, -3.5]} intensity={1.6} color="#c8d4ee" />
+      <directionalLight
+        position={[-1.2, 2.5, -3.5]}
+        intensity={1.6}
+        color="#c8d4ee"
+      />
       <pointLight position={[0.5, 1.8, -2.2]} intensity={0.55} color="#a8b8d8" />
 
       <Studio />
@@ -562,11 +537,11 @@ function SceneContent(props: {
 
       <OrbitControls
         enablePan={false}
-        minDistance={2.5}
-        maxDistance={6}
+        minDistance={2.8}
+        maxDistance={7}
         minPolarAngle={Math.PI / 6}
         maxPolarAngle={Math.PI / 2.05}
-        target={[0, 0.75, 0]}
+        target={[0, 0.72, 0]}
         makeDefault
       />
     </>
@@ -643,6 +618,39 @@ function EmptyOverlay() {
   )
 }
 
+/** DOM garment legend — never clipped by canvas overflow */
+function GarmentLegend({
+  items,
+  activeLayers,
+}: {
+  items: MannequinGarment[]
+  activeLayers: Record<string, boolean>
+}) {
+  const visible = items.filter((i) => activeLayers[i.type])
+  if (visible.length === 0) return null
+  return (
+    <div className="absolute top-10 right-3 z-20 flex flex-col gap-1.5 max-w-[42%] pointer-events-none">
+      {visible.map((item) => (
+        <div
+          key={`${item.type}-${item.name}`}
+          className="px-2 py-1 rounded-lg text-[10px] font-semibold leading-snug shadow-md"
+          style={{
+            background: "rgba(13,15,24,0.92)",
+            color: "#fff",
+            border: `1.5px solid ${item.color}`,
+          }}
+        >
+          <span
+            className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle shrink-0"
+            style={{ background: item.color }}
+          />
+          <span className="align-middle">{item.name}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function TryOnMannequin3D({
   items,
   activeLayers,
@@ -708,11 +716,20 @@ export default function TryOnMannequin3D({
       )}
 
       {status !== "error" && (
+        <GarmentLegend items={items} activeLayers={activeLayers} />
+      )}
+
+      {status !== "error" && (
         <CanvasErrorBoundary key={canvasKey} onError={handleError}>
           <Canvas
             shadows
             dpr={[1, 1.75]}
-            camera={{ position: [1.35, 1.2, 3.0], fov: 35, near: 0.1, far: 40 }}
+            camera={{
+              position: [1.55, 1.15, 3.85],
+              fov: 34,
+              near: 0.1,
+              far: 40,
+            }}
             gl={{ antialias: true, alpha: false, powerPreference: "default" }}
             onCreated={({ gl }) => {
               gl.setClearColor("#0e1118")
