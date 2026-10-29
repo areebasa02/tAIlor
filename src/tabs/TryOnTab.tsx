@@ -519,16 +519,15 @@ export default function TryOnTab() {
             <div
               className="rounded-3xl overflow-hidden relative border shadow-2xl min-h-[420px] h-[420px] sm:h-[480px]"
               style={{
-                background:
-                  "radial-gradient(circle at 50% 30%, #1c2236 0%, #0D0F18 100%)",
+                background: "#f0f0f3",
                 borderColor: "var(--border)",
               }}
             >
-              {/* Interactive 3D mannequin — garment colors map to body regions */}
+              {/* Interactive 3D mannequin — peach studio figure + garment tints */}
               <Suspense
                 fallback={
-                  <div className="flex h-full min-h-[360px] items-center justify-center">
-                    <p className="text-[11px] text-muted-foreground">
+                  <div className="flex h-full min-h-[360px] items-center justify-center bg-[#f0f0f3]">
+                    <p className="text-[11px] text-neutral-500">
                       Loading 3D mannequin…
                     </p>
                   </div>
@@ -544,16 +543,17 @@ export default function TryOnTab() {
 
               {/* Bottom Canvas Tag */}
               <div
-                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] z-20"
+                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] z-20 shadow-sm"
                 style={{
-                  background: "rgba(13,15,24,0.85)",
+                  background: "rgba(255,255,255,0.92)",
                   backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(0,0,0,0.06)",
                 }}
               >
-                <span className="text-muted-foreground">
+                <span className="text-neutral-500">
                   cat-VTON Diffusion · Color harmony: 96% match
                 </span>
-                <span className="font-semibold text-white">
+                <span className="font-semibold text-neutral-800">
                   Size: {user.typicalSizes.split("·")[0]}
                 </span>
               </div>
