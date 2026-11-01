@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState } from "react";
 import {
   AnimatedStepProgress,
   AIStatusPill,
@@ -7,18 +7,18 @@ import {
   AIErrorBanner,
   type ControlMode,
   type VoiceState,
-} from "../components/AIComponents"
-import { useApp } from "../context/AppContext"
+} from "../components/AIComponents";
+import { useApp } from "../context/AppContext";
 
-type Step = "input" | "loading" | "results" | "error"
+type Step = "input" | "loading" | "results" | "error";
 
 interface GeneratedOutfit {
-  id: number
-  label: string
-  dresscodeMatch: string
-  rationale: string
-  items: { type: string; desc: string; color: string; emoji: string }[]
-  whyExplanation: string
+  id: number;
+  label: string;
+  dresscodeMatch: string;
+  rationale: string;
+  items: { type: string; desc: string; color: string; emoji: string }[];
+  whyExplanation: string;
 }
 
 const PRESET_EVENTS = [
@@ -26,7 +26,7 @@ const PRESET_EVENTS = [
   "Software engineering conference keynote, casual tech modern",
   "Rainy afternoon client pitch presentation, smart-casual with layers",
   "Art gallery opening & evening social, creative chic with focal color",
-]
+];
 
 const GENERATION_STEPS = [
   "Interpreting event context & venue dress code…",
@@ -34,27 +34,28 @@ const GENERATION_STEPS = [
   "Checking historical outfit logs for repeats…",
   "Applying color harmony & social norm algorithms…",
   "Synthesizing tailored styling suggestions…",
-]
+];
 
 export default function GeneratorTab() {
-  const { wardrobe, logOutfitWorn, showToast } = useApp()
-  const [step, setStep] = useState<Step>("input")
-  const [eventDesc, setEventDesc] = useState("")
-  const [dresscode, setDresscode] = useState("Smart-casual")
-  const [voiceState, setVoiceState] = useState<VoiceState>("idle")
-  const [saved, setSaved] = useState<Set<number>>(new Set())
+  const { wardrobe, logOutfitWorn, showToast } = useApp();
+  const [step, setStep] = useState<Step>("input");
+  const [eventDesc, setEventDesc] = useState("");
+  const [dresscode, setDresscode] = useState("Smart-casual");
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [saved, setSaved] = useState<Set<number>>(new Set());
   const [ctrlMode, setCtrlMode] = useState<Record<number, ControlMode>>({
     1: "default",
     2: "default",
-  })
-  const [serviceError, setServiceError] = useState(false)
+  });
+  const [serviceError, setServiceError] = useState(false);
+  const [slowResponse, setSlowResponse] = useState(false);
   const [activeWhyModal, setActiveWhyModal] = useState<GeneratedOutfit | null>(
     null,
-  )
+  );
   const [swapTarget, setSwapTarget] = useState<{
-    outfitId: number
-    itemIndex: number
-  } | null>(null)
+    outfitId: number;
+    itemIndex: number;
+  } | null>(null);
 
   const [results, setResults] = useState<GeneratedOutfit[]>([
     {
@@ -115,66 +116,71 @@ export default function GeneratorTab() {
       whyExplanation:
         "High-contrast triads signal confidence and creative leadership. Breathable rayon blouse handles indoor dining heat effortlessly.",
     },
-  ])
+  ]);
 
   const inputTooVague =
-    eventDesc.trim().length > 0 && eventDesc.trim().length < 14
-  const inputReady = eventDesc.trim().length >= 14
+    eventDesc.trim().length > 0 && eventDesc.trim().length < 14;
+  const inputReady = eventDesc.trim().length >= 14;
 
   const handleGenerate = () => {
-    if (!inputReady) return
+    if (!inputReady) return;
     if (serviceError) {
-      setStep("error")
-      return
+      setStep("error");
+      return;
     }
-    setStep("loading")
-  }
+    setStep("loading");
+    if (slowResponse) {
+      window.setTimeout(() => {
+        handleLoadingComplete();
+      }, 20000);
+    }
+  };
 
   const handleLoadingComplete = () => {
-    setStep("results")
+    setStep("results");
     showToast(
       "Outfits Generated",
       "2 tailored event looks ready for review.",
       "success",
-    )
-  }
+    );
+  };
 
   const cycleVoice = () => {
     if (voiceState === "idle" || voiceState === "error") {
-      setVoiceState("listening")
+      setVoiceState("listening");
     } else if (voiceState === "listening") {
-      setVoiceState("processing")
+      setVoiceState("processing");
       setTimeout(() => {
         setEventDesc(
           "Networking dinner at a rooftop venue, 7pm Thursday, business-casual",
-        )
-        setVoiceState("captured")
-      }, 1100)
+        );
+        setVoiceState("captured");
+      }, 1100);
     }
-  }
+  };
 
   const handleSwapItem = (
     replacementName: string,
     replacementColor: string,
   ) => {
-    if (!swapTarget) return
+    if (!swapTarget) return;
     setResults((prev) =>
       prev.map((o) => {
         if (o.id === swapTarget.outfitId) {
-          const updated = [...o.items]
+          const updated = [...o.items];
           updated[swapTarget.itemIndex] = {
             ...updated[swapTarget.itemIndex],
             desc: replacementName,
             color: replacementColor,
-          }
-          return { ...o, items: updated }
+          };
+          return { ...o, items: updated };
         }
-        return o
+        return o;
       }),
-    )
-    setSwapTarget(null)
-    showToast("Piece Updated", `Swapped in ${replacementName}.`, "info")
-  }
+    );
+    setSwapTarget(null);
+    showToast("Piece Updated", `Swapped in ${replacementName}.`, "info");
+  };
 
   return (
     <div className="px-5 pt-2 pb-4 space-y-5">
@@ -196,20 +202,38 @@ export default function GeneratorTab() {
           </p>
         </div>
 
-        {/* AI Error Simulator for Flow 05 evaluation */}
-        <button
-          type="button"
-          onClick={() => setServiceError(!serviceError)}
-          className="text-[10px] px-2 py-1 rounded-lg border transition-colors shrink-0"
-          style={{
-            borderColor: serviceError ? "var(--orange)" : "var(--border)",
-            color: serviceError ? "var(--orange)" : "var(--muted-foreground)",
-            background: serviceError ? "rgba(232,75,26,0.1)" : "transparent",
-          }}
-          title="Simulate service timeout / AI offline recovery flow"
-        >
-          {serviceError ? "⚠ AI Error ON" : "Test AI Error"}
-        </button>
+        {/* AI Simulator toggles for Flow 05 evaluation */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setServiceError(!serviceError)}
+            className="text-[10px] px-2 py-1 rounded-lg border transition-colors"
+            style={{
+              borderColor: serviceError ? "var(--orange)" : "var(--border)",
+              color: serviceError ? "var(--orange)" : "var(--muted-foreground)",
+              background: serviceError ? "rgba(232,75,26,0.1)" : "transparent",
+            }}
+            title="Simulate service timeout / AI offline recovery flow"
+          >
+            {serviceError ? "⚠ AI Error ON" : "Test AI Error"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSlowResponse(!slowResponse)}
+            className="text-[10px] px-2 py-1 rounded-lg border transition-colors"
+            style={{
+              borderColor: slowResponse ? "var(--sky)" : "var(--border)",
+              color: slowResponse ? "var(--sky)" : "var(--muted-foreground)",
+              background: slowResponse
+                ? "rgba(114,212,240,0.12)"
+                : "transparent",
+            }}
+            title="Simulate a slow AI response delay"
+          >
+            {slowResponse ? "⏳ Slow Response ON" : "Test slow response"}
+          </button>
+        </div>
       </div>
 
       {/* Input Form (Flow 01 Ethan) - Responsive Grid on Presentation Screens */}
@@ -217,129 +241,153 @@ export default function GeneratorTab() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column on Desktop: Event Description & Voice & Dress Code */}
           <div className="lg:col-span-7 space-y-4">
-
-          {/* Text Area with Embedded Voice Input */}
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block text-muted-foreground">
-              Describe Your Upcoming Event
-            </label>
-            <div
-              className="rounded-2xl overflow-hidden shadow-inner transition-colors"
-              style={{
-                background: "var(--muted)",
-                border: inputTooVague
-                  ? "1px solid rgba(255,211,61,0.5)"
-                  : inputReady
-                    ? "1px solid rgba(59,191,108,0.5)"
-                    : "1px solid var(--border)",
-              }}
-            >
-              <textarea
-                value={eventDesc}
-                onChange={(e) => setEventDesc(e.target.value)}
-                placeholder="e.g. Networking dinner at a rooftop venue, 7pm Thursday, business-casual"
-                rows={3}
-                className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none"
-                style={{
-                  background: "transparent",
-                  color: "var(--foreground)",
-                }}
-              />
-
-              {/* Voice button bar inside the textarea box */}
+            {/* Text Area with Embedded Voice Input */}
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block text-muted-foreground">
+                Describe Your Upcoming Event
+              </label>
               <div
-                className="flex items-center gap-2 px-3 pb-2 pt-1.5"
-                style={{ borderTop: "1px solid var(--border)" }}
+                className="rounded-2xl overflow-hidden shadow-inner transition-colors"
+                style={{
+                  background: "var(--muted)",
+                  border: inputTooVague
+                    ? "1px solid rgba(255,211,61,0.5)"
+                    : inputReady
+                      ? "1px solid rgba(59,191,108,0.5)"
+                      : "1px solid var(--border)",
+                }}
               >
-                {voiceState === "captured" ? (
-                  <>
-                    <span className="text-[10px] flex-1 font-semibold text-green-400">
-                      ✓ Voice transcript populated above
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEventDesc("")
-                        setVoiceState("idle")
-                      }}
-                      className="text-[10px] px-2 py-0.5 rounded-full"
-                      style={{
-                        background: "var(--card)",
-                        color: "var(--muted-foreground)",
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={cycleVoice}
-                      disabled={voiceState === "processing"}
-                      className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full transition-all"
-                      style={{
-                        background:
-                          voiceState === "listening"
-                            ? "rgba(212,0,103,0.2)"
-                            : "var(--card)",
-                        color:
-                          voiceState === "listening"
-                            ? "var(--magenta)"
-                            : voiceState === "processing"
-                              ? "#72D4F0"
-                              : "var(--muted-foreground)",
-                        border: `1px solid ${
-                          voiceState === "listening"
-                            ? "rgba(212,0,103,0.5)"
-                            : "var(--border)"
-                        }`,
-                      }}
-                    >
-                      <span>{voiceState === "processing" ? "⏳" : "🎙"}</span>
-                      <span>
-                        {voiceState === "idle"
-                          ? "Voice Dictation"
-                          : voiceState === "listening"
-                            ? "Listening… tap to finish"
-                            : "Transcribing speech…"}
+                <textarea
+                  value={eventDesc}
+                  onChange={(e) => setEventDesc(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
+                  placeholder="e.g. Networking dinner at a rooftop venue, 7pm Thursday, business-casual"
+                  rows={3}
+                  className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none"
+                  style={{
+                    background: "transparent",
+                    color: "var(--foreground)",
+                  }}
+                />
+
+                {/* Voice button bar inside the textarea box */}
+                <div
+                  className="flex items-center gap-2 px-3 pb-2 pt-1.5"
+                  style={{ borderTop: "1px solid var(--border)" }}
+                >
+                  {voiceState === "captured" ? (
+                    <>
+                      <span className="text-[10px] flex-1 font-semibold text-green-400">
+                        ✓ Voice transcript populated above
                       </span>
-                    </button>
-                    <span className="text-[9px] text-muted-foreground">
-                      or type above
-                    </span>
-                  </>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEventDesc("");
+                          setVoiceState("idle");
+                        }}
+                        className="text-[10px] px-2 py-0.5 rounded-full"
+                        style={{
+                          background: "var(--card)",
+                          color: "var(--muted-foreground)",
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={cycleVoice}
+                        disabled={voiceState === "processing"}
+                        className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full transition-all"
+                        style={{
+                          background:
+                            voiceState === "listening"
+                              ? "rgba(212,0,103,0.2)"
+                              : "var(--card)",
+                          color:
+                            voiceState === "listening"
+                              ? "var(--magenta)"
+                              : voiceState === "processing"
+                                ? "#72D4F0"
+                                : "var(--muted-foreground)",
+                          border: `1px solid ${
+                            voiceState === "listening"
+                              ? "rgba(212,0,103,0.5)"
+                              : "var(--border)"
+                          }`,
+                        }}
+                      >
+                        <span>{voiceState === "processing" ? "⏳" : "🎙"}</span>
+                        <span>
+                          {voiceState === "idle"
+                            ? "Voice Dictation"
+                            : voiceState === "listening"
+                              ? "Listening… tap to finish"
+                              : "Transcribing speech…"}
+                        </span>
+                      </button>
+                      <span className="text-[9px] text-muted-foreground">
+                        or type above
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {/* Context Feedback */}
+              {inputTooVague && (
+                <div className="mt-2">
+                  <UncertaintyBanner message="Needs more context — mention the venue, time of day, or dress code for optimal accuracy." />
+                </div>
+              )}
+              {inputReady && (
+                <div className="mt-2 flex items-center justify-between">
+                  <AIStatusPill
+                    state="success"
+                    label="Event context complete & validated"
+                  />
+                  <span className="text-[10px] text-muted-foreground">
+                    {eventDesc.length} characters
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={!inputReady}
+                className="mt-2 w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all hover:brightness-110 active:scale-99 disabled:opacity-50"
+                style={{
+                  background: inputReady ? "var(--magenta)" : "var(--muted)",
+                  color: inputReady ? "#fff" : "var(--muted-foreground)",
+                }}
+              >
+                <span>✧</span>
+                <span>Generate Context Outfits</span>
+              </button>
             </div>
 
-            {/* Context Feedback */}
-            {inputTooVague && (
-              <div className="mt-2">
-                <UncertaintyBanner message="Needs more context — mention the venue, time of day, or dress code for optimal accuracy." />
-              </div>
-            )}
-            {inputReady && (
-              <div className="mt-2 flex items-center justify-between">
-                <AIStatusPill
-                  state="success"
-                  label="Event context complete & validated"
-                />
-                <span className="text-[10px] text-muted-foreground">
-                  {eventDesc.length} characters
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Dress code chips */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold uppercase tracking-wider block text-muted-foreground">
-              Target Dress Code (Optional Guidance)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {["Casual", "Smart-casual", "Business", "Formal", "Creative"].map(
-                (dc) => (
+            {/* Dress code chips */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider block text-muted-foreground">
+                Target Dress Code (Optional Guidance)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Casual",
+                  "Smart-casual",
+                  "Business",
+                  "Formal",
+                  "Creative",
+                ].map((dc) => (
                   <button
                     key={dc}
                     type="button"
@@ -355,17 +403,21 @@ export default function GeneratorTab() {
                   >
                     {dc}
                   </button>
-                ),
-              )}
+                ))}
+              </div>
             </div>
-          </div>
-
           </div>
 
           {/* Right Column on Desktop: Quick Scenarios & Action */}
           <div className="lg:col-span-5 space-y-4">
             {/* Quick Preset Prompts */}
-            <div className="p-4 rounded-3xl border space-y-2.5 shadow-sm" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div
+              className="p-4 rounded-3xl border space-y-2.5 shadow-sm"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+              }}
+            >
               <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">
                 ⚡ Quick Event Scenarios
               </span>
@@ -375,11 +427,11 @@ export default function GeneratorTab() {
                     key={preset}
                     type="button"
                     onClick={() => {
-                      setEventDesc(preset)
+                      setEventDesc(preset);
                       if (preset.includes("business-casual"))
-                        setDresscode("Smart-casual")
-                      if (preset.includes("formal")) setDresscode("Formal")
-                      if (preset.includes("creative")) setDresscode("Creative")
+                        setDresscode("Smart-casual");
+                      if (preset.includes("formal")) setDresscode("Formal");
+                      if (preset.includes("creative")) setDresscode("Creative");
                     }}
                     className="p-2.5 rounded-xl text-[11px] text-left border transition-all hover:border-[#72D4F0] hover:scale-[1.01]"
                     style={{
@@ -388,26 +440,16 @@ export default function GeneratorTab() {
                       color: "var(--foreground)",
                     }}
                   >
-                    <p className="font-bold text-white">{preset.split(",")[0]}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{preset.split(",").slice(1).join(",")}</p>
+                    <p className="font-bold text-white">
+                      {preset.split(",")[0]}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground truncate">
+                      {preset.split(",").slice(1).join(",")}
+                    </p>
                   </button>
                 ))}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!inputReady}
-              className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all hover:brightness-110 active:scale-99 disabled:opacity-50"
-              style={{
-                background: inputReady ? "var(--magenta)" : "var(--muted)",
-                color: inputReady ? "#fff" : "var(--muted-foreground)",
-              }}
-            >
-              <span>✧</span>
-              <span>Generate Context Outfits</span>
-            </button>
           </div>
         </div>
       )}
@@ -426,7 +468,7 @@ export default function GeneratorTab() {
           <AnimatedStepProgress
             steps={GENERATION_STEPS}
             intervalMs={750}
-            onComplete={handleLoadingComplete}
+            onComplete={slowResponse ? undefined : handleLoadingComplete}
           />
 
           <button
@@ -450,8 +492,8 @@ export default function GeneratorTab() {
                 label: "Retry AI Generation",
                 primary: true,
                 onClick: () => {
-                  setServiceError(false)
-                  setStep("loading")
+                  setServiceError(false);
+                  setStep("loading");
                 },
               },
               {
@@ -478,8 +520,8 @@ export default function GeneratorTab() {
             <button
               type="button"
               onClick={() => {
-                setStep("input")
-                setEventDesc("")
+                setStep("input");
+                setEventDesc("");
               }}
               className="text-xs font-semibold hover:underline"
               style={{ color: "var(--sky)" }}
@@ -612,14 +654,14 @@ export default function GeneratorTab() {
                       : "Approve & Save Look"
                   }
                   onApprove={() => {
-                    setSaved((s) => new Set([...s, outfit.id]))
+                    setSaved((s) => new Set([...s, outfit.id]));
                     logOutfitWorn({
                       label: outfit.label,
                       items: outfit.items.map((i) => i.desc),
                       color: outfit.items[0]?.color || "#D40067",
                       direction: "Event Stylist",
-                    })
-                    setCtrlMode((m) => ({ ...m, [outfit.id]: "default" }))
+                    });
+                    setCtrlMode((m) => ({ ...m, [outfit.id]: "default" }));
                   }}
                   onEdit={() =>
                     setCtrlMode((m) => ({
@@ -632,15 +674,15 @@ export default function GeneratorTab() {
                     setCtrlMode((m) => ({ ...m, [outfit.id]: "rejected" }))
                   }
                   onRegenerate={() => {
-                    setCtrlMode((m) => ({ ...m, [outfit.id]: "regenerating" }))
+                    setCtrlMode((m) => ({ ...m, [outfit.id]: "regenerating" }));
                     setTimeout(() => {
-                      setCtrlMode((m) => ({ ...m, [outfit.id]: "default" }))
+                      setCtrlMode((m) => ({ ...m, [outfit.id]: "default" }));
                       showToast(
                         "Regenerated",
                         "Look refreshed with subtle style adjustment.",
                         "info",
-                      )
-                    }, 1200)
+                      );
+                    }, 1200);
                   }}
                   onUndo={() =>
                     setCtrlMode((m) => ({ ...m, [outfit.id]: "undone" }))
@@ -739,5 +781,5 @@ export default function GeneratorTab() {
         </div>
       )}
     </div>
-  )
+  );
 }
