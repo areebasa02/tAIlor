@@ -371,7 +371,7 @@ export default function GeneratorTab() {
                 }}
               >
                 <span>✧</span>
-                <span>Generate Context Outfits</span>
+                <span>Generate Outfits</span>
               </button>
             </div>
 

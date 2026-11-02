@@ -1,19 +1,19 @@
-import { useState } from "react"
+import { useState } from "react";
 import {
   AnimatedStepProgress,
   UserControlBar,
   type ControlMode,
-} from "../components/AIComponents"
-import { AddStyleModal } from "../components/AddStyleModal"
-import { useApp } from "../context/AppContext"
-import type { Direction } from "../types"
+} from "../components/AIComponents";
+import { AddStyleModal } from "../components/AddStyleModal";
+import { useApp } from "../context/AppContext";
+import type { Direction } from "../types";
 
 const GENERATION_STEPS = [
   "Reading digital wardrobe & local forecast…",
   "Analyzing wear history & color theory rules…",
   "Synthesizing accessible outfit options…",
   "Finalizing personalized stylist notes…",
-]
+];
 
 export default function HomeTab() {
   const {
@@ -35,25 +35,25 @@ export default function HomeTab() {
     undoOutfit,
     weather,
     refreshWeather,
-  } = useApp()
+  } = useApp();
 
-  const [loading, setLoading] = useState(false)
-  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default")
-  const [whyModalOpen, setWhyModalOpen] = useState(false)
-  const [rejectModalOpen, setRejectModalOpen] = useState(false)
-  const [swapModalOpen, setSwapModalOpen] = useState(false)
-  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null)
-  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false)
+  const [loading, setLoading] = useState(false);
+  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default");
+  const [whyModalOpen, setWhyModalOpen] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null);
+  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false);
 
   const handleRegenerate = (reasonConstraint?: string) => {
-    setLoading(true)
-    setCtrlMode("regenerating")
+    setLoading(true);
+    setCtrlMode("regenerating");
     setTimeout(() => {
-      regenerateOutfit(reasonConstraint)
-      setLoading(false)
-      setCtrlMode("default")
-    }, 900)
-  }
+      regenerateOutfit(reasonConstraint);
+      setLoading(false);
+      setCtrlMode("default");
+    }, 900);
+  };
 
   const handleApprove = () => {
     logOutfitWorn({
@@ -61,24 +61,24 @@ export default function HomeTab() {
       items: currentOutfit.items.map((i) => i.desc),
       color: currentOutfit.items[0]?.color || "#D40067",
       direction: currentOutfit.label,
-    })
-    setWornToday(true)
-    setCtrlMode("default")
-  }
+    });
+    setWornToday(true);
+    setCtrlMode("default");
+  };
 
   const handleUndo = () => {
-    const success = undoOutfit()
+    const success = undoOutfit();
     if (success) {
-      setCtrlMode("undone")
+      setCtrlMode("undone");
     }
-  }
+  };
 
-  const handleSwapItem = (replacementItem: typeof wardrobe[0]) => {
-    if (swapTargetIndex === null) return
-    swapOutfitItem(swapTargetIndex, replacementItem)
-    setSwapModalOpen(false)
-    setSwapTargetIndex(null)
-  }
+  const handleSwapItem = (replacementItem: (typeof wardrobe)[0]) => {
+    if (swapTargetIndex === null) return;
+    swapOutfitItem(swapTargetIndex, replacementItem);
+    setSwapModalOpen(false);
+    setSwapTargetIndex(null);
+  };
 
   return (
     <div className="pt-2 pb-6 space-y-6">
@@ -120,7 +120,7 @@ export default function HomeTab() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Recommendation Styles
+                Recommended Styles
               </span>
               {user.accessibility.lowDecisionMode && (
                 <span className="text-[10px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20">
@@ -131,8 +131,8 @@ export default function HomeTab() {
 
             <div className="flex flex-wrap gap-2 items-center">
               {Object.entries(outfits).map(([dirKey, o]) => {
-                const active = selectedDirection === dirKey
-                const isDefaultPick = dirKey === defaultDirection
+                const active = selectedDirection === dirKey;
+                const isDefaultPick = dirKey === defaultDirection;
                 const isLightAccent =
                   o.accent.includes("yellow") ||
                   o.accent.includes("mint") ||
@@ -141,7 +141,7 @@ export default function HomeTab() {
                   o.accent === "#FFD83D" ||
                   o.accent === "#B4F0C0" ||
                   o.accent === "#FFB4D8" ||
-                  o.accent === "#72D4F0"
+                  o.accent === "#72D4F0";
 
                 return (
                   <div
@@ -151,9 +151,9 @@ export default function HomeTab() {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedDirection(dirKey)
-                        setCtrlMode("default")
-                        setWornToday(false)
+                        setSelectedDirection(dirKey);
+                        setCtrlMode("default");
+                        setWornToday(false);
                       }}
                       className="py-2 px-3.5 rounded-2xl text-xs font-bold tracking-wide transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
                       style={{
@@ -176,7 +176,12 @@ export default function HomeTab() {
                       }}
                     >
                       {user.accessibility.lowDecisionMode && isDefaultPick && (
-                        <span className="text-[11px] leading-none" title="AI Primary Recommendation">⚡</span>
+                        <span
+                          className="text-[11px] leading-none"
+                          title="AI Primary Recommendation"
+                        >
+                          ⚡
+                        </span>
                       )}
                       <span>{o.label}</span>
                       {o.isCustom && (
@@ -198,8 +203,8 @@ export default function HomeTab() {
                       <button
                         type="button"
                         onClick={(e) => {
-                          e.stopPropagation()
-                          removeCustomStyle(dirKey)
+                          e.stopPropagation();
+                          removeCustomStyle(dirKey);
                         }}
                         className="ml-1 w-5 h-5 rounded-full bg-white/10 hover:bg-red-500/20 text-white/50 hover:text-red-400 flex items-center justify-center text-xs transition-colors cursor-pointer"
                         title={`Remove custom style "${o.label}"`}
@@ -208,7 +213,7 @@ export default function HomeTab() {
                       </button>
                     )}
                   </div>
-                )
+                );
               })}
 
               {/* Add Custom Style Button */}
@@ -218,7 +223,9 @@ export default function HomeTab() {
                 className="py-2 px-3 rounded-2xl text-xs font-bold tracking-wide flex items-center gap-1.5 border border-dashed border-white/25 text-white/80 hover:text-white hover:border-pink-400/60 hover:bg-pink-500/5 transition-all duration-200 cursor-pointer"
                 title="Add a custom outfit recommendation style"
               >
-                <span className="text-base leading-none font-bold text-pink-400">+</span>
+                <span className="text-base leading-none font-bold text-pink-400">
+                  +
+                </span>
                 <span>Add Style</span>
               </button>
             </div>
@@ -335,8 +342,8 @@ export default function HomeTab() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSwapTargetIndex(idx)
-                          setSwapModalOpen(true)
+                          setSwapTargetIndex(idx);
+                          setSwapModalOpen(true);
                         }}
                         className="px-2.5 py-1 rounded-xl text-[10px] font-bold shrink-0 transition-transform active:scale-95"
                         style={{ background: "var(--sky)", color: "#0D0F18" }}
@@ -345,7 +352,7 @@ export default function HomeTab() {
                       </button>
                     ) : (
                       <span
-                        className="w-3.5 h-3.5 rounded-full shrink-0 shadow-inner"
+                        className="w-4.5 h-9 rounded-full shrink-1 shadow-inner"
                         style={{
                           background: item.color,
                           border: "1px solid rgba(255,255,255,0.3)",
@@ -377,7 +384,7 @@ export default function HomeTab() {
                 </span>
               </div>
 
-              {/* Control Bar - hide redundant bottom why button since it's already in the top-right header */}
+              {/* Control Bar */}
               <UserControlBar
                 mode={ctrlMode}
                 approveLabel={
@@ -414,7 +421,10 @@ export default function HomeTab() {
                   <button
                     type="button"
                     onClick={() => {
-                      sendOutfitToLaundry([currentOutfit.items[0]?.desc || "Top", currentOutfit.items[1]?.desc || "Bottom"])
+                      sendOutfitToLaundry([
+                        currentOutfit.items[0]?.desc || "Top",
+                        currentOutfit.items[1]?.desc || "Bottom",
+                      ]);
                     }}
                     className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white shrink-0"
                     style={{ background: "var(--secondary)" }}
@@ -694,8 +704,8 @@ export default function HomeTab() {
                   key={reason}
                   type="button"
                   onClick={() => {
-                    setRejectModalOpen(false)
-                    handleRegenerate(reason)
+                    setRejectModalOpen(false);
+                    handleRegenerate(reason);
                   }}
                   className="p-2.5 rounded-xl text-xs font-medium text-left border hover:border-magenta hover:bg-white/5 transition-all text-white"
                   style={{
@@ -711,8 +721,8 @@ export default function HomeTab() {
             <button
               type="button"
               onClick={() => {
-                setRejectModalOpen(false)
-                handleRegenerate()
+                setRejectModalOpen(false);
+                handleRegenerate();
               }}
               className="w-full py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white"
             >
@@ -750,14 +760,14 @@ export default function HomeTab() {
               {wardrobe
                 .filter((item) => {
                   const targetType =
-                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase()
+                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase();
                   if (targetType.includes("top"))
-                    return item.category === "Tops"
+                    return item.category === "Tops";
                   if (targetType.includes("bottom"))
-                    return item.category === "Bottoms"
+                    return item.category === "Bottoms";
                   if (targetType.includes("shoe"))
-                    return item.category === "Shoes"
-                  return true
+                    return item.category === "Shoes";
+                  return true;
                 })
                 .map((wItem) => (
                   <button
@@ -798,5 +808,5 @@ export default function HomeTab() {
         onClose={() => setAddStyleModalOpen(false)}
       />
     </div>
-  )
+  );
 }
