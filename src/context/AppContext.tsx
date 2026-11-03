@@ -1264,6 +1264,10 @@ export interface AppContextType {
   // Weather state in AppContext
   weather: WeatherData
   refreshWeather: () => void
+
+  // User testing script state: stylist tab first-run network error
+  stylistNetworkErrorTriggered: boolean
+  setStylistNetworkErrorTriggered: (val: boolean) => void
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -1277,6 +1281,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { }
     return false
   })
+
+  // User testing: stylist screen first-generation error tracking per login
+  const [stylistNetworkErrorTriggered, setStylistNetworkErrorTriggered] = useState<boolean>(false)
 
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
     try {
@@ -1526,6 +1533,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const userToSet = customUser || currentUser
     setCurrentUser(userToSet)
     setIsAuthenticated(true)
+    setStylistNetworkErrorTriggered(false)
     const pid = (userToSet.id in PERSONA_OUTFITS ? userToSet.id : "eliora") as PersonaId
     const loadedOutfits = getOutfitsForUser(pid)
     setOutfits(loadedOutfits)
@@ -1546,6 +1554,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setIsAuthenticated(false)
+    setStylistNetworkErrorTriggered(false)
     try {
       localStorage.removeItem("tailor_auth")
       sessionStorage.removeItem("tailor_auth")
@@ -1557,6 +1566,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const selected = PRESET_PERSONAS[personaId]
     if (selected) {
       setCurrentUser(selected)
+      setStylistNetworkErrorTriggered(false)
       const loadedOutfits = getOutfitsForUser(personaId)
       setOutfits(loadedOutfits)
       const defaultDir =
@@ -1755,6 +1765,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         hasUndo: outfitHistory.length > 0,
         weather,
         refreshWeather,
+        stylistNetworkErrorTriggered,
+        setStylistNetworkErrorTriggered,
       }}
     >
       {children}
