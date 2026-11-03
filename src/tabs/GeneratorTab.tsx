@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   AnimatedStepProgress,
   AIStatusPill,
@@ -37,7 +37,22 @@ const GENERATION_STEPS = [
 ];
 
 export default function GeneratorTab() {
-  const { wardrobe, logOutfitWorn, showToast } = useApp();
+  const {
+    wardrobe,
+    logOutfitWorn,
+    showToast,
+    stylistNetworkErrorTriggered,
+    setStylistNetworkErrorTriggered,
+  } = useApp();
+  const errorTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) {
+        clearTimeout(errorTimerRef.current);
+      }
+    };
+  }, []);
   const [step, setStep] = useState<Step>("input");
   const [eventDesc, setEventDesc] = useState("");
   const [dresscode, setDresscode] = useState("Smart-casual");
@@ -47,7 +62,6 @@ export default function GeneratorTab() {
     1: "default",
     2: "default",
   });
-  const [serviceError, setServiceError] = useState(false);
   const [slowResponse, setSlowResponse] = useState(false);
   const [activeWhyModal, setActiveWhyModal] = useState<GeneratedOutfit | null>(
     null,
@@ -122,13 +136,36 @@ export default function GeneratorTab() {
     eventDesc.trim().length > 0 && eventDesc.trim().length < 14;
   const inputReady = eventDesc.trim().length >= 14;
 
-  const handleGenerate = () => {
-    if (!inputReady) return;
-    if (serviceError) {
-      setStep("error");
-      return;
+  const handleRetry = () => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
     }
     setStep("loading");
+  };
+
+  const cancelLoading = () => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    setStep("input");
+  };
+
+  const handleGenerate = () => {
+    if (!inputReady) return;
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    setStep("loading");
+    if (!stylistNetworkErrorTriggered) {
+      errorTimerRef.current = window.setTimeout(() => {
+        setStylistNetworkErrorTriggered(true);
+        setStep("error");
+      }, 1500);
+      return;
+    }
     if (slowResponse) {
       window.setTimeout(() => {
         handleLoadingComplete();
@@ -200,39 +237,6 @@ export default function GeneratorTab() {
             Describe your venue, crowd, and vibe — AI crafts the ideal outfit
             from your wardrobe
           </p>
-        </div>
-
-        {/* AI Simulator toggles for Flow 05 evaluation */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setServiceError(!serviceError)}
-            className="text-[10px] px-2 py-1 rounded-lg border transition-colors"
-            style={{
-              borderColor: serviceError ? "var(--orange)" : "var(--border)",
-              color: serviceError ? "var(--orange)" : "var(--muted-foreground)",
-              background: serviceError ? "rgba(232,75,26,0.1)" : "transparent",
-            }}
-            title="Simulate service timeout / AI offline recovery flow"
-          >
-            {serviceError ? "⚠ AI Error ON" : "Test AI Error"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSlowResponse(!slowResponse)}
-            className="text-[10px] px-2 py-1 rounded-lg border transition-colors"
-            style={{
-              borderColor: slowResponse ? "var(--sky)" : "var(--border)",
-              color: slowResponse ? "var(--sky)" : "var(--muted-foreground)",
-              background: slowResponse
-                ? "rgba(114,212,240,0.12)"
-                : "transparent",
-            }}
-            title="Simulate a slow AI response delay"
-          >
-            {slowResponse ? "⏳ Slow Response ON" : "Test slow response"}
-          </button>
         </div>
       </div>
 
@@ -371,7 +375,7 @@ export default function GeneratorTab() {
                 }}
               >
                 <span>✧</span>
-                <span>Generate Context Outfits</span>
+                <span>Generate Outfits</span>
               </button>
             </div>
 
@@ -468,12 +472,18 @@ export default function GeneratorTab() {
           <AnimatedStepProgress
             steps={GENERATION_STEPS}
             intervalMs={750}
-            onComplete={slowResponse ? undefined : handleLoadingComplete}
+            onComplete={
+              !stylistNetworkErrorTriggered
+                ? undefined
+                : slowResponse
+                  ? undefined
+                  : handleLoadingComplete
+            }
           />
 
           <button
             type="button"
-            onClick={() => setStep("input")}
+            onClick={cancelLoading}
             className="w-full py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white"
           >
             Cancel Generation
@@ -481,23 +491,20 @@ export default function GeneratorTab() {
         </div>
       )}
 
-      {/* Service Error & Recovery (Flow 05) */}
+      {/* Network Error & Recovery */}
       {step === "error" && (
         <div className="space-y-4">
           <AIErrorBanner
-            title="Stylist Engine Temporarily Offline"
-            message="We could not establish a connection with the neural wardrobe model. Your digital wardrobe is still accessible for manual browsing."
+            title="Network Error"
+            message="The connection was interrupted. Please try again."
             actions={[
               {
-                label: "Retry AI Generation",
+                label: "Try Again",
                 primary: true,
-                onClick: () => {
-                  setServiceError(false);
-                  setStep("loading");
-                },
+                onClick: handleRetry,
               },
               {
-                label: "Switch to Manual Wardrobe",
+                label: "Back to Edit",
                 onClick: () => setStep("input"),
               },
             ]}

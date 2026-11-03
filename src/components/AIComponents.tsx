@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 
 export const AI_COLORS = {
   loading: "#72D4F0",
@@ -6,7 +6,7 @@ export const AI_COLORS = {
   uncertain: "#FFD83D",
   error: "#E84B1A",
   muted: "#8B8FA8",
-}
+};
 
 // ─── Confidence bar ────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ export function ConfidenceBar({ value }: { value: number }) {
       ? AI_COLORS.success
       : value >= 55
         ? AI_COLORS.uncertain
-        : AI_COLORS.error
+        : AI_COLORS.error;
   return (
     <div className="flex items-center gap-2">
       <div
@@ -32,7 +32,7 @@ export function ConfidenceBar({ value }: { value: number }) {
         {value}%
       </span>
     </div>
-  )
+  );
 }
 
 // ─── Inline AI status pill ─────────────────────────────────────────────────────
@@ -41,10 +41,10 @@ export function AIStatusPill({
   state,
   label,
 }: {
-  state: "loading" | "success" | "uncertain" | "error"
-  label: string
+  state: "loading" | "success" | "uncertain" | "error";
+  label: string;
 }) {
-  const color = AI_COLORS[state]
+  const color = AI_COLORS[state];
   return (
     <div className="flex items-center gap-1.5">
       {state === "loading" ? (
@@ -67,7 +67,7 @@ export function AIStatusPill({
         {label}
       </span>
     </div>
-  )
+  );
 }
 
 // ─── Step progress (loading) ───────────────────────────────────────────────────
@@ -76,14 +76,14 @@ export function StepProgress({
   steps,
   active,
 }: {
-  steps: string[]
-  active: number
+  steps: string[];
+  active: number;
 }) {
   return (
     <div className="space-y-2.5">
       {steps.map((s, i) => {
-        const done = i < active
-        const current = i === active
+        const done = i < active;
+        const current = i === active;
         return (
           <div key={s} className="flex items-center gap-2.5">
             <div
@@ -126,10 +126,10 @@ export function StepProgress({
               </div>
             )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 // ─── Animated step progress (auto-cycles) ─────────────────────────────────────
@@ -139,20 +139,20 @@ export function AnimatedStepProgress({
   intervalMs = 900,
   onComplete,
 }: {
-  steps: string[]
-  intervalMs?: number
-  onComplete?: () => void
+  steps: string[];
+  intervalMs?: number;
+  onComplete?: () => void;
 }) {
-  const [active, setActive] = useState(0)
+  const [active, setActive] = useState(0);
   useEffect(() => {
     if (active >= steps.length) {
-      onComplete?.()
-      return
+      onComplete?.();
+      return;
     }
-    const id = setTimeout(() => setActive((a) => a + 1), intervalMs)
-    return () => clearTimeout(id)
-  }, [active, steps.length, intervalMs, onComplete])
-  return <StepProgress steps={steps} active={active} />
+    const id = setTimeout(() => setActive((a) => a + 1), intervalMs);
+    return () => clearTimeout(id);
+  }, [active, steps.length, intervalMs, onComplete]);
+  return <StepProgress steps={steps} active={active} />;
 }
 
 // ─── Pulse orb (long-running AI tasks) ────────────────────────────────────────
@@ -161,8 +161,8 @@ export function PulseOrb({
   label,
   color = "var(--magenta)",
 }: {
-  label: string
-  color?: string
+  label: string;
+  color?: string;
 }) {
   return (
     <div className="flex flex-col items-center gap-3 py-4">
@@ -192,7 +192,7 @@ export function PulseOrb({
         {label}
       </p>
     </div>
-  )
+  );
 }
 
 // ─── Skeleton card ────────────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ export function SkeletonOutfitCard() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // ─── AI uncertainty banner ─────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ export function UncertaintyBanner({ message }: { message: string }) {
       <span className="shrink-0">⚠</span>
       <span>{message}</span>
     </div>
-  )
+  );
 }
 
 // ─── AI error banner ──────────────────────────────────────────────────────────
@@ -257,9 +257,9 @@ export function AIErrorBanner({
   message,
   actions,
 }: {
-  title: string
-  message: string
-  actions?: { label: string; primary?: boolean; onClick?: () => void }[]
+  title: string;
+  message: string;
+  actions?: { label: string; primary?: boolean; onClick?: () => void }[];
 }) {
   return (
     <div
@@ -305,12 +305,17 @@ export function AIErrorBanner({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ─── Image upload widget ───────────────────────────────────────────────────────
 
-export type UploadState = "empty" | "uploading" | "analyzing" | "success" | "error"
+export type UploadState =
+  | "empty"
+  | "uploading"
+  | "analyzing"
+  | "success"
+  | "error";
 
 export function ImageUploadWidget({
   state,
@@ -321,15 +326,15 @@ export function ImageUploadWidget({
   onSave,
   onCorrect,
 }: {
-  state: UploadState
-  progress?: number
-  result?: { name: string; hex: string; category: string }
-  onRetake?: () => void
-  onManual?: () => void
-  onSave?: () => void
-  onCorrect?: () => void
+  state: UploadState;
+  progress?: number;
+  result?: { name: string; hex: string; category: string };
+  onRetake?: () => void;
+  onManual?: () => void;
+  onSave?: () => void;
+  onCorrect?: () => void;
 }) {
-  const safeProgress = Math.min(100, Math.max(0, progress))
+  const safeProgress = Math.min(100, Math.max(0, progress));
 
   if (state === "empty")
     return (
@@ -340,7 +345,7 @@ export function ImageUploadWidget({
           color: "var(--muted-foreground)",
         }}
         onClick={() => {
-          if (onRetake) onRetake()
+          if (onRetake) onRetake();
         }}
         role="button"
         tabIndex={0}
@@ -357,7 +362,7 @@ export function ImageUploadWidget({
           JPEG · PNG · max 10 MB (Click to simulate scan)
         </p>
       </div>
-    )
+    );
 
   if (state === "uploading")
     return (
@@ -390,7 +395,7 @@ export function ImageUploadWidget({
           </div>
         </div>
       </div>
-    )
+    );
 
   if (state === "analyzing")
     return (
@@ -435,7 +440,7 @@ export function ImageUploadWidget({
           )}
         </div>
       </div>
-    )
+    );
 
   if (state === "success" && result)
     return (
@@ -499,7 +504,7 @@ export function ImageUploadWidget({
           </button>
         </div>
       </div>
-    )
+    );
 
   // error
   return (
@@ -525,7 +530,7 @@ export function ImageUploadWidget({
       <div className="flex gap-2">
         <button
           onClick={() => {
-            if (onRetake) onRetake()
+            if (onRetake) onRetake();
           }}
           className="flex-1 py-2 rounded-xl text-[10px] font-semibold"
           style={{ background: AI_COLORS.error, color: "#fff" }}
@@ -544,12 +549,17 @@ export function ImageUploadWidget({
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 // ─── Voice input button ────────────────────────────────────────────────────────
 
-export type VoiceState = "idle" | "listening" | "processing" | "captured" | "error"
+export type VoiceState =
+  | "idle"
+  | "listening"
+  | "processing"
+  | "captured"
+  | "error";
 
 export function VoiceInputButton({
   state,
@@ -558,11 +568,11 @@ export function VoiceInputButton({
   onAccept,
   onReRecord,
 }: {
-  state: VoiceState
-  transcript?: string
-  onTap?: () => void
-  onAccept?: () => void
-  onReRecord?: () => void
+  state: VoiceState;
+  transcript?: string;
+  onTap?: () => void;
+  onAccept?: () => void;
+  onReRecord?: () => void;
 }) {
   const color =
     state === "idle"
@@ -571,7 +581,7 @@ export function VoiceInputButton({
         ? AI_COLORS.success
         : state === "error"
           ? AI_COLORS.error
-          : AI_COLORS.loading
+          : AI_COLORS.loading;
 
   const ringColor =
     state === "idle"
@@ -580,7 +590,7 @@ export function VoiceInputButton({
         ? AI_COLORS.success
         : state === "error"
           ? AI_COLORS.error
-          : AI_COLORS.loading
+          : AI_COLORS.loading;
 
   const label = {
     idle: "Tap to speak",
@@ -588,7 +598,7 @@ export function VoiceInputButton({
     processing: "Transcribing…",
     captured: transcript || "Captured",
     error: "Couldn't hear you — tap to retry",
-  }[state]
+  }[state];
 
   return (
     <div className="flex items-center gap-3">
@@ -641,23 +651,28 @@ export function VoiceInputButton({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 // ─── User control bar ─────────────────────────────────────────────────────────
 
-export type ControlMode = "default" | "editing" | "rejected" | "regenerating" | "undone"
+export type ControlMode =
+  | "default"
+  | "editing"
+  | "rejected"
+  | "regenerating"
+  | "undone";
 
 interface ControlBarProps {
-  mode: ControlMode
-  onApprove?: () => void
-  onEdit?: () => void
-  onReject?: () => void
-  onRegenerate?: () => void
-  onUndo?: () => void
-  onWhy?: () => void
-  approveLabel?: string
-  showWhy?: boolean
+  mode: ControlMode;
+  onApprove?: () => void;
+  onEdit?: () => void;
+  onReject?: () => void;
+  onRegenerate?: () => void;
+  onUndo?: () => void;
+  onWhy?: () => void;
+  approveLabel?: string;
+  showWhy?: boolean;
 }
 
 export function UserControlBar({
@@ -667,14 +682,15 @@ export function UserControlBar({
   onReject,
   onRegenerate,
   onUndo,
-  onWhy,
   approveLabel = "Approve & wear",
-  showWhy = true,
 }: ControlBarProps) {
-  const statusBanner: Record<Exclude<ControlMode, "default">, {
-    color: string
-    text: string
-  }> = {
+  const statusBanner: Record<
+    Exclude<ControlMode, "default">,
+    {
+      color: string;
+      text: string;
+    }
+  > = {
     editing: {
       color: AI_COLORS.loading,
       text: "✏ Editing — swap any item to update the suggestion.",
@@ -688,16 +704,16 @@ export function UserControlBar({
       color: AI_COLORS.success,
       text: "↩ Reverted to previous suggestion.",
     },
-  }
+  };
 
-  const banner = mode !== "default" ? statusBanner[mode] : null
+  const banner = mode !== "default" ? statusBanner[mode] : null;
 
   const activeStyle = (color: string) =>
-    ({ background: color, color: "#fff" }) as const
+    ({ background: color, color: "#fff" }) as const;
   const mutedStyle = {
     background: "var(--muted)",
     color: "var(--foreground)",
-  } as const
+  } as const;
 
   return (
     <div className="space-y-2">
@@ -762,18 +778,6 @@ export function UserControlBar({
           </button>
         ))}
       </div>
-      {showWhy && (
-        <button
-          onClick={onWhy}
-          className="w-full py-2 rounded-xl text-[10px]"
-          style={{
-            background: "var(--muted)",
-            color: "var(--muted-foreground)",
-          }}
-        >
-          Why this outfit?
-        </button>
-      )}
     </div>
-  )
+  );
 }
