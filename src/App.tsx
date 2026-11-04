@@ -41,15 +41,15 @@ function MainApp() {
           <div
             key={n.id}
             onClick={() => dismissToast(n.id)}
-            className="pointer-events-auto rounded-2xl p-3 shadow-2xl flex items-start gap-2.5 border backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2 duration-200 cursor-pointer"
+            className={`pointer-events-auto rounded-2xl p-3 shadow-2xl flex items-start gap-2.5 border backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2 duration-200 cursor-pointer ${
+              n.type === "success"
+                ? "border-green"
+                : n.type === "warning"
+                  ? "border-gold"
+                  : "border-turquoise"
+            }`}
             style={{
               background: "rgba(22, 25, 36, 0.96)",
-              borderColor:
-                n.type === "success"
-                  ? "var(--green)"
-                  : n.type === "warning"
-                    ? "var(--orange)"
-                    : "var(--sky)",
             }}
           >
             <span className="text-sm">
@@ -79,26 +79,20 @@ function MainApp() {
             aria-label="tAIlor home"
           >
             <span
-              className="text-3xl italic leading-none"
-              style={{
-                fontFamily: "Nunito, sans-serif",
-                color: "var(--magenta)",
-              }}
+              className="text-3xl italic leading-none text-pink"
+              style={{ fontFamily: "Nunito, sans-serif" }}
             >
               t
             </span>
             <span
-              className="text-3xl font-black leading-none"
-              style={{ fontFamily: "Nunito, sans-serif", color: "var(--sky)" }}
+              className="text-3xl font-black leading-none text-turquoise"
+              style={{ fontFamily: "Nunito, sans-serif" }}
             >
               AI
             </span>
             <span
-              className="text-3xl italic leading-none"
-              style={{
-                fontFamily: "Nunito, sans-serif",
-                color: "var(--magenta)",
-              }}
+              className="text-3xl italic leading-none text-pink"
+              style={{ fontFamily: "Nunito, sans-serif" }}
             >
               lor
             </span>
@@ -127,14 +121,11 @@ function MainApp() {
                   setTab(n.id);
                   setUserMenuOpen(false);
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                style={{
-                  background: active ? "var(--magenta)" : "transparent",
-                  color: active ? "#ffffff" : "var(--muted-foreground)",
-                  boxShadow: active
-                    ? "0 2px 10px rgba(212,0,103,0.35)"
-                    : "none",
-                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  active
+                    ? "bg-pink text-white shadow-md shadow-pink/30"
+                    : "text-muted-foreground hover:text-white"
+                }`}
               >
                 <span className="text-sm leading-none">{n.icon}</span>
                 <span>{n.label}</span>
@@ -145,16 +136,10 @@ function MainApp() {
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Active User Persona Pill */}
-
           {/* Accessibility Indicator Pills */}
           {user.accessibility.lowDecisionMode && (
             <span
-              className="hidden md:inline-block text-[13px] font-bold px-2 py-1.5 rounded-full"
-              style={{
-                background: "rgba(212,0,103,0.15)",
-                color: "var(--magenta)",
-              }}
+              className="hidden md:inline-block text-[13px] font-bold px-2 py-1.5 rounded-full bg-pink/15 text-pink"
               title="Low Decision Mode Active"
             >
               🧠 Decision Fatigue
@@ -163,11 +148,7 @@ function MainApp() {
 
           {user.accessibility.highContrastColors && (
             <span
-              className="hidden md:inline-block text-[13px] font-bold px-2 py-1.5 rounded-full"
-              style={{
-                background: "rgba(114,212,240,0.15)",
-                color: "var(--sky)",
-              }}
+              className="hidden md:inline-block text-[13px] font-bold px-2 py-1.5 rounded-full bg-turquoise/15 text-turquoise"
               title="High Contrast Color Labels Active"
             >
               👁️ High Contrast
@@ -183,7 +164,7 @@ function MainApp() {
             aria-label="Alerts and suggestions"
           >
             <span>🔔</span>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#72D4F0]" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-turquoise" />
           </button>
 
           {/* User Avatar Button & Menu */}
@@ -251,7 +232,7 @@ function MainApp() {
                       setUserMenuOpen(false);
                       logout();
                     }}
-                    className="w-full px-3 py-2 text-left text-xs font-bold rounded-xl text-red-400 hover:bg-red-500/10 flex items-center gap-2"
+                    className="w-full px-3 py-2 text-left text-xs font-bold rounded-xl text-red hover:bg-red/10 flex items-center gap-2"
                   >
                     <span>🚪</span>
                     <span>Sign Out</span>
@@ -288,7 +269,7 @@ function MainApp() {
 
             <div className="space-y-2.5">
               <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-green-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-green">
                   🧺 Laundry Notice
                 </span>
                 <p className="text-xs text-foreground">
@@ -298,7 +279,7 @@ function MainApp() {
               </div>
 
               <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
                   ⛅ Climate Update
                 </span>
                 <p className="text-xs text-foreground">
@@ -308,7 +289,7 @@ function MainApp() {
               </div>
 
               <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gold">
                   ✨ Rediscovery Tip
                 </span>
                 <p className="text-xs text-foreground">
@@ -321,8 +302,7 @@ function MainApp() {
             <button
               type="button"
               onClick={() => setNotifPanelOpen(false)}
-              className="w-full py-2.5 rounded-xl text-xs font-bold text-white"
-              style={{ background: "var(--magenta)" }}
+              className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 transition-all shadow-md"
             >
               Dismiss
             </button>
@@ -360,20 +340,16 @@ function MainApp() {
                 setTab(n.id);
                 setUserMenuOpen(false);
               }}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium relative transition-all active:scale-95"
-              style={{
-                color: active ? "var(--magenta)" : "rgba(255,255,255,0.65)",
-              }}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium relative transition-all active:scale-95 ${
+                active ? "text-pink" : "text-white/65 hover:text-white"
+              }`}
             >
               <span className="text-base leading-none">{n.icon}</span>
               <span className="text-[10px] tracking-wide uppercase font-bold">
                 {n.label}
               </span>
               {active && (
-                <span
-                  className="absolute bottom-0 w-8 h-0.5 rounded-full"
-                  style={{ background: "var(--magenta)" }}
-                />
+                <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-pink" />
               )}
             </button>
           );

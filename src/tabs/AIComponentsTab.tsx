@@ -1,6 +1,12 @@
-import { useState, useEffect, useRef } from "react"
-
-// ─── Shared primitives ────────────────────────────────────────────────────────
+import { useState, useEffect } from "react"
+import { THEME_COLORS, STATUS_COLORS } from "../types/theme"
+import {
+  type VoiceState,
+  type ControlMode,
+  type UploadState,
+  AnimatedStepProgress,
+  PulseOrb,
+} from "../components/AIComponents"
 
 function Chip({
   label,
@@ -59,7 +65,6 @@ function ComponentFrame({
       className="rounded-2xl overflow-hidden"
       style={{ border: "1px solid var(--border)" }}
     >
-      {/* annotation bar */}
       <div
         className="flex items-center justify-between px-3 py-1.5"
         style={{
@@ -82,13 +87,12 @@ function ComponentFrame({
   )
 }
 
-// ─── State color map ───────────────────────────────────────────────────────────
 const S = {
-  empty: "#8B8FA8",
-  loading: "#72D4F0",
-  success: "#3BBF6C",
-  uncertain: "#FFD83D",
-  error: "#E84B1A",
+  empty: STATUS_COLORS.muted,
+  loading: STATUS_COLORS.loading,
+  success: STATUS_COLORS.success,
+  uncertain: STATUS_COLORS.uncertain,
+  error: STATUS_COLORS.error,
 }
 
 // ─── 1. AI Text Input ─────────────────────────────────────────────────────────
@@ -96,24 +100,16 @@ const S = {
 function TextInputEmpty() {
   return (
     <div className="space-y-2">
-      <label
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
         Describe the event
       </label>
       <div
-        className="w-full rounded-xl px-3 py-2.5 text-sm flex items-center"
-        style={{
-          background: "var(--muted)",
-          border: "1px solid var(--border)",
-          color: "var(--muted-foreground)",
-          minHeight: 44,
-        }}
+        className="w-full rounded-xl px-3 py-2.5 text-sm flex items-center bg-muted border border-border text-muted-foreground"
+        style={{ minHeight: 44 }}
       >
         e.g. Networking dinner, 7pm Thursday…
       </div>
-      <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
+      <p className="text-[10px] text-muted-foreground">
         The more context you give, the better the suggestion.
       </p>
     </div>
@@ -123,21 +119,14 @@ function TextInputEmpty() {
 function TextInputLoading() {
   return (
     <div className="space-y-2">
-      <label
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
         Describe the event
       </label>
       <div
-        className="w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{
-          background: "var(--muted)",
-          border: `1px solid ${S.loading}60`,
-          minHeight: 44,
-        }}
+        className="w-full rounded-xl px-3 py-2.5 text-sm bg-muted border border-turquoise/60"
+        style={{ minHeight: 44 }}
       >
-        <span style={{ color: "var(--foreground)" }}>
+        <span className="text-foreground">
           Networking dinner at a rooftop venue…
         </span>
       </div>
@@ -145,11 +134,11 @@ function TextInputLoading() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="w-1.5 h-1.5 rounded-full animate-bounce"
-            style={{ background: S.loading, animationDelay: `${i * 150}ms` }}
+            className="w-1.5 h-1.5 rounded-full animate-bounce bg-turquoise"
+            style={{ animationDelay: `${i * 150}ms` }}
           />
         ))}
-        <span className="text-[10px]" style={{ color: S.loading }}>
+        <span className="text-[10px] text-turquoise">
           Reading your input…
         </span>
       </div>
@@ -160,26 +149,18 @@ function TextInputLoading() {
 function TextInputSuccess() {
   return (
     <div className="space-y-2">
-      <label
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
         Describe the event
       </label>
       <div
-        className="w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{
-          background: "var(--muted)",
-          border: `1px solid ${S.success}60`,
-          minHeight: 44,
-          color: "var(--foreground)",
-        }}
+        className="w-full rounded-xl px-3 py-2.5 text-sm bg-muted border border-green/60 text-foreground"
+        style={{ minHeight: 44 }}
       >
         Networking dinner at a rooftop venue, 7pm Thursday, business-casual
       </div>
       <div className="flex items-center gap-1.5">
-        <span style={{ color: S.success, fontSize: 11 }}>✓</span>
-        <span className="text-[10px]" style={{ color: S.success }}>
+        <span className="text-green text-xs">✓</span>
+        <span className="text-[10px] text-green">
           Context accepted — generating outfits
         </span>
       </div>
@@ -190,31 +171,16 @@ function TextInputSuccess() {
 function TextInputUncertain() {
   return (
     <div className="space-y-2">
-      <label
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
         Describe the event
       </label>
       <div
-        className="w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{
-          background: "var(--muted)",
-          border: `1px solid ${S.uncertain}60`,
-          minHeight: 44,
-          color: "var(--foreground)",
-        }}
+        className="w-full rounded-xl px-3 py-2.5 text-sm bg-muted border border-gold/60 text-foreground"
+        style={{ minHeight: 44 }}
       >
         Dinner
       </div>
-      <div
-        className="rounded-xl px-3 py-2 text-[10px] leading-snug"
-        style={{
-          background: `${S.uncertain}12`,
-          border: `1px solid ${S.uncertain}40`,
-          color: S.uncertain,
-        }}
-      >
+      <div className="rounded-xl px-3 py-2 text-[10px] leading-snug bg-gold/10 border border-gold/30 text-gold">
         ⚠ Not enough context — is this casual, formal, or smart-casual? What
         time and venue?
       </div>
@@ -225,26 +191,18 @@ function TextInputUncertain() {
 function TextInputError() {
   return (
     <div className="space-y-2">
-      <label
-        className="text-[10px] uppercase tracking-widest"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <label className="text-[10px] uppercase tracking-widest text-muted-foreground">
         Describe the event
       </label>
       <div
-        className="w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{
-          background: "var(--muted)",
-          border: `1px solid ${S.error}60`,
-          minHeight: 44,
-          color: "var(--foreground)",
-        }}
+        className="w-full rounded-xl px-3 py-2.5 text-sm bg-muted border border-red/60 text-foreground"
+        style={{ minHeight: 44 }}
       >
         asdkjhasd
       </div>
       <div className="flex items-center gap-1.5">
-        <span style={{ color: S.error, fontSize: 11 }}>✕</span>
-        <span className="text-[10px]" style={{ color: S.error }}>
+        <span className="text-red text-xs">✕</span>
+        <span className="text-[10px] text-red">
           Input not understood. Try describing the occasion in plain words.
         </span>
       </div>
@@ -254,11 +212,7 @@ function TextInputError() {
 
 // ─── 2. Voice Input ───────────────────────────────────────────────────────────
 
-function VoiceButton({
-  state,
-}: {
-  state: "idle" | "listening" | "processing" | "captured" | "error"
-}) {
+function VoiceButton({ state }: { state: VoiceState }) {
   const configs = {
     idle: {
       icon: "🎙",
@@ -334,17 +288,13 @@ function VoiceButton({
       {state === "captured" && (
         <div className="flex gap-2">
           <button
-            className="text-[10px] px-2.5 py-1 rounded-full"
+            className="text-[10px] px-2.5 py-1 rounded-full font-bold"
             style={{ background: S.success + "22", color: S.success }}
           >
             Use this
           </button>
           <button
-            className="text-[10px] px-2.5 py-1 rounded-full"
-            style={{
-              background: "var(--muted)",
-              color: "var(--muted-foreground)",
-            }}
+            className="text-[10px] px-2.5 py-1 rounded-full font-medium bg-muted text-muted-foreground"
           >
             Re-record
           </button>
@@ -356,19 +306,11 @@ function VoiceButton({
 
 // ─── 3. Image Upload ──────────────────────────────────────────────────────────
 
-function ImageUpload({
-  state,
-}: {
-  state: "empty" | "uploading" | "analyzing" | "success" | "error"
-}) {
+function ImageUpload({ state }: { state: UploadState }) {
   if (state === "empty")
     return (
       <div
-        className="rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-8"
-        style={{
-          borderColor: "var(--border)",
-          color: "var(--muted-foreground)",
-        }}
+        className="rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-8 hover:border-turquoise transition-colors text-muted-foreground"
       >
         <span className="text-3xl">📷</span>
         <p className="text-xs font-medium">Take a photo or upload</p>
@@ -379,27 +321,18 @@ function ImageUpload({
   if (state === "uploading")
     return (
       <div className="space-y-2">
-        <div
-          className="h-28 rounded-xl flex items-center justify-center"
-          style={{ background: "var(--muted)" }}
-        >
+        <div className="h-28 rounded-xl flex items-center justify-center bg-muted">
           <span className="text-3xl opacity-50">🖼</span>
         </div>
         <div className="space-y-1">
-          <div
-            className="flex justify-between text-[10px]"
-            style={{ color: "var(--muted-foreground)" }}
-          >
+          <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>Uploading photo…</span>
             <span>62%</span>
           </div>
-          <div
-            className="h-1.5 rounded-full overflow-hidden"
-            style={{ background: "var(--muted)" }}
-          >
+          <div className="h-1.5 rounded-full overflow-hidden bg-muted">
             <div
-              className="h-full rounded-full"
-              style={{ background: S.loading, width: "62%" }}
+              className="h-full rounded-full bg-turquoise"
+              style={{ width: "62%" }}
             />
           </div>
         </div>
@@ -423,8 +356,8 @@ function ImageUpload({
             }}
           />
           <div
-            className="px-3 py-1.5 rounded-xl text-[10px] font-semibold relative"
-            style={{ background: "rgba(0,0,0,0.5)", color: S.loading }}
+            className="px-3 py-1.5 rounded-xl text-[10px] font-semibold relative text-turquoise"
+            style={{ background: "rgba(0,0,0,0.5)" }}
           >
             Identifying color & category…
           </div>
@@ -434,16 +367,10 @@ function ImageUpload({
             (s, i) => (
               <div key={s} className="flex items-center gap-1.5">
                 <div
-                  className="w-1 h-1 rounded-full animate-pulse"
-                  style={{
-                    background: S.loading,
-                    animationDelay: `${i * 250}ms`,
-                  }}
+                  className="w-1 h-1 rounded-full animate-pulse bg-turquoise"
+                  style={{ animationDelay: `${i * 250}ms` }}
                 />
-                <span
-                  className="text-[10px]"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
+                <span className="text-[10px] text-muted-foreground">
                   {s}
                 </span>
               </div>
@@ -458,7 +385,7 @@ function ImageUpload({
       <div className="space-y-2">
         <div
           className="h-28 rounded-xl relative overflow-hidden"
-          style={{ background: "#007A8A" }}
+          style={{ background: THEME_COLORS.darkTeal }}
         >
           <div
             className="absolute bottom-2 left-2 right-2 rounded-lg px-2 py-1.5"
@@ -466,49 +393,28 @@ function ImageUpload({
           >
             <div className="flex items-center gap-2">
               <div
-                className="w-4 h-4 rounded-md"
-                style={{
-                  background: "#007A8A",
-                  border: "1px solid rgba(255,255,255,0.3)",
-                }}
+                className="w-4 h-4 rounded-md border border-white/30"
+                style={{ background: THEME_COLORS.darkTeal }}
               />
               <div>
-                <p
-                  className="text-[10px] font-semibold"
-                  style={{ color: "#fff" }}
-                >
+                <p className="text-[10px] font-semibold text-white">
                   Deep Teal · Outerwear
                 </p>
-                <p
-                  className="text-[9px]"
-                  style={{ color: "rgba(255,255,255,0.6)" }}
-                >
-                  #007A8A · Cool-neutral
+                <p className="text-[9px] text-white/60">
+                  {THEME_COLORS.darkTeal} · Cool-neutral
                 </p>
               </div>
-              <span
-                className="ml-auto text-[10px]"
-                style={{ color: S.success }}
-              >
+              <span className="ml-auto text-[10px] text-green font-bold">
                 ✓ Identified
               </span>
             </div>
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold"
-            style={{ background: S.success, color: "#fff" }}
-          >
+          <button className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold bg-green text-white">
             Save to wardrobe
           </button>
-          <button
-            className="px-3 py-1.5 rounded-xl text-[10px]"
-            style={{
-              background: "var(--muted)",
-              color: "var(--muted-foreground)",
-            }}
-          >
+          <button className="px-3 py-1.5 rounded-xl text-[10px] bg-muted text-muted-foreground">
             Correct color
           </button>
         </div>
@@ -517,38 +423,20 @@ function ImageUpload({
 
   return (
     <div className="space-y-2">
-      <div
-        className="h-28 rounded-xl flex flex-col items-center justify-center gap-2"
-        style={{
-          background: `${S.error}10`,
-          border: `1px dashed ${S.error}60`,
-        }}
-      >
+      <div className="h-28 rounded-xl flex flex-col items-center justify-center gap-2 bg-red/10 border border-dashed border-red/50">
         <span className="text-2xl">⚠</span>
-        <p className="text-xs font-medium" style={{ color: S.error }}>
+        <p className="text-xs font-medium text-red">
           Photo unusable
         </p>
-        <p
-          className="text-[10px] text-center"
-          style={{ color: "var(--muted-foreground)" }}
-        >
+        <p className="text-[10px] text-center text-muted-foreground">
           Blurry, too dark, or not a clothing item
         </p>
       </div>
       <div className="flex gap-2">
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold"
-          style={{ background: S.error, color: "#fff" }}
-        >
+        <button className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold bg-red text-white">
           📷 Retake photo
         </button>
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px]"
-          style={{
-            background: "var(--muted)",
-            color: "var(--muted-foreground)",
-          }}
-        >
+        <button className="flex-1 py-1.5 rounded-xl text-[10px] bg-muted text-muted-foreground">
           Enter manually
         </button>
       </div>
@@ -556,194 +444,42 @@ function ImageUpload({
   )
 }
 
-// ─── 4. Processing Feedback ───────────────────────────────────────────────────
-
-function StepProgress({ active }: { active: number }) {
-  const steps = [
-    "Reading context",
-    "Browsing wardrobe",
-    "Checking history",
-    "Building outfits",
-  ]
-  return (
-    <div className="space-y-2.5">
-      {steps.map((s, i) => {
-        const done = i < active
-        const current = i === active
-        return (
-          <div key={s} className="flex items-center gap-2.5">
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-              style={{
-                background: done
-                  ? S.success
-                  : current
-                    ? S.loading
-                    : "var(--muted)",
-                color: done || current ? "#fff" : "var(--muted-foreground)",
-              }}
-            >
-              {done ? "✓" : i + 1}
-            </div>
-            <p
-              className="text-xs"
-              style={{
-                color: done
-                  ? S.success
-                  : current
-                    ? "var(--foreground)"
-                    : "var(--muted-foreground)",
-              }}
-            >
-              {s}
-            </p>
-            {current && (
-              <div className="flex gap-0.5 ml-auto">
-                {[0, 1, 2].map((j) => (
-                  <div
-                    key={j}
-                    className="w-1 h-1 rounded-full animate-bounce"
-                    style={{
-                      background: S.loading,
-                      animationDelay: `${j * 120}ms`,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function SkeletonCard() {
-  return (
-    <div className="space-y-2 animate-pulse">
-      <div
-        className="h-4 rounded-full w-1/2"
-        style={{ background: "var(--muted)" }}
-      />
-      <div
-        className="h-3 rounded-full w-3/4"
-        style={{ background: "var(--muted)" }}
-      />
-      <div className="space-y-1.5 mt-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-2">
-            <div
-              className="w-7 h-7 rounded-lg shrink-0"
-              style={{ background: "var(--muted)" }}
-            />
-            <div className="flex-1 space-y-1">
-              <div
-                className="h-2.5 rounded-full"
-                style={{ background: "var(--muted)", width: `${60 + i * 10}%` }}
-              />
-              <div
-                className="h-2 rounded-full w-1/3"
-                style={{ background: "var(--muted)" }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function PulseOrb({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 py-2">
-      <div className="relative w-14 h-14">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="absolute inset-0 rounded-full animate-ping opacity-20"
-            style={{
-              background: "var(--magenta)",
-              animationDelay: `${i * 400}ms`,
-              animationDuration: "1.5s",
-              transform: `scale(${1 + i * 0.25})`,
-            }}
-          />
-        ))}
-        <div
-          className="absolute inset-0 rounded-full flex items-center justify-center"
-          style={{ background: "var(--magenta)" }}
-        >
-          <span className="text-lg text-white">✧</span>
-        </div>
-      </div>
-      <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-        {label}
-      </p>
-    </div>
-  )
-}
-
-// ─── 5. Result Cards ─────────────────────────────────────────────────────────
+// ─── 4. Result Presentation & Controls ────────────────────────────────────────
 
 function ResultCardHigh() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p
-          className="text-xs font-semibold"
-          style={{
-            fontFamily: "Nunito, sans-serif",
-            color: "var(--foreground)",
-          }}
-        >
+        <p className="text-xs font-semibold text-foreground" style={{ fontFamily: "Nunito, sans-serif" }}>
           Suggested outfit
         </p>
         <div className="flex items-center gap-1.5">
-          <div
-            className="h-1.5 rounded-full overflow-hidden w-16"
-            style={{ background: "var(--muted)" }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{ background: S.success, width: "92%" }}
-            />
+          <div className="h-1.5 rounded-full overflow-hidden w-16 bg-muted">
+            <div className="h-full rounded-full bg-green" style={{ width: "92%" }} />
           </div>
-          <span
-            className="text-[10px] font-semibold"
-            style={{ color: S.success }}
-          >
+          <span className="text-[10px] font-semibold text-green">
             92% match
           </span>
         </div>
       </div>
       {[
-        { type: "Top", desc: "Magenta button-down", color: "#D40067" },
+        { type: "Top", desc: "Magenta button-down", color: THEME_COLORS.pink },
         { type: "Bottom", desc: "Black wide-legs", color: "#1A1A2E" },
         { type: "Shoes", desc: "White platforms", color: "#E8E8E8" },
       ].map((item) => (
         <div
           key={item.type}
-          className="flex items-center gap-2.5 rounded-xl px-3 py-2"
-          style={{ background: "var(--muted)" }}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-muted"
         >
           <div
-            className="w-6 h-6 rounded-lg"
-            style={{
-              background: item.color,
-              border: "1px solid rgba(255,255,255,0.1)",
-            }}
+            className="w-6 h-6 rounded-lg border border-white/10"
+            style={{ background: item.color }}
           />
           <div>
-            <p
-              className="text-[9px] uppercase tracking-widest"
-              style={{ color: "var(--muted-foreground)" }}
-            >
+            <p className="text-[9px] uppercase tracking-widest text-muted-foreground">
               {item.type}
             </p>
-            <p
-              className="text-xs font-medium"
-              style={{ color: "var(--foreground)" }}
-            >
+            <p className="text-xs font-medium text-foreground">
               {item.desc}
             </p>
           </div>
@@ -757,72 +493,40 @@ function ResultCardUncertain() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p
-          className="text-xs font-semibold"
-          style={{
-            fontFamily: "Nunito, sans-serif",
-            color: "var(--foreground)",
-          }}
-        >
+        <p className="text-xs font-semibold text-foreground" style={{ fontFamily: "Nunito, sans-serif" }}>
           Best guess
         </p>
         <div className="flex items-center gap-1.5">
-          <div
-            className="h-1.5 rounded-full overflow-hidden w-16"
-            style={{ background: "var(--muted)" }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{ background: S.uncertain, width: "43%" }}
-            />
+          <div className="h-1.5 rounded-full overflow-hidden w-16 bg-muted">
+            <div className="h-full rounded-full bg-gold" style={{ width: "43%" }} />
           </div>
-          <span
-            className="text-[10px] font-semibold"
-            style={{ color: S.uncertain }}
-          >
+          <span className="text-[10px] font-semibold text-gold">
             43% match
           </span>
         </div>
       </div>
-      <div
-        className="rounded-xl px-3 py-2 text-[10px] leading-snug"
-        style={{
-          background: `${S.uncertain}12`,
-          border: `1px solid ${S.uncertain}40`,
-          color: S.uncertain,
-        }}
-      >
+      <div className="rounded-xl px-3 py-2 text-[10px] leading-snug bg-gold/10 border border-gold/30 text-gold">
         ⚠ Low confidence — the event context is ambiguous. Review carefully or
         add more detail.
       </div>
       {[
-        { type: "Top", desc: "Mint mock-neck", color: "#B4F0C0" },
+        { type: "Top", desc: "Mint mock-neck", color: THEME_COLORS.lightGreen },
         { type: "Bottom", desc: "Camel trousers", color: "#C8965A" },
         { type: "Shoes", desc: "Tan loafers", color: "#B8825A" },
       ].map((item) => (
         <div
           key={item.type}
-          className="flex items-center gap-2.5 rounded-xl px-3 py-2"
-          style={{ background: "var(--muted)", opacity: 0.7 }}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-muted opacity-70"
         >
           <div
-            className="w-6 h-6 rounded-lg"
-            style={{
-              background: item.color,
-              border: "1px solid rgba(255,255,255,0.1)",
-            }}
+            className="w-6 h-6 rounded-lg border border-white/10"
+            style={{ background: item.color }}
           />
           <div>
-            <p
-              className="text-[9px] uppercase tracking-widest"
-              style={{ color: "var(--muted-foreground)" }}
-            >
+            <p className="text-[9px] uppercase tracking-widest text-muted-foreground">
               {item.type}
             </p>
-            <p
-              className="text-xs font-medium"
-              style={{ color: "var(--foreground)" }}
-            >
+            <p className="text-xs font-medium text-foreground">
               {item.desc}
             </p>
           </div>
@@ -844,7 +548,7 @@ function AlternativeSuggestions() {
       label: "Bolder option",
       desc: "Magenta blouse + black trousers",
       confidence: 74,
-      colors: ["#D40067", "#1A1A2E"],
+      colors: [THEME_COLORS.pink, "#1A1A2E"],
     },
     {
       label: "Safe fallback",
@@ -855,44 +559,28 @@ function AlternativeSuggestions() {
   ]
   return (
     <div className="space-y-2">
-      <p
-        className="text-[10px] uppercase tracking-widest mb-1"
-        style={{ color: "var(--muted-foreground)" }}
-      >
+      <p className="text-[10px] uppercase tracking-widest mb-1 text-muted-foreground">
         Alternative suggestions
       </p>
       {alts.map((a) => (
         <div
           key={a.label}
-          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
-          style={{
-            background: "var(--muted)",
-            border: "1px solid var(--border)",
-          }}
+          className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-muted border border-border"
         >
           <div className="flex gap-0.5">
             {a.colors.map((c, i) => (
               <div
                 key={i}
-                className="w-4 h-4 rounded-md"
-                style={{
-                  background: c,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
+                className="w-4 h-4 rounded-md border border-white/10"
+                style={{ background: c }}
               />
             ))}
           </div>
           <div className="flex-1 min-w-0">
-            <p
-              className="text-[10px] font-semibold"
-              style={{ color: "var(--foreground)" }}
-            >
+            <p className="text-[10px] font-semibold text-foreground">
               {a.label}
             </p>
-            <p
-              className="text-[9px] truncate"
-              style={{ color: "var(--muted-foreground)" }}
-            >
+            <p className="text-[9px] truncate text-muted-foreground">
               {a.desc}
             </p>
           </div>
@@ -919,172 +607,54 @@ function AlternativeSuggestions() {
 
 function EmptyResult() {
   return (
-    <div
-      className="flex flex-col items-center justify-center gap-3 py-8 rounded-xl"
-      style={{ background: "var(--muted)", border: "1px dashed var(--border)" }}
-    >
+    <div className="flex flex-col items-center justify-center gap-3 py-8 rounded-xl bg-muted border border-dashed border-border">
       <span className="text-3xl opacity-40">🧺</span>
       <div className="text-center">
-        <p
-          className="text-xs font-semibold"
-          style={{ color: "var(--foreground)" }}
-        >
+        <p className="text-xs font-semibold text-foreground">
           No matching outfits
         </p>
-        <p
-          className="text-[10px] mt-0.5 max-w-[180px]"
-          style={{ color: "var(--muted-foreground)" }}
-        >
+        <p className="text-[10px] mt-0.5 max-w-[180px] text-muted-foreground">
           Try a different occasion or browse your wardrobe directly.
         </p>
       </div>
-      <button
-        className="text-[10px] px-3 py-1.5 rounded-full font-semibold"
-        style={{ background: "var(--magenta)", color: "#fff" }}
-      >
+      <button className="text-[10px] px-3 py-1.5 rounded-full font-semibold bg-pink text-white hover:brightness-110 shadow-sm">
         Browse wardrobe
       </button>
     </div>
   )
 }
 
-// ─── 6. Error States ─────────────────────────────────────────────────────────
-
-function ServiceError() {
-  return (
-    <div
-      className="rounded-xl p-3 space-y-2"
-      style={{ background: `${S.error}10`, border: `1px solid ${S.error}40` }}
-    >
-      <div className="flex items-start gap-2">
-        <span style={{ color: S.error, fontSize: 14 }}>⚠</span>
-        <div>
-          <p className="text-xs font-semibold" style={{ color: S.error }}>
-            Service unavailable
-          </p>
-          <p
-            className="text-[10px] leading-snug mt-0.5"
-            style={{ color: "var(--muted-foreground)" }}
-          >
-            AI styling is temporarily offline. Your wardrobe is still available.
-          </p>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold"
-          style={{ background: S.error, color: "#fff" }}
-        >
-          Retry
-        </button>
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px]"
-          style={{
-            background: "var(--muted)",
-            color: "var(--muted-foreground)",
-          }}
-        >
-          Browse manually
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function InappropriateOutput() {
-  return (
-    <div
-      className="rounded-xl p-3 space-y-2"
-      style={{ background: `${S.error}10`, border: `1px solid ${S.error}40` }}
-    >
-      <div className="flex items-start gap-2">
-        <span style={{ color: S.error, fontSize: 14 }}>🚫</span>
-        <div>
-          <p className="text-xs font-semibold" style={{ color: S.error }}>
-            Suggestion hidden
-          </p>
-          <p
-            className="text-[10px] leading-snug mt-0.5"
-            style={{ color: "var(--muted-foreground)" }}
-          >
-            This result may contain body-shaming or offensive language and has
-            been removed.
-          </p>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px] font-semibold"
-          style={{ background: "var(--magenta)", color: "#fff" }}
-        >
-          Regenerate
-        </button>
-        <button
-          className="flex-1 py-1.5 rounded-xl text-[10px]"
-          style={{
-            background: "var(--muted)",
-            color: "var(--muted-foreground)",
-          }}
-        >
-          Report
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── 7. User Control Bar ─────────────────────────────────────────────────────
-
-type CtrlState = "default" | "editing" | "undone" | "rejected" | "regenerating"
-
-function ControlBar({ mode }: { mode: CtrlState }) {
+function ControlBar({ mode }: { mode: ControlMode }) {
   const active = (c: string) => ({ background: c, color: "#fff" })
   const muted = { background: "var(--muted)", color: "var(--foreground)" }
 
   return (
     <div className="space-y-2">
-      {/* Status banner */}
       {mode === "editing" && (
-        <div
-          className="rounded-xl px-3 py-1.5 text-[10px]"
-          style={{ background: `${S.loading}12`, color: S.loading }}
-        >
+        <div className="rounded-xl px-3 py-1.5 text-[10px] bg-turquoise/10 text-turquoise">
           ✏ Editing — swap any item. Changes update the preview instantly.
         </div>
       )}
       {mode === "undone" && (
-        <div
-          className="rounded-xl px-3 py-1.5 text-[10px]"
-          style={{ background: `${S.success}12`, color: S.success }}
-        >
+        <div className="rounded-xl px-3 py-1.5 text-[10px] bg-green/10 text-green">
           ↩ Reverted to previous suggestion.
         </div>
       )}
       {mode === "rejected" && (
-        <div
-          className="rounded-xl px-3 py-1.5 text-[10px]"
-          style={{ background: `${S.error}12`, color: S.error }}
-        >
+        <div className="rounded-xl px-3 py-1.5 text-[10px] bg-red/10 text-red">
           ✕ Rejected. Tell us why to improve future suggestions.
         </div>
       )}
       {mode === "regenerating" && (
-        <div
-          className="rounded-xl px-3 py-1.5 text-[10px] flex items-center gap-1.5"
-          style={{ background: `${S.loading}12`, color: S.loading }}
-        >
-          <div
-            className="w-1 h-1 rounded-full animate-bounce"
-            style={{ background: S.loading }}
-          />
+        <div className="rounded-xl px-3 py-1.5 text-[10px] flex items-center gap-1.5 bg-turquoise/10 text-turquoise">
+          <div className="w-1 h-1 rounded-full animate-bounce bg-turquoise" />
           Regenerating outfit…
         </div>
       )}
 
-      {/* Primary approve */}
       <button
         className="w-full py-2.5 rounded-xl text-xs font-semibold"
-        style={mode === "default" ? active("var(--magenta)") : muted}
+        style={mode === "default" ? active(THEME_COLORS.pink) : muted}
       >
         {mode === "default"
           ? "✓ Approve & wear"
@@ -1095,7 +665,6 @@ function ControlBar({ mode }: { mode: CtrlState }) {
               : "Approve"}
       </button>
 
-      {/* Action row */}
       <div className="grid grid-cols-4 gap-1.5">
         <button
           className="py-2 rounded-xl text-[10px] font-semibold flex flex-col items-center gap-0.5"
@@ -1123,37 +692,28 @@ function ControlBar({ mode }: { mode: CtrlState }) {
         </button>
       </div>
 
-      {/* Secondary */}
-      <button
-        className="w-full py-2 rounded-xl text-[10px]"
-        style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}
-      >
+      <button className="w-full py-2 rounded-xl text-[10px] bg-muted text-muted-foreground">
         Why this outfit?
       </button>
     </div>
   )
 }
 
-// ─── Interactive demo wrapper ─────────────────────────────────────────────────
+const DEMO_STEPS = [
+  "Reading context",
+  "Browsing wardrobe",
+  "Checking history",
+  "Building outfits",
+]
 
-function LiveStepProgress() {
-  const [step, setStep] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setStep((s) => (s < 4 ? s + 1 : 0)), 1000)
-    return () => clearInterval(id)
-  }, [])
-  return <StepProgress active={step} />
-}
-
-// ─── Main tab ────────────────────────────────────────────────────────────────
+// ─── Main AIComponentsTab Export ─────────────────────────────────────────────
 
 export default function AIComponentsTab() {
-  const [voiceState, setVoiceState] =
-    useState<"idle" | "listening" | "processing" | "captured" | "error">("idle")
-  const [ctrlMode, setCtrlMode] = useState<CtrlState>("default")
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle")
+  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default")
 
   const cycleVoice = () => {
-    const order: typeof voiceState[] = [
+    const order: VoiceState[] = [
       "idle",
       "listening",
       "processing",
@@ -1164,31 +724,17 @@ export default function AIComponentsTab() {
   }
 
   return (
-    <div className="px-5 pt-2 pb-4">
-      {/* Page header */}
+    <div className="px-5 pt-2 pb-6">
       <div className="mb-2">
-        <h2
-          className="text-xl font-semibold"
-          style={{ fontFamily: "Nunito, sans-serif" }}
-        >
+        <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: "Nunito, sans-serif" }}>
           AI component kit
         </h2>
-        <p
-          className="text-[11px] mt-0.5"
-          style={{ color: "var(--muted-foreground)" }}
-        >
+        <p className="text-[11px] mt-0.5 text-muted-foreground">
           All AI interaction states — annotated by flow and state
         </p>
       </div>
 
-      {/* Legend */}
-      <div
-        className="flex flex-wrap gap-2 rounded-xl px-3 py-2.5 mb-2"
-        style={{
-          background: "var(--muted)",
-          border: "1px solid var(--border)",
-        }}
-      >
+      <div className="flex flex-wrap gap-2 rounded-xl px-3 py-2.5 mb-3 bg-muted border border-border">
         {[
           ["empty", S.empty],
           ["loading", S.loading],
@@ -1197,66 +743,36 @@ export default function AIComponentsTab() {
           ["error", S.error],
         ].map(([label, color]) => (
           <div key={label} className="flex items-center gap-1">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ background: color }}
-            />
-            <span
-              className="text-[9px] uppercase tracking-widest"
-              style={{ color: "var(--muted-foreground)" }}
-            >
+            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+            <span className="text-[9px] uppercase tracking-widest text-muted-foreground">
               {label}
             </span>
           </div>
         ))}
       </div>
 
-      {/* ── Section 1: Text Input ── */}
       <SectionTitle>1 · AI Text Input</SectionTitle>
       <SubTitle>Used in: Outfit Generator, event description field</SubTitle>
       <div className="space-y-3">
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="empty"
-          stateColor={S.empty}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="empty" stateColor={S.empty}>
           <TextInputEmpty />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="loading"
-          stateColor={S.loading}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="loading" stateColor={S.loading}>
           <TextInputLoading />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="success"
-          stateColor={S.success}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="success" stateColor={S.success}>
           <TextInputSuccess />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="uncertain"
-          stateColor={S.uncertain}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="uncertain" stateColor={S.uncertain}>
           <TextInputUncertain />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="error"
-          stateColor={S.error}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="error" stateColor={S.error}>
           <TextInputError />
         </ComponentFrame>
       </div>
 
-      {/* ── Section 2: Voice Input ── */}
       <SectionTitle>2 · Voice Input</SectionTitle>
-      <SubTitle>
-        Used in: Outfit Generator, accessibility mode — tap to cycle states
-      </SubTitle>
+      <SubTitle>Used in: Outfit Generator, accessibility mode — tap to cycle states</SubTitle>
       <ComponentFrame
         flow="Generator · Voice"
         state={voiceState}
@@ -1274,143 +790,68 @@ export default function AIComponentsTab() {
           <VoiceButton state={voiceState} />
           <button
             onClick={cycleVoice}
-            className="mt-4 text-[10px] px-3 py-1.5 rounded-full"
-            style={{
-              background: "var(--muted)",
-              color: "var(--muted-foreground)",
-            }}
+            className="mt-4 text-[10px] px-3 py-1.5 rounded-full bg-muted text-muted-foreground hover:text-white transition-colors"
           >
             Cycle state →
           </button>
         </div>
       </ComponentFrame>
 
-      {/* ── Section 3: Image Upload ── */}
       <SectionTitle>3 · Image Upload</SectionTitle>
-      <SubTitle>
-        Used in: Color Matcher (Flow 03), Virtual Try-On (Flow 04), adding
-        wardrobe items
-      </SubTitle>
+      <SubTitle>Used in: Color Matcher (Flow 03), Virtual Try-On (Flow 04), adding wardrobe items</SubTitle>
       <div className="space-y-3">
-        {(["empty", "uploading", "analyzing", "success", "error"] as const).map(
-          (state) => (
-            <ComponentFrame
-              key={state}
-              flow="Color Matcher · Flow 03"
-              state={state}
-              stateColor={
-                state === "empty"
-                  ? S.empty
-                  : state === "success"
-                    ? S.success
-                    : state === "error"
-                      ? S.error
-                      : S.loading
-              }
-            >
-              <ImageUpload state={state} />
-            </ComponentFrame>
-          ),
-        )}
+        {(["empty", "uploading", "analyzing", "success", "error"] as const).map((state) => (
+          <ComponentFrame
+            key={state}
+            flow="Color Matcher · Flow 03"
+            state={state}
+            stateColor={
+              state === "empty"
+                ? S.empty
+                : state === "success"
+                  ? S.success
+                  : state === "error"
+                    ? S.error
+                    : S.loading
+            }
+          >
+            <ImageUpload state={state} />
+          </ComponentFrame>
+        ))}
       </div>
 
-      {/* ── Section 4: Processing Feedback ── */}
       <SectionTitle>4 · AI Processing Feedback</SectionTitle>
       <SubTitle>Used in: all AI flows during model inference</SubTitle>
       <div className="space-y-3">
-        <ComponentFrame
-          flow="All flows · loading"
-          state="loading"
-          stateColor={S.loading}
-        >
-          <LiveStepProgress />
+        <ComponentFrame flow="All flows · loading" state="loading" stateColor={S.loading}>
+          <AnimatedStepProgress steps={DEMO_STEPS} intervalMs={1000} />
         </ComponentFrame>
-        <ComponentFrame
-          flow="All flows · skeleton"
-          state="loading"
-          stateColor={S.loading}
-        >
-          <SkeletonCard />
-        </ComponentFrame>
-        <ComponentFrame
-          flow="Try-On · Flow 04 · long processing"
-          state="loading"
-          stateColor={S.loading}
-        >
+        <ComponentFrame flow="Try-On · Flow 04 · long processing" state="loading" stateColor={S.loading}>
           <PulseOrb label="Generating your preview — this may take up to 30 seconds" />
         </ComponentFrame>
       </div>
 
-      {/* ── Section 5: Result Presentation ── */}
       <SectionTitle>5 · AI Result Presentation</SectionTitle>
-      <SubTitle>
-        Used in: Outfit Generator, Outfit Discovery, Color Matcher
-      </SubTitle>
+      <SubTitle>Used in: Outfit Generator, Outfit Discovery, Color Matcher</SubTitle>
       <div className="space-y-3">
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="success"
-          stateColor={S.success}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="success" stateColor={S.success}>
           <ResultCardHigh />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Generator · Flow 01"
-          state="uncertain"
-          stateColor={S.uncertain}
-        >
+        <ComponentFrame flow="Generator · Flow 01" state="uncertain" stateColor={S.uncertain}>
           <ResultCardUncertain />
         </ComponentFrame>
-        <ComponentFrame
-          flow="All flows · alternatives"
-          state="success"
-          stateColor={S.success}
-        >
+        <ComponentFrame flow="All flows · alternatives" state="success" stateColor={S.success}>
           <AlternativeSuggestions />
         </ComponentFrame>
-        <ComponentFrame
-          flow="Discovery · Flow 02"
-          state="empty"
-          stateColor={S.empty}
-        >
+        <ComponentFrame flow="Discovery · Flow 02" state="empty" stateColor={S.empty}>
           <EmptyResult />
         </ComponentFrame>
       </div>
 
-      {/* ── Section 6: Error States ── */}
-      <SectionTitle>6 · AI Error States</SectionTitle>
-      <SubTitle>Used in: AI Failure & Recovery flow (Flow 05)</SubTitle>
+      <SectionTitle>6 · User Controls</SectionTitle>
+      <SubTitle>Used in: all AI result screens — always available</SubTitle>
       <div className="space-y-3">
-        <ComponentFrame
-          flow="Flow 05 · service error"
-          state="error"
-          stateColor={S.error}
-        >
-          <ServiceError />
-        </ComponentFrame>
-        <ComponentFrame
-          flow="Flow 05 · inappropriate output"
-          state="error"
-          stateColor={S.error}
-        >
-          <InappropriateOutput />
-        </ComponentFrame>
-      </div>
-
-      {/* ── Section 7: User Controls ── */}
-      <SectionTitle>7 · User Control Bar</SectionTitle>
-      <SubTitle>
-        Used in: all AI result screens — always available, no result blocks
-        manual use
-      </SubTitle>
-      <div className="space-y-3">
-        {([
-          "default",
-          "editing",
-          "rejected",
-          "regenerating",
-          "undone",
-        ] as CtrlState[]).map((mode) => (
+        {(["default", "editing", "rejected", "regenerating", "undone"] as ControlMode[]).map((mode) => (
           <ComponentFrame
             key={mode}
             flow="All flows · user controls"
@@ -1437,8 +878,6 @@ export default function AIComponentsTab() {
           </ComponentFrame>
         ))}
       </div>
-
-      <div className="h-4" />
     </div>
   )
 }

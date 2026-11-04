@@ -71,10 +71,31 @@ const INITIAL_LOADS: LaundryLoad[] = [
   },
 ]
 
-const STATE_META: Record<LaundryState, { label: string; color: string }> = {
-  clean: { label: "Clean", color: "var(--green)" },
-  dirty: { label: "In Hamper", color: "var(--pink)" },
-  washing: { label: "Washing…", color: "var(--sky)" },
+const STATE_META: Record<
+  LaundryState,
+  { label: string; color: string; textClass: string; bgClass: string; borderClass: string }
+> = {
+  clean: {
+    label: "Clean",
+    color: "var(--green)",
+    textClass: "text-green",
+    bgClass: "bg-green",
+    borderClass: "border-green/30",
+  },
+  dirty: {
+    label: "In Hamper",
+    color: "var(--rose)",
+    textClass: "text-rose",
+    bgClass: "bg-rose",
+    borderClass: "border-rose/30",
+  },
+  washing: {
+    label: "Washing…",
+    color: "var(--turquoise)",
+    textClass: "text-turquoise",
+    bgClass: "bg-turquoise",
+    borderClass: "border-turquoise/30",
+  },
 }
 
 const CARE_ITEMS = [
@@ -109,7 +130,7 @@ const LAUNDRY_SYMBOLS = [
   {
     symbol: "△ ✕",
     label: "Do Not Bleach",
-    desc: "Chlorine bleach will dissolve rayon fibers and fade magenta/teal dyes.",
+    desc: "Chlorine bleach will dissolve rayon fibers and fade dyes.",
   },
   {
     symbol: "◻ ⊚",
@@ -222,7 +243,7 @@ export default function LaundryTab() {
   }
 
   return (
-    <div className="px-5 pt-2 pb-4 space-y-5">
+    <div className="px-5 pt-2 pb-6 space-y-5">
       {/* Header */}
       <div>
         <h2
@@ -231,20 +252,14 @@ export default function LaundryTab() {
         >
           Laundry & Fabric Care
         </h2>
-        <p
-          className="text-xs mt-0.5"
-          style={{ color: "var(--muted-foreground)" }}
-        >
+        <p className="text-xs mt-0.5 text-muted-foreground">
           Track clean vs. dirty pieces, decode care symbols, and protect your
           wardrobe
         </p>
       </div>
 
       {/* Navigation Pills */}
-      <div
-        className="grid grid-cols-3 gap-2 rounded-2xl p-1"
-        style={{ background: "var(--muted)" }}
-      >
+      <div className="grid grid-cols-3 gap-2 rounded-2xl p-1 bg-muted">
         {([
           ["status", "Status & Loads"],
           ["care", "Care Decoder"],
@@ -254,13 +269,11 @@ export default function LaundryTab() {
             key={id}
             type="button"
             onClick={() => setView(id)}
-            className="py-2.5 rounded-xl text-xs font-bold transition-all"
-            style={{
-              background: view === id ? "var(--card)" : "transparent",
-              color:
-                view === id ? "var(--foreground)" : "var(--muted-foreground)",
-              boxShadow: view === id ? "0 2px 8px rgba(0,0,0,0.4)" : "none",
-            }}
+            className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+              view === id
+                ? "bg-card text-white shadow-md shadow-black/40"
+                : "text-muted-foreground hover:text-white"
+            }`}
           >
             {label}
           </button>
@@ -276,8 +289,7 @@ export default function LaundryTab() {
               onClick={() =>
                 setOpenAction(openAction === "hamper" ? null : "hamper")
               }
-              className="rounded-2xl px-3 py-2.5 text-xs font-bold transition-transform active:scale-98"
-              style={{ background: "var(--magenta)", color: "#fff" }}
+              className="rounded-2xl px-3 py-2.5 text-xs font-bold transition-all active:scale-98 bg-pink text-white hover:brightness-110 shadow-md shadow-pink/20"
             >
               + Add Hamper
             </button>
@@ -286,8 +298,7 @@ export default function LaundryTab() {
               onClick={() =>
                 setOpenAction(openAction === "quick" ? null : "quick")
               }
-              className="rounded-2xl px-3 py-2.5 text-xs font-bold transition-transform active:scale-98"
-              style={{ background: "var(--sky)", color: "#0D0F18" }}
+              className="rounded-2xl px-3 py-2.5 text-xs font-bold transition-all active:scale-98 bg-turquoise text-[#0D0F18] hover:brightness-110 shadow-md shadow-turquoise/20"
             >
               ⚡ Quick Load
             </button>
@@ -295,8 +306,7 @@ export default function LaundryTab() {
               type="button"
               onClick={handleWashAllDirty}
               disabled={dirtyCount === 0}
-              className="rounded-2xl px-2 py-2.5 text-[11px] font-bold transition-transform active:scale-98 disabled:opacity-40"
-              style={{ background: "var(--green)", color: "#fff" }}
+              className="rounded-2xl px-2 py-2.5 text-[11px] font-bold transition-all active:scale-98 disabled:opacity-40 bg-green text-white hover:brightness-110 shadow-md shadow-green/20"
             >
               ✓ Wash All ({dirtyCount})
             </button>
@@ -323,22 +333,12 @@ export default function LaundryTab() {
                 value={hamperName}
                 onChange={(event) => setHamperName(event.target.value)}
                 placeholder="Hamper name, e.g. Bedroom Closet Basket"
-                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none bg-muted text-white border border-border focus:border-pink transition-colors"
               />
               <select
                 value={hamperSorting}
                 onChange={(event) => setHamperSorting(event.target.value)}
-                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none bg-muted text-white border border-border focus:border-pink transition-colors"
               >
                 <option>Lights and colors together</option>
                 <option>Lights only (whites & pastels)</option>
@@ -350,8 +350,7 @@ export default function LaundryTab() {
                 type="button"
                 onClick={addHamper}
                 disabled={!hamperName.trim()}
-                className="w-full rounded-xl py-2.5 text-xs font-bold text-white"
-                style={{ background: "var(--magenta)" }}
+                className="w-full rounded-xl py-2.5 text-xs font-bold text-white bg-pink hover:brightness-110 transition-all shadow-md shadow-pink/20 disabled:opacity-50"
               >
                 Save Hamper
               </button>
@@ -360,13 +359,7 @@ export default function LaundryTab() {
 
           {/* Quick load drawer */}
           {openAction === "quick" && (
-            <div
-              className="rounded-3xl p-5 space-y-3 shadow-xl border animate-in fade-in duration-150"
-              style={{
-                background: "rgba(114,212,240,0.06)",
-                borderColor: "rgba(114,212,240,0.3)",
-              }}
-            >
+            <div className="rounded-3xl p-5 space-y-3 shadow-xl border border-turquoise/30 bg-turquoise/5 animate-in fade-in duration-150">
               <div>
                 <p className="text-sm font-bold text-white">
                   Start a Priority Quick Load
@@ -379,12 +372,7 @@ export default function LaundryTab() {
                 value={quickOccasion}
                 onChange={(event) => setQuickOccasion(event.target.value)}
                 placeholder="Occasion, e.g. Thursday Networking Dinner"
-                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                style={{
-                  background: "var(--card)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3.5 py-2.5 text-xs outline-none bg-card text-white border border-border focus:border-turquoise transition-colors"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -393,22 +381,12 @@ export default function LaundryTab() {
                   value={quickCount}
                   onChange={(event) => setQuickCount(event.target.value)}
                   placeholder="Item count"
-                  className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                  style={{
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    border: "1px solid var(--border)",
-                  }}
+                  className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-card text-white border border-border focus:border-turquoise transition-colors"
                 />
                 <select
                   value={quickDeadline}
                   onChange={(event) => setQuickDeadline(event.target.value)}
-                  className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                  style={{
-                    background: "var(--card)",
-                    color: "var(--foreground)",
-                    border: "1px solid var(--border)",
-                  }}
+                  className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-card text-white border border-border focus:border-turquoise transition-colors"
                 >
                   <option>Tonight</option>
                   <option>Tomorrow morning</option>
@@ -420,8 +398,7 @@ export default function LaundryTab() {
                 type="button"
                 onClick={addQuickLoad}
                 disabled={!quickOccasion.trim()}
-                className="w-full rounded-xl py-2.5 text-xs font-bold text-black"
-                style={{ background: "var(--sky)" }}
+                className="w-full rounded-xl py-2.5 text-xs font-bold text-[#0D0F18] bg-turquoise hover:brightness-110 transition-all shadow-md shadow-turquoise/20 disabled:opacity-50"
               >
                 Queue Quick Load
               </button>
@@ -430,17 +407,8 @@ export default function LaundryTab() {
 
           {/* Clean vs Dirty Overview Badges */}
           <div className="grid grid-cols-2 gap-3">
-            <div
-              className="rounded-3xl p-4 border"
-              style={{
-                background: "rgba(59,191,108,0.1)",
-                borderColor: "rgba(59,191,108,0.3)",
-              }}
-            >
-              <p
-                className="text-3xl font-extrabold text-white"
-                style={{ color: "var(--green)" }}
-              >
+            <div className="rounded-3xl p-4 border border-green/30 bg-green/10">
+              <p className="text-3xl font-extrabold text-green">
                 {cleanCount}
               </p>
               <p className="text-xs font-semibold text-white/90 mt-0.5">
@@ -450,17 +418,8 @@ export default function LaundryTab() {
                 Ready to wear in wardrobe
               </p>
             </div>
-            <div
-              className="rounded-3xl p-4 border"
-              style={{
-                background: "rgba(248,160,184,0.1)",
-                borderColor: "rgba(248,160,184,0.3)",
-              }}
-            >
-              <p
-                className="text-3xl font-extrabold"
-                style={{ color: "var(--pink)" }}
-              >
+            <div className="rounded-3xl p-4 border border-rose/30 bg-rose/10">
+              <p className="text-3xl font-extrabold text-rose">
                 {dirtyCount}
               </p>
               <p className="text-xs font-semibold text-white/90 mt-0.5">
@@ -481,7 +440,7 @@ export default function LaundryTab() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Assigned Hampers
               </span>
-              <span className="text-[10px] text-sky-400">
+              <span className="text-[10px] text-turquoise font-semibold">
                 {hampers.length} active
               </span>
             </div>
@@ -489,11 +448,7 @@ export default function LaundryTab() {
               {hampers.map((hamper) => (
                 <div
                   key={hamper.id}
-                  className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 border"
-                  style={{
-                    background: "var(--muted)",
-                    borderColor: "var(--border)",
-                  }}
+                  className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 border border-border bg-muted"
                 >
                   <span className="text-lg">🧺</span>
                   <div className="min-w-0 flex-1">
@@ -509,7 +464,7 @@ export default function LaundryTab() {
             </div>
           </div>
 
-          {/* Loads List - 2 cols on presentation screens, 1 col on mobile */}
+          {/* Loads List */}
           <div className="space-y-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
               Tracked Laundry Loads
@@ -520,17 +475,10 @@ export default function LaundryTab() {
                 return (
                   <div
                     key={load.id}
-                    className="rounded-3xl p-4 space-y-3 border shadow-sm"
-                    style={{
-                      background: "var(--card)",
-                      borderColor: "var(--border)",
-                    }}
+                    className="rounded-3xl p-4 space-y-3 border shadow-sm border-border bg-card"
                   >
                     <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0"
-                        style={{ background: "var(--muted)" }}
-                      >
+                      <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-muted">
                         {load.icon}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -541,44 +489,35 @@ export default function LaundryTab() {
                           {load.count} items · {load.detail}
                         </p>
                       </div>
-                      <span
-                        className="text-xs font-bold shrink-0"
-                        style={{ color: meta.color }}
-                      >
+                      <span className={`text-xs font-bold shrink-0 ${meta.textClass}`}>
                         {meta.label}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
                       {(["dirty", "washing", "clean"] as LaundryState[]).map(
-                        (state) => (
-                          <button
-                            key={state}
-                            type="button"
-                            onClick={() => updateState(load.id, state)}
-                            className="py-2 rounded-xl text-[10px] font-bold transition-all"
-                            style={{
-                              background:
-                                load.state === state
-                                  ? STATE_META[state].color
-                                  : "var(--muted)",
-                              color:
-                                load.state === state
-                                  ? state === "clean"
-                                    ? "#fff"
-                                    : state === "dirty"
-                                      ? "#fff"
-                                      : "#0D0F18"
-                                  : "var(--muted-foreground)",
-                              boxShadow:
-                                load.state === state
-                                  ? "0 2px 6px rgba(0,0,0,0.3)"
-                                  : "none",
-                            }}
-                          >
-                            {STATE_META[state].label}
-                          </button>
-                        ),
+                        (state) => {
+                          const stateStyle = STATE_META[state]
+                          const isCurrent = load.state === state
+                          return (
+                            <button
+                              key={state}
+                              type="button"
+                              onClick={() => updateState(load.id, state)}
+                              className={`py-2 rounded-xl text-[10px] font-bold transition-all ${
+                                isCurrent
+                                  ? `${stateStyle.bgClass} ${
+                                      state === "washing"
+                                        ? "text-[#0D0F18]"
+                                        : "text-white"
+                                    } shadow-md`
+                                  : "bg-muted text-muted-foreground hover:text-white"
+                              }`}
+                            >
+                              {stateStyle.label}
+                            </button>
+                          )
+                        },
                       )}
                     </div>
                   </div>
@@ -592,14 +531,8 @@ export default function LaundryTab() {
       {/* Care Guide & Interactive Symbol Decoder */}
       {view === "care" && (
         <div className="space-y-4">
-          <div
-            className="rounded-3xl p-4 border"
-            style={{
-              background: "rgba(114,212,240,0.08)",
-              borderColor: "rgba(114,212,240,0.25)",
-            }}
-          >
-            <p className="text-xs font-bold text-sky-400">
+          <div className="rounded-3xl p-4 border border-turquoise/25 bg-turquoise/10">
+            <p className="text-xs font-bold text-turquoise">
               🔍 AI Care Tag Symbol Decoder
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -616,7 +549,7 @@ export default function LaundryTab() {
                   <span className="text-base font-bold text-white block">
                     {sym.symbol}
                   </span>
-                  <p className="text-[11px] font-bold text-sky-400">
+                  <p className="text-[11px] font-bold text-turquoise">
                     {sym.label}
                   </p>
                   <p className="text-[9px] text-muted-foreground leading-snug">
@@ -635,11 +568,7 @@ export default function LaundryTab() {
             {CARE_ITEMS.map(([icon, item, care]) => (
               <div
                 key={item}
-                className="flex gap-3 rounded-2xl p-4 border"
-                style={{
-                  background: "var(--card)",
-                  borderColor: "var(--border)",
-                }}
+                className="flex gap-3 rounded-2xl p-4 border border-border bg-card"
               >
                 <span className="text-2xl" aria-hidden="true">
                   {icon}
@@ -659,7 +588,6 @@ export default function LaundryTab() {
       {/* Routine & Machine Eccentricities */}
       {view === "routine" && (
         <div className="space-y-4">
-          {/* Machine Eccentricities (Proposal item 6 requirement) */}
           <div
             className="rounded-3xl p-5 border space-y-3"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
@@ -680,12 +608,7 @@ export default function LaundryTab() {
               value={machineNotes}
               onChange={(e) => setMachineNotes(e.target.value)}
               rows={2}
-              className="w-full rounded-2xl p-3 text-xs outline-none resize-none"
-              style={{
-                background: "var(--muted)",
-                color: "var(--foreground)",
-                border: "1px solid var(--border)",
-              }}
+              className="w-full rounded-2xl p-3 text-xs outline-none resize-none bg-muted text-white border border-border focus:border-turquoise transition-colors"
             />
             <button
               type="button"
@@ -696,8 +619,7 @@ export default function LaundryTab() {
                   "success",
                 )
               }
-              className="px-3 py-1.5 rounded-xl text-[10px] font-bold"
-              style={{ background: "var(--sky)", color: "#0D0F18" }}
+              className="px-3 py-1.5 rounded-xl text-[10px] font-bold bg-turquoise text-[#0D0F18] hover:brightness-110 transition-all shadow-sm"
             >
               Save Machine Profile
             </button>
@@ -710,10 +632,7 @@ export default function LaundryTab() {
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p
-                  className="text-xs font-bold uppercase tracking-widest"
-                  style={{ color: "var(--yellow)" }}
-                >
+                <p className="text-xs font-bold uppercase tracking-widest text-gold">
                   Sunday Wardrobe Reset
                 </p>
                 <p className="text-lg font-bold text-white mt-0.5">
@@ -732,17 +651,15 @@ export default function LaundryTab() {
                     "info",
                   )
                 }}
-                className="w-12 h-7 rounded-full p-1 transition-colors"
+                className={`w-12 h-7 rounded-full p-1 transition-colors ${
+                  routineEnabled ? "bg-green" : "bg-muted"
+                }`}
                 aria-pressed={routineEnabled}
-                style={{
-                  background: routineEnabled ? "var(--green)" : "var(--muted)",
-                }}
               >
                 <span
-                  className={`block w-5 h-5 rounded-full transition-transform ${
+                  className={`block w-5 h-5 rounded-full bg-white transition-transform ${
                     routineEnabled ? "translate-x-5" : "translate-x-0"
                   }`}
-                  style={{ background: "#fff" }}
                 />
               </button>
             </div>

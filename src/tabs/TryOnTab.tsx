@@ -5,6 +5,7 @@ import {
   AIStatusPill,
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
+import { THEME_COLORS } from "../types/theme"
 
 type Step = "outfit" | "consent" | "processing" | "preview" | "error"
 
@@ -21,12 +22,12 @@ const TRYON_OUTFITS: TryOnOutfit[] = [
     id: 1,
     label: "Magenta Statement & Camel",
     tagline: "Warm complementary contrast for daytime to evening",
-    colors: ["#D40067", "#C8965A", "#B8825A"],
+    colors: [THEME_COLORS.pink, "#C8965A", "#B8825A"],
     items: [
       {
         type: "Top",
         name: "Magenta button-down",
-        color: "#D40067",
+        color: THEME_COLORS.pink,
         emoji: "👚",
       },
       {
@@ -73,12 +74,12 @@ const TRYON_OUTFITS: TryOnOutfit[] = [
     id: 3,
     label: "Deep Teal Trench & Noir",
     tagline: "High-polish city layers with weather protection",
-    colors: ["#007A8A", "#1A1A2E", "#F2F2F2"],
+    colors: [THEME_COLORS.darkTeal, "#1A1A2E", "#F2F2F2"],
     items: [
       {
         type: "Outerwear",
         name: "Teal trench coat",
-        color: "#007A8A",
+        color: THEME_COLORS.darkTeal,
         emoji: "🧥",
       },
       {
@@ -202,12 +203,11 @@ export default function TryOnTab() {
         <button
           type="button"
           onClick={() => setSimulatedError(!simulatedError)}
-          className="text-[10px] px-2.5 py-1 rounded-xl border transition-colors shrink-0"
-          style={{
-            borderColor: simulatedError ? "var(--orange)" : "var(--border)",
-            color: simulatedError ? "var(--orange)" : "var(--muted-foreground)",
-            background: simulatedError ? "rgba(232,75,26,0.1)" : "transparent",
-          }}
+          className={`text-[10px] px-2.5 py-1 rounded-xl border transition-colors shrink-0 ${
+            simulatedError
+              ? "border-red text-red bg-red/10 font-bold"
+              : "border-border text-muted-foreground hover:text-white"
+          }`}
           title="Toggle Flow 05 AI error recovery simulation"
         >
           {simulatedError ? "⚠️ Error Mode ON" : "AI Error Test"}
@@ -215,36 +215,29 @@ export default function TryOnTab() {
       </div>
 
       {/* AI disclosure banner */}
-      <div
-        className="flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs leading-relaxed border"
-        style={{
-          background: "rgba(114,212,240,0.08)",
-          borderColor: "rgba(114,212,240,0.25)",
-          color: "var(--foreground)",
-        }}
-      >
-        <span className="text-sm shrink-0" style={{ color: "var(--sky)" }}>
+      <div className="flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs leading-relaxed border border-turquoise/25 bg-turquoise/10 text-foreground">
+        <span className="text-sm shrink-0 text-turquoise">
           ✦
         </span>
         <div className="text-[11px] leading-snug">
-          <span className="font-semibold" style={{ color: "var(--sky)" }}>
+          <span className="font-semibold text-turquoise">
             cat-VTON Neural Preview ·{" "}
           </span>
-          <span style={{ color: "var(--muted-foreground)" }}>
+          <span className="text-muted-foreground">
             AI-rendered previews help you visualize color harmony and silhouette
             without touching a hanger.
           </span>
         </div>
       </div>
 
-      {/* Step 1: Choose Outfit - Responsive Multi-Column on Desktop */}
+      {/* Step 1: Choose Outfit */}
       {step === "outfit" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               1. Select Outfit to Try On
             </p>
-            <span className="text-[10px] text-sky-400 font-semibold">
+            <span className="text-[10px] text-turquoise font-semibold">
               {TRYON_OUTFITS.length} options ready
             </span>
           </div>
@@ -253,11 +246,7 @@ export default function TryOnTab() {
             {TRYON_OUTFITS.map((o) => (
               <div
                 key={o.id}
-                className="rounded-3xl p-4 sm:p-5 space-y-3 transition-all hover:border-[#72D4F0]/50 border flex flex-col justify-between"
-                style={{
-                  background: "var(--card)",
-                  borderColor: "var(--border)",
-                }}
+                className="rounded-3xl p-4 sm:p-5 space-y-3 transition-all hover:border-turquoise/50 border border-border bg-card flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
@@ -280,11 +269,8 @@ export default function TryOnTab() {
                       {o.colors.map((c, i) => (
                         <div
                           key={i}
-                          className="w-5 h-5 rounded-md shadow-sm"
-                          style={{
-                            background: c,
-                            border: "1px solid rgba(255,255,255,0.2)",
-                          }}
+                          className="w-5 h-5 rounded-md shadow-sm border border-white/20"
+                          style={{ background: c }}
                         />
                       ))}
                     </div>
@@ -295,8 +281,7 @@ export default function TryOnTab() {
                     {o.items.map((item) => (
                       <div
                         key={item.name}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl"
-                        style={{ background: "var(--muted)" }}
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-muted"
                       >
                         <span className="text-sm">{item.emoji}</span>
                         <div className="min-w-0">
@@ -315,8 +300,7 @@ export default function TryOnTab() {
                 <button
                   type="button"
                   onClick={() => handleSelectOutfit(o)}
-                  className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold transition-transform active:scale-95"
-                  style={{ background: "var(--magenta)", color: "#fff" }}
+                  className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 bg-pink text-white hover:brightness-110 shadow-md shadow-pink/20"
                 >
                   Try On Look →
                 </button>
@@ -332,19 +316,16 @@ export default function TryOnTab() {
           <button
             type="button"
             onClick={reset}
-            className="text-xs font-semibold text-sky-400 hover:underline"
+            className="text-xs font-semibold text-turquoise hover:underline"
           >
             ← Back to outfit choices
           </button>
 
-          <div
-            className="rounded-3xl p-5 sm:p-7 space-y-5 border shadow-xl"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-5 sm:p-7 space-y-5 border border-border bg-card shadow-xl">
             <div className="flex items-center gap-3">
               <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-                style={{ background: selectedOutfit.colors[0], color: "#fff" }}
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 text-white shadow-md"
+                style={{ background: selectedOutfit.colors[0] }}
               >
                 🪞
               </div>
@@ -363,11 +344,7 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={() => startGeneration("mannequin")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border transition-all hover:scale-[1.01]"
-                style={{
-                  background: "rgba(212,0,103,0.08)",
-                  borderColor: "rgba(212,0,103,0.3)",
-                }}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-pink/30 bg-pink/10 transition-all hover:scale-[1.01]"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">🧍</span>
@@ -381,10 +358,7 @@ export default function TryOnTab() {
                     </p>
                   </div>
                 </div>
-                <span
-                  className="text-xs font-bold"
-                  style={{ color: "var(--magenta)" }}
-                >
+                <span className="text-xs font-bold text-pink">
                   Start →
                 </span>
               </button>
@@ -392,15 +366,11 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={() => startGeneration("demo_photo")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border transition-all hover:scale-[1.01]"
-                style={{
-                  background: "rgba(114,212,240,0.08)",
-                  borderColor: "rgba(114,212,240,0.3)",
-                }}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-turquoise/30 bg-turquoise/10 transition-all hover:scale-[1.01]"
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white border border-white/20"
                     style={{ background: user.avatarBg }}
                   >
                     {user.initials}
@@ -415,17 +385,13 @@ export default function TryOnTab() {
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-sky-400">Use →</span>
+                <span className="text-xs font-bold text-turquoise">Use →</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => startGeneration("upload_photo")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border transition-all hover:scale-[1.01]"
-                style={{
-                  background: "var(--muted)",
-                  borderColor: "var(--border)",
-                }}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-border bg-muted transition-all hover:scale-[1.01] hover:border-turquoise/40"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">📸</span>
@@ -457,28 +423,17 @@ export default function TryOnTab() {
 
       {/* Step 3: Processing */}
       {step === "processing" && selectedOutfit && (
-        <div
-          className="rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto border shadow-xl"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}
-        >
-          <PulseOrb
-            label="cat-VTON Neural Cloth Model Active"
-            color="var(--magenta)"
-          />
+        <div className="rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto border border-border bg-card shadow-xl">
+          <PulseOrb label="cat-VTON Neural Cloth Model Active" />
 
           <div className="space-y-2 max-w-sm mx-auto">
             <p className="text-sm font-bold text-white">
               {STAGES[processingStage]}
             </p>
-            <div
-              className="h-2 rounded-full overflow-hidden"
-              style={{ background: "var(--muted)" }}
-            >
+            <div className="h-2 rounded-full overflow-hidden bg-muted">
               <div
-                className="h-full rounded-full transition-all duration-300"
+                className="h-full rounded-full transition-all duration-300 bg-gradient-to-r from-turquoise to-pink"
                 style={{
-                  background:
-                    "linear-gradient(90deg, var(--sky) 0%, var(--magenta) 100%)",
                   width: `${((processingStage + 1) / STAGES.length) * 100}%`,
                 }}
               />
@@ -494,15 +449,14 @@ export default function TryOnTab() {
           <button
             type="button"
             onClick={reset}
-            className="text-xs py-2 px-4 rounded-xl font-medium text-muted-foreground hover:text-white"
-            style={{ background: "var(--muted)" }}
+            className="text-xs py-2 px-4 rounded-xl font-medium text-muted-foreground hover:text-white bg-muted transition-colors"
           >
             Cancel Generation
           </button>
         </div>
       )}
 
-      {/* Step 4: Preview Result - Responsive Grid on Presentation Screens */}
+      {/* Step 4: Preview Result */}
       {step === "preview" && selectedOutfit && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Side: Interactive Fitting Room Canvas */}
@@ -515,11 +469,10 @@ export default function TryOnTab() {
             </div>
 
             <div
-              className="rounded-3xl overflow-hidden relative border shadow-2xl p-6 sm:p-8 flex flex-col items-center justify-center min-h-[400px]"
+              className="rounded-3xl overflow-hidden relative border border-border shadow-2xl p-6 sm:p-8 flex flex-col items-center justify-center min-h-[400px]"
               style={{
                 background:
                   "radial-gradient(circle at 50% 30%, #1c2236 0%, #0D0F18 100%)",
-                borderColor: "var(--border)",
               }}
             >
               {/* Visual Mannequin with Garment Layers */}
@@ -527,20 +480,15 @@ export default function TryOnTab() {
                 {/* Head / Avatar */}
                 <div className="relative mb-2">
                   <div
-                    className="w-16 h-16 rounded-full flex items-center justify-center text-base font-bold shadow-lg"
+                    className="w-16 h-16 rounded-full flex items-center justify-center text-base font-bold shadow-lg border border-white/20 text-white"
                     style={{
                       background:
                         avatarType === "mannequin" ? "#32374e" : user.avatarBg,
-                      border: "2px solid rgba(255,255,255,0.2)",
-                      color: "#fff",
                     }}
                   >
                     {avatarType === "mannequin" ? "👤" : user.initials}
                   </div>
-                  <div
-                    className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider"
-                    style={{ background: "var(--magenta)", color: "#fff" }}
-                  >
+                  <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-pink text-white">
                     {fitStyle}
                   </div>
                 </div>
@@ -552,11 +500,8 @@ export default function TryOnTab() {
                       (i) => i.type === "Outerwear",
                     ) && (
                       <div
-                        className="w-48 sm:w-56 h-28 rounded-t-2xl shadow-xl flex items-center justify-center relative transition-all duration-300"
-                        style={{
-                          background: selectedOutfit.colors[0],
-                          border: "2px solid rgba(255,255,255,0.15)",
-                        }}
+                        className="w-48 sm:w-56 h-28 rounded-t-2xl shadow-xl flex items-center justify-center relative transition-all duration-300 border border-white/20"
+                        style={{ background: selectedOutfit.colors[0] }}
                       >
                         <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
                           {
@@ -571,12 +516,11 @@ export default function TryOnTab() {
 
                   {activeLayers["Top"] && (
                     <div
-                      className="w-44 sm:w-52 h-24 rounded-2xl shadow-md flex items-center justify-center relative -mt-2 transition-all duration-300"
+                      className="w-44 sm:w-52 h-24 rounded-2xl shadow-md flex items-center justify-center relative -mt-2 transition-all duration-300 border border-white/15"
                       style={{
                         background:
                           selectedOutfit.items.find((i) => i.type === "Top")
                             ?.color || selectedOutfit.colors[0],
-                        border: "2px solid rgba(255,255,255,0.12)",
                       }}
                     >
                       <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
@@ -593,12 +537,11 @@ export default function TryOnTab() {
                 {/* Lower Body (Bottoms) */}
                 {activeLayers["Bottom"] && (
                   <div
-                    className="w-36 sm:w-44 h-36 rounded-b-2xl shadow-md flex items-center justify-center relative -mt-1 transition-all duration-300"
+                    className="w-36 sm:w-44 h-36 rounded-b-2xl shadow-md flex items-center justify-center relative -mt-1 transition-all duration-300 border border-white/15"
                     style={{
                       background:
                         selectedOutfit.items.find((i) => i.type === "Bottom")
                           ?.color || selectedOutfit.colors[1],
-                      border: "2px solid rgba(255,255,255,0.12)",
                     }}
                   >
                     <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
@@ -615,23 +558,21 @@ export default function TryOnTab() {
                 {activeLayers["Shoes"] && (
                   <div className="flex gap-4 mt-2">
                     <div
-                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black"
+                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black border border-white/20"
                       style={{
                         background:
                           selectedOutfit.items.find((i) => i.type === "Shoes")
                             ?.color || "#fff",
-                        border: "1px solid rgba(255,255,255,0.2)",
                       }}
                     >
                       👟 L
                     </div>
                     <div
-                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black"
+                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black border border-white/20"
                       style={{
                         background:
                           selectedOutfit.items.find((i) => i.type === "Shoes")
                             ?.color || "#fff",
-                        border: "1px solid rgba(255,255,255,0.2)",
                       }}
                     >
                       👟 R
@@ -641,13 +582,7 @@ export default function TryOnTab() {
               </div>
 
               {/* Bottom Canvas Tag */}
-              <div
-                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px]"
-                style={{
-                  background: "rgba(13,15,24,0.85)",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
+              <div className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] bg-black/85 backdrop-blur-md border border-white/10">
                 <span className="text-muted-foreground">
                   cat-VTON Diffusion · Color harmony: 96% match
                 </span>
@@ -661,13 +596,7 @@ export default function TryOnTab() {
           {/* Right Side: Layer Controls, Fit Adjuster & User Actions */}
           <div className="lg:col-span-5 space-y-4">
             {/* Fit Adjuster Card */}
-            <div
-              className="rounded-3xl p-4 border space-y-2.5"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
+            <div className="rounded-3xl p-4 border border-border bg-card space-y-2.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
                 Adjust Mannequin Fit Silhouette
               </span>
@@ -677,15 +606,11 @@ export default function TryOnTab() {
                     key={style}
                     type="button"
                     onClick={() => setFitStyle(style)}
-                    className="py-2 rounded-xl text-xs font-bold capitalize transition-all"
-                    style={{
-                      background:
-                        fitStyle === style ? "var(--sky)" : "var(--muted)",
-                      color:
-                        fitStyle === style
-                          ? "#0D0F18"
-                          : "var(--muted-foreground)",
-                    }}
+                    className={`py-2 rounded-xl text-xs font-bold capitalize transition-all ${
+                      fitStyle === style
+                        ? "bg-turquoise text-[#0D0F18] shadow-sm"
+                        : "bg-muted text-muted-foreground hover:text-white"
+                    }`}
                   >
                     {style}
                   </button>
@@ -694,13 +619,7 @@ export default function TryOnTab() {
             </div>
 
             {/* Interactive Layer Visibility Toggles */}
-            <div
-              className="rounded-3xl p-4 space-y-2.5 border"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
+            <div className="rounded-3xl p-4 space-y-2.5 border border-border bg-card">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
                 Toggle Garment Layers
               </span>
@@ -710,20 +629,11 @@ export default function TryOnTab() {
                     key={layer}
                     type="button"
                     onClick={() => toggleLayer(layer)}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all"
-                    style={{
-                      background: activeLayers[layer]
-                        ? "rgba(59,191,108,0.15)"
-                        : "var(--muted)",
-                      color: activeLayers[layer]
-                        ? "var(--green)"
-                        : "var(--muted-foreground)",
-                      border: `1px solid ${
-                        activeLayers[layer]
-                          ? "rgba(59,191,108,0.4)"
-                          : "var(--border)"
-                      }`,
-                    }}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
+                      activeLayers[layer]
+                        ? "bg-green/15 text-green border-green/40 font-bold"
+                        : "bg-muted text-muted-foreground border-border hover:text-white"
+                    }`}
                   >
                     <span>{layer}</span>
                     <span>{activeLayers[layer] ? "✓" : "✕"}</span>
@@ -737,8 +647,7 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={handleKeepOutfit}
-                className="py-3 rounded-2xl text-xs font-bold transition-transform active:scale-95 shadow-md col-span-2 sm:col-span-1"
-                style={{ background: "var(--green)", color: "#fff" }}
+                className="py-3 rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md col-span-2 sm:col-span-1 bg-green text-white hover:brightness-110 shadow-green/20"
               >
                 ✓ Keep & Wear Today
               </button>
@@ -746,12 +655,7 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={() => setSwapModalOpen(true)}
-                className="py-3 rounded-2xl text-xs font-bold transition-transform active:scale-95 border col-span-2 sm:col-span-1"
-                style={{
-                  background: "var(--muted)",
-                  borderColor: "var(--border)",
-                  color: "var(--foreground)",
-                }}
+                className="py-3 rounded-2xl text-xs font-bold transition-all active:scale-95 border border-border bg-muted text-white hover:border-turquoise/50 col-span-2 sm:col-span-1"
               >
                 ✏ Change an Item
               </button>
@@ -759,12 +663,7 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={() => startGeneration(avatarType)}
-                className="py-2.5 rounded-2xl text-xs font-semibold border"
-                style={{
-                  background: "var(--muted)",
-                  borderColor: "var(--border)",
-                  color: "var(--foreground)",
-                }}
+                className="py-2.5 rounded-2xl text-xs font-semibold border border-border bg-muted text-white hover:bg-muted/80 transition-colors"
               >
                 ↺ Regenerate Look
               </button>
@@ -772,11 +671,7 @@ export default function TryOnTab() {
               <button
                 type="button"
                 onClick={reset}
-                className="py-2.5 rounded-2xl text-xs font-semibold"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--muted-foreground)",
-                }}
+                className="py-2.5 rounded-2xl text-xs font-semibold bg-muted text-muted-foreground hover:text-white transition-colors"
               >
                 ✕ Delete Preview
               </button>
@@ -786,13 +681,7 @@ export default function TryOnTab() {
           {/* Swap modal */}
           {swapModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-              <div
-                className="rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border"
-                style={{
-                  background: "var(--card)",
-                  borderColor: "var(--border)",
-                }}
-              >
+              <div className="rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-border bg-card">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-white">Swap Garment</h3>
                   <button
@@ -812,7 +701,7 @@ export default function TryOnTab() {
                     {
                       name: "Mint ribbed mock-neck",
                       cat: "Top",
-                      color: "#B4F0C0",
+                      color: THEME_COLORS.lightGreen,
                     },
                     {
                       name: "Cream linen blouse",
@@ -841,14 +730,10 @@ export default function TryOnTab() {
                         )
                         setSwapModalOpen(false)
                       }}
-                      className="w-full p-2.5 rounded-xl flex items-center gap-3 border text-left hover:border-sky-400 transition-colors"
-                      style={{
-                        background: "var(--muted)",
-                        borderColor: "var(--border)",
-                      }}
+                      className="w-full p-2.5 rounded-xl flex items-center gap-3 border border-border bg-muted text-left hover:border-turquoise transition-colors"
                     >
                       <div
-                        className="w-6 h-6 rounded-md shrink-0 shadow-sm"
+                        className="w-6 h-6 rounded-md shrink-0 shadow-sm border border-white/10"
                         style={{ background: alt.color }}
                       />
                       <div className="min-w-0 flex-1">
@@ -859,7 +744,7 @@ export default function TryOnTab() {
                           {alt.cat}
                         </p>
                       </div>
-                      <span className="text-xs font-bold text-sky-400">
+                      <span className="text-xs font-bold text-turquoise">
                         Select →
                       </span>
                     </button>
@@ -871,7 +756,7 @@ export default function TryOnTab() {
         </div>
       )}
 
-      {/* Step 5: Error and Recovery (Flow 05) */}
+      {/* Step 5: Error and Recovery */}
       {step === "error" && (
         <div className="space-y-4 max-w-lg mx-auto">
           <AIErrorBanner
