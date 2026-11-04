@@ -2,18 +2,21 @@ import { useState } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
 import type { PersonaId } from "../types"
 import { getContrastTextColor } from "../types"
+import OnboardingQuiz from "../components/OnboardingQuiz"
 
 export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const {
     user,
     switchUser,
     updateAccessibility,
+    applyQuizResult,
     logout,
     wardrobe,
     recentLooks,
     showToast,
   } = useApp()
   const [confirmLogout, setConfirmLogout] = useState(false)
+  const [quizOpen, setQuizOpen] = useState(false)
 
   const cleanItems = wardrobe.filter((i) => i.status !== "dirty").length
   const dirtyItems = wardrobe.filter((i) => i.status === "dirty").length
@@ -47,28 +50,39 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
         {/* Left Column on Desktop: User Hero, Persona Switcher & Closet Analytics */}
         <div className="lg:col-span-5 space-y-4">
           {/* User Hero */}
-          <div className="flex items-center gap-4 p-4 rounded-3xl border shadow-sm" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-lg shrink-0"
-              style={{
-                background: user.avatarBg,
-                color: getContrastTextColor(user.avatarBg),
-              }}
-            >
-              {user.initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2
-                className="text-xl font-bold text-white truncate"
-                style={{ fontFamily: "Nunito, sans-serif" }}
+          <div className="flex flex-col p-4 rounded-3xl border shadow-sm" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center gap-4">
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-lg shrink-0"
+                style={{
+                  background: user.avatarBg,
+                  color: getContrastTextColor(user.avatarBg),
+                }}
               >
-                {user.name}
-              </h2>
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-sky-400">
-                {user.roleTitle}
-              </span>
+                {user.initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2
+                  className="text-xl font-bold text-white truncate"
+                  style={{ fontFamily: "Nunito, sans-serif" }}
+                >
+                  {user.name}
+                </h2>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-sky-400">
+                  {user.roleTitle}
+                </span>
+              </div>
             </div>
+
+            {/* Retake Style Quiz Button */}
+            <button
+              type="button"
+              onClick={() => setQuizOpen(true)}
+              className="w-full py-2.5 px-3 rounded-2xl border border-sky-400/30 text-sky-400 text-xs font-bold hover:bg-sky-400/10 transition-colors flex items-center justify-center gap-2 mt-3"
+            >
+              <span>✦</span> Retake Onboarding Style Quiz
+            </button>
           </div>
 
           {/* Persona Switcher - Crucial for Presentation / HCI Testing */}
@@ -361,6 +375,17 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Onboarding Style Quiz Retake Modal */}
+      {quizOpen && (
+        <OnboardingQuiz
+          onCancel={() => setQuizOpen(false)}
+          onComplete={(result) => {
+            setQuizOpen(false)
+            if (result) applyQuizResult(result)
+          }}
+        />
       )}
     </div>
   )

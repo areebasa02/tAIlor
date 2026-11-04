@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
-import type { PersonaId, UserProfile } from "../types"
+import type { PersonaId, UserProfile, QuizResult } from "../types"
+import OnboardingQuiz from "./OnboardingQuiz"
 
 export default function LoginScreen() {
   const { login } = useApp()
@@ -18,6 +19,9 @@ export default function LoginScreen() {
   const [forgotModalOpen, setForgotModalOpen] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [resetEmail, setResetEmail] = useState("")
+
+  const [quizOpen, setQuizOpen] = useState(false)
+  const [quizPath, setQuizPath] = useState<"privacy" | "short" | "long" | "guest">("short")
 
   const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault()
@@ -574,11 +578,24 @@ export default function LoginScreen() {
                 </form>
               )}
 
-              {/* Instant Guest Mode */}
-              <div className="pt-1 text-center">
+              {/* Style Quiz & Guest Access */}
+              <div className="pt-2 flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => handlePersonaSelect("eliora")}
+                  onClick={() => {
+                    setQuizPath("short")
+                    setQuizOpen(true)
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold border border-sky-400/40 text-sky-400 hover:bg-sky-400/10 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <span>✨</span> Take 3-Min Onboarding Style Quiz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuizPath("guest")
+                    setQuizOpen(true)
+                  }}
                   className="text-xs font-semibold py-1 text-muted-foreground hover:text-white hover:underline transition-colors"
                 >
                   Continue as Guest (Instant Access)
@@ -664,6 +681,28 @@ export default function LoginScreen() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Onboarding Quiz Modal */}
+      {quizOpen && (
+        <OnboardingQuiz
+          initialPath={quizPath}
+          onCancel={() => setQuizOpen(false)}
+          onComplete={(result) => {
+            setQuizOpen(false)
+            const baseUser = { ...PRESET_PERSONAS.eliora }
+            if (result) {
+              baseUser.quizProfile = result
+              baseUser.accessibility.highContrastColors =
+                result.derived.ui.high_contrast_ui || result.derived.ui.color_names
+              baseUser.accessibility.sensorySensitive = result.derived.filters.soft_fabric
+              baseUser.preferredStyle = result.derived.stylist.context
+                ? `${result.derived.stylist.context} · ${result.derived.color?.palette || "Custom"}`
+                : baseUser.preferredStyle
+            }
+            login(baseUser)
+          }}
+        />
       )}
     </div>
   )

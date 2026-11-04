@@ -9,6 +9,7 @@ import type {
   OutfitItem,
   Direction,
   WeatherData,
+  QuizResult,
 } from "../types"
 import { getContrastTextColor } from "../types"
 
@@ -1224,6 +1225,7 @@ export interface AppContextType {
     key: keyof UserProfile["accessibility"],
     val: boolean,
   ) => void
+  applyQuizResult: (result: QuizResult) => void
   wardrobe: WardrobeItem[]
   addWardrobeItem: (item: Omit<WardrobeItem, "id">) => WardrobeItem
   updateWardrobeItem: (item: WardrobeItem) => void
@@ -1605,6 +1607,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
+  const applyQuizResult = (result: QuizResult) => {
+    const { derived } = result
+    setCurrentUser((prev) => ({
+      ...prev,
+      quizProfile: result,
+      accessibility: {
+        ...prev.accessibility,
+        highContrastColors: derived.ui.high_contrast_ui || derived.ui.color_names,
+        sensorySensitive: derived.filters.soft_fabric,
+      },
+      preferredStyle: derived.stylist.context
+        ? `${derived.stylist.context} · ${derived.color?.palette || "Custom"}`
+        : prev.preferredStyle,
+    }))
+
+    showToast(
+      "Style Profile Applied",
+      "Your quiz answers customized your stylist and UI settings.",
+      "success",
+    )
+  }
+
   const addWardrobeItem = (itemData: Omit<WardrobeItem, "id">) => {
     const newItem: WardrobeItem = {
       ...itemData,
@@ -1737,6 +1761,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logout,
         switchUser,
         updateAccessibility,
+        applyQuizResult,
         wardrobe,
         addWardrobeItem,
         updateWardrobeItem,
