@@ -62,6 +62,7 @@ export default function GeneratorTab() {
     1: "default",
     2: "default",
   });
+  const [serviceError, setServiceError] = useState(false);
   const [slowResponse, setSlowResponse] = useState(false);
   const [activeWhyModal, setActiveWhyModal] = useState<GeneratedOutfit | null>(
     null,
@@ -141,6 +142,8 @@ export default function GeneratorTab() {
       clearTimeout(errorTimerRef.current);
       errorTimerRef.current = null;
     }
+    setServiceError(false);
+    setStylistNetworkErrorTriggered(true);
     setStep("loading");
   };
 
@@ -157,6 +160,10 @@ export default function GeneratorTab() {
     if (errorTimerRef.current) {
       clearTimeout(errorTimerRef.current);
       errorTimerRef.current = null;
+    }
+    if (serviceError) {
+      setStep("error");
+      return;
     }
     setStep("loading");
     if (!stylistNetworkErrorTriggered) {
@@ -237,6 +244,39 @@ export default function GeneratorTab() {
             Describe your venue, crowd, and vibe — AI crafts the ideal outfit
             from your wardrobe
           </p>
+        </div>
+
+        {/* AI Simulator toggles for Flow 05 evaluation */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setServiceError(!serviceError)}
+            className="text-[10px] px-2 py-1 rounded-lg border transition-colors cursor-pointer"
+            style={{
+              borderColor: serviceError ? "var(--orange)" : "var(--border)",
+              color: serviceError ? "var(--orange)" : "var(--muted-foreground)",
+              background: serviceError ? "rgba(232,75,26,0.1)" : "transparent",
+            }}
+            title="Simulate service timeout / AI offline recovery flow"
+          >
+            {serviceError ? "⚠ AI Error ON" : "Test AI Error"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSlowResponse(!slowResponse)}
+            className="text-[10px] px-2 py-1 rounded-lg border transition-colors cursor-pointer"
+            style={{
+              borderColor: slowResponse ? "var(--sky)" : "var(--border)",
+              color: slowResponse ? "var(--sky)" : "var(--muted-foreground)",
+              background: slowResponse
+                ? "rgba(114,212,240,0.12)"
+                : "transparent",
+            }}
+            title="Simulate a slow AI response delay"
+          >
+            {slowResponse ? "⏳ Slow Response ON" : "Test slow response"}
+          </button>
         </div>
       </div>
 
@@ -495,16 +535,26 @@ export default function GeneratorTab() {
       {step === "error" && (
         <div className="space-y-4">
           <AIErrorBanner
-            title="Network Error"
-            message="The connection was interrupted. Please try again."
+            title={
+              serviceError
+                ? "Stylist Engine Temporarily Offline"
+                : "Network Error"
+            }
+            message={
+              serviceError
+                ? "We could not establish a connection with the neural wardrobe model. Your digital wardrobe is still accessible for manual browsing."
+                : "The connection was interrupted. Please try again."
+            }
             actions={[
               {
-                label: "Try Again",
+                label: serviceError ? "Retry AI Generation" : "Try Again",
                 primary: true,
                 onClick: handleRetry,
               },
               {
-                label: "Back to Edit",
+                label: serviceError
+                  ? "Switch to Manual Wardrobe"
+                  : "Back to Edit",
                 onClick: () => setStep("input"),
               },
             ]}
