@@ -9,6 +9,7 @@ import {
   type VoiceState,
 } from "../components/AIComponents";
 import { useApp } from "../context/AppContext";
+import { THEME_COLORS } from "../types/theme";
 
 type Step = "input" | "loading" | "results" | "error";
 
@@ -53,6 +54,7 @@ export default function GeneratorTab() {
       }
     };
   }, []);
+
   const [step, setStep] = useState<Step>("input");
   const [eventDesc, setEventDesc] = useState("");
   const [dresscode, setDresscode] = useState("Smart-casual");
@@ -112,7 +114,7 @@ export default function GeneratorTab() {
         {
           type: "Top",
           desc: "Magenta button-down",
-          color: "#D40067",
+          color: THEME_COLORS.pink,
           emoji: "👚",
         },
         {
@@ -227,7 +229,7 @@ export default function GeneratorTab() {
   };
 
   return (
-    <div className="px-5 pt-2 pb-4 space-y-5">
+    <div className="px-5 pt-2 pb-6 space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -237,10 +239,7 @@ export default function GeneratorTab() {
           >
             Event Outfit Stylist
           </h2>
-          <p
-            className="text-xs mt-0.5"
-            style={{ color: "var(--muted-foreground)" }}
-          >
+          <p className="text-xs mt-0.5 text-muted-foreground">
             Describe your venue, crowd, and vibe — AI crafts the ideal outfit
             from your wardrobe
           </p>
@@ -251,12 +250,11 @@ export default function GeneratorTab() {
           <button
             type="button"
             onClick={() => setServiceError(!serviceError)}
-            className="text-[10px] px-2 py-1 rounded-lg border transition-colors cursor-pointer"
-            style={{
-              borderColor: serviceError ? "var(--orange)" : "var(--border)",
-              color: serviceError ? "var(--orange)" : "var(--muted-foreground)",
-              background: serviceError ? "rgba(232,75,26,0.1)" : "transparent",
-            }}
+            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+              serviceError
+                ? "border-red text-red bg-red/10 font-bold"
+                : "border-border text-muted-foreground hover:text-white"
+            }`}
             title="Simulate service timeout / AI offline recovery flow"
           >
             {serviceError ? "⚠ AI Error ON" : "Test AI Error"}
@@ -265,14 +263,11 @@ export default function GeneratorTab() {
           <button
             type="button"
             onClick={() => setSlowResponse(!slowResponse)}
-            className="text-[10px] px-2 py-1 rounded-lg border transition-colors cursor-pointer"
-            style={{
-              borderColor: slowResponse ? "var(--sky)" : "var(--border)",
-              color: slowResponse ? "var(--sky)" : "var(--muted-foreground)",
-              background: slowResponse
-                ? "rgba(114,212,240,0.12)"
-                : "transparent",
-            }}
+            className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+              slowResponse
+                ? "border-turquoise text-turquoise bg-turquoise/10 font-bold"
+                : "border-border text-muted-foreground hover:text-white"
+            }`}
             title="Simulate a slow AI response delay"
           >
             {slowResponse ? "⏳ Slow Response ON" : "Test slow response"}
@@ -280,26 +275,23 @@ export default function GeneratorTab() {
         </div>
       </div>
 
-      {/* Input Form (Flow 01 Ethan) - Responsive Grid on Presentation Screens */}
+      {/* Input Form */}
       {step === "input" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column on Desktop: Event Description & Voice & Dress Code */}
+          {/* Left Column on Desktop */}
           <div className="lg:col-span-7 space-y-4">
-            {/* Text Area with Embedded Voice Input */}
             <div>
               <label className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block text-muted-foreground">
                 Describe Your Upcoming Event
               </label>
               <div
-                className="rounded-2xl overflow-hidden shadow-inner transition-colors"
-                style={{
-                  background: "var(--muted)",
-                  border: inputTooVague
-                    ? "1px solid rgba(255,211,61,0.5)"
+                className={`rounded-2xl overflow-hidden shadow-inner transition-colors bg-muted border ${
+                  inputTooVague
+                    ? "border-gold/50"
                     : inputReady
-                      ? "1px solid rgba(59,191,108,0.5)"
-                      : "1px solid var(--border)",
-                }}
+                      ? "border-green/50"
+                      : "border-border"
+                }`}
               >
                 <textarea
                   value={eventDesc}
@@ -312,21 +304,14 @@ export default function GeneratorTab() {
                   }}
                   placeholder="e.g. Networking dinner at a rooftop venue, 7pm Thursday, business-casual"
                   rows={3}
-                  className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none"
-                  style={{
-                    background: "transparent",
-                    color: "var(--foreground)",
-                  }}
+                  className="w-full px-4 pt-3 pb-1 text-sm outline-none resize-none bg-transparent text-foreground"
                 />
 
-                {/* Voice button bar inside the textarea box */}
-                <div
-                  className="flex items-center gap-2 px-3 pb-2 pt-1.5"
-                  style={{ borderTop: "1px solid var(--border)" }}
-                >
+                {/* Voice button bar */}
+                <div className="flex items-center gap-2 px-3 pb-2 pt-1.5 border-t border-border">
                   {voiceState === "captured" ? (
                     <>
-                      <span className="text-[10px] flex-1 font-semibold text-green-400">
+                      <span className="text-[10px] flex-1 font-semibold text-green">
                         ✓ Voice transcript populated above
                       </span>
                       <button
@@ -335,11 +320,7 @@ export default function GeneratorTab() {
                           setEventDesc("");
                           setVoiceState("idle");
                         }}
-                        className="text-[10px] px-2 py-0.5 rounded-full"
-                        style={{
-                          background: "var(--card)",
-                          color: "var(--muted-foreground)",
-                        }}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-card text-muted-foreground hover:text-white transition-colors"
                       >
                         Clear
                       </button>
@@ -350,24 +331,13 @@ export default function GeneratorTab() {
                         type="button"
                         onClick={cycleVoice}
                         disabled={voiceState === "processing"}
-                        className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full transition-all"
-                        style={{
-                          background:
-                            voiceState === "listening"
-                              ? "rgba(212,0,103,0.2)"
-                              : "var(--card)",
-                          color:
-                            voiceState === "listening"
-                              ? "var(--magenta)"
-                              : voiceState === "processing"
-                                ? "#72D4F0"
-                                : "var(--muted-foreground)",
-                          border: `1px solid ${
-                            voiceState === "listening"
-                              ? "rgba(212,0,103,0.5)"
-                              : "var(--border)"
-                          }`,
-                        }}
+                        className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full transition-all border ${
+                          voiceState === "listening"
+                            ? "bg-pink/20 text-pink border-pink/50 animate-pulse"
+                            : voiceState === "processing"
+                              ? "bg-card text-turquoise border-border"
+                              : "bg-card text-muted-foreground border-border hover:text-white"
+                        }`}
                       >
                         <span>{voiceState === "processing" ? "⏳" : "🎙"}</span>
                         <span>
@@ -408,11 +378,11 @@ export default function GeneratorTab() {
                 type="button"
                 onClick={handleGenerate}
                 disabled={!inputReady}
-                className="mt-2 w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all hover:brightness-110 active:scale-99 disabled:opacity-50"
-                style={{
-                  background: inputReady ? "var(--magenta)" : "var(--muted)",
-                  color: inputReady ? "#fff" : "var(--muted-foreground)",
-                }}
+                className={`mt-2 w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed ${
+                  inputReady
+                    ? "bg-pink text-white hover:brightness-110 shadow-pink/20"
+                    : "bg-muted text-muted-foreground"
+                }`}
               >
                 <span>✧</span>
                 <span>Generate Outfits</span>
@@ -436,14 +406,11 @@ export default function GeneratorTab() {
                     key={dc}
                     type="button"
                     onClick={() => setDresscode(dresscode === dc ? "" : dc)}
-                    className="px-3.5 py-1.5 rounded-full text-xs font-bold transition-all"
-                    style={{
-                      background:
-                        dresscode === dc ? "var(--magenta)" : "var(--muted)",
-                      color:
-                        dresscode === dc ? "#fff" : "var(--muted-foreground)",
-                      border: "1px solid var(--border)",
-                    }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border ${
+                      dresscode === dc
+                        ? "bg-pink text-white border-pink shadow-md shadow-pink/20"
+                        : "bg-muted text-muted-foreground border-border hover:text-white"
+                    }`}
                   >
                     {dc}
                   </button>
@@ -452,17 +419,10 @@ export default function GeneratorTab() {
             </div>
           </div>
 
-          {/* Right Column on Desktop: Quick Scenarios & Action */}
+          {/* Right Column on Desktop */}
           <div className="lg:col-span-5 space-y-4">
-            {/* Quick Preset Prompts */}
-            <div
-              className="p-4 rounded-3xl border space-y-2.5 shadow-sm"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">
+            <div className="p-4 rounded-3xl border border-border bg-card space-y-2.5 shadow-sm">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise block">
                 ⚡ Quick Event Scenarios
               </span>
               <div className="flex flex-col gap-1.5">
@@ -477,12 +437,7 @@ export default function GeneratorTab() {
                       if (preset.includes("formal")) setDresscode("Formal");
                       if (preset.includes("creative")) setDresscode("Creative");
                     }}
-                    className="p-2.5 rounded-xl text-[11px] text-left border transition-all hover:border-[#72D4F0] hover:scale-[1.01]"
-                    style={{
-                      background: "var(--muted)",
-                      borderColor: "var(--border)",
-                      color: "var(--foreground)",
-                    }}
+                    className="p-2.5 rounded-xl text-[11px] text-left border border-border bg-muted text-foreground transition-all hover:border-turquoise hover:scale-[1.01]"
                   >
                     <p className="font-bold text-white">
                       {preset.split(",")[0]}
@@ -500,10 +455,7 @@ export default function GeneratorTab() {
 
       {/* Loading */}
       {step === "loading" && (
-        <div
-          className="rounded-3xl p-6 space-y-4 shadow-xl border"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}
-        >
+        <div className="rounded-3xl p-6 space-y-4 shadow-xl border border-border bg-card">
           <div className="flex items-center justify-between">
             <p className="text-sm font-bold text-white">Synthesizing Looks</p>
             <AIStatusPill state="loading" label="Llama-3.2 Engine Active" />
@@ -524,7 +476,7 @@ export default function GeneratorTab() {
           <button
             type="button"
             onClick={cancelLoading}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white"
+            className="w-full py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white transition-colors"
           >
             Cancel Generation
           </button>
@@ -580,57 +532,42 @@ export default function GeneratorTab() {
                 setStep("input");
                 setEventDesc("");
               }}
-              className="text-xs font-semibold hover:underline"
-              style={{ color: "var(--sky)" }}
+              className="text-xs font-semibold text-turquoise hover:underline"
             >
               ← New Event
             </button>
           </div>
 
           {/* Event Context Pill */}
-          <div
-            className="rounded-2xl px-4 py-2.5 text-xs leading-relaxed flex items-center justify-between"
-            style={{
-              background: "var(--muted)",
-              color: "var(--muted-foreground)",
-            }}
-          >
+          <div className="rounded-2xl px-4 py-2.5 text-xs leading-relaxed flex items-center justify-between bg-muted text-muted-foreground">
             <div className="truncate">
-              <span style={{ color: "var(--sky)" }} className="font-semibold">
+              <span className="font-semibold text-turquoise">
                 ⛅ {dresscode} ·{" "}
               </span>
               <span>{eventDesc}</span>
             </div>
           </div>
 
-          {/* Outfit Cards - Side-by-side on Presentation Screens, Stacked on Mobile */}
+          {/* Outfit Cards */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {results.map((outfit) => (
               <div
                 key={outfit.id}
-                className="rounded-3xl p-5 space-y-4 shadow-xl border"
-                style={{
-                  background: "var(--card)",
-                  borderColor: "var(--border)",
-                }}
+                className="rounded-3xl p-5 space-y-4 shadow-xl border border-border bg-card"
               >
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-white">
                       {outfit.label}
                     </h3>
-                    <span className="text-[10px] font-semibold text-green-400">
+                    <span className="text-[10px] font-semibold text-green">
                       {outfit.dresscodeMatch}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveWhyModal(outfit)}
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-white/10 hover:border-sky-400"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      color: "var(--sky)",
-                    }}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-white/10 bg-white/5 text-turquoise hover:border-turquoise transition-colors"
                   >
                     <span>💡</span>
                     <span>Why?</span>
@@ -642,18 +579,15 @@ export default function GeneratorTab() {
                   {outfit.items.map((item, idx) => (
                     <div
                       key={`${item.type}-${idx}`}
-                      className="flex items-center justify-between gap-3 p-2.5 rounded-2xl"
-                      style={{
-                        background: "var(--muted)",
-                        border:
-                          ctrlMode[outfit.id] === "editing"
-                            ? "1px solid rgba(114,212,240,0.5)"
-                            : "1px solid transparent",
-                      }}
+                      className={`flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-muted border ${
+                        ctrlMode[outfit.id] === "editing"
+                          ? "border-turquoise/50"
+                          : "border-transparent"
+                      }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs shadow-sm"
+                          className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs shadow-sm border border-white/10"
                           style={{ background: item.color }}
                         >
                           {item.emoji}
@@ -677,27 +611,19 @@ export default function GeneratorTab() {
                               itemIndex: idx,
                             })
                           }
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-lg"
-                          style={{ background: "var(--sky)", color: "#0D0F18" }}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-turquoise text-[#0D0F18] hover:brightness-110 transition-all"
                         >
                           Swap ↺
                         </button>
                       ) : (
-                        <span className="text-xs">✓</span>
+                        <span className="text-xs text-green">✓</span>
                       )}
                     </div>
                   ))}
                 </div>
 
                 {/* Rationale */}
-                <div
-                  className="rounded-2xl p-3 text-xs leading-relaxed"
-                  style={{
-                    background: "rgba(114,212,240,0.06)",
-                    border: "1px solid rgba(114,212,240,0.15)",
-                    color: "var(--muted-foreground)",
-                  }}
-                >
+                <div className="rounded-2xl p-3 text-xs leading-relaxed bg-turquoise/5 border border-turquoise/20 text-muted-foreground">
                   <strong className="text-white">Stylist Note:</strong>{" "}
                   {outfit.rationale}
                 </div>
@@ -715,7 +641,7 @@ export default function GeneratorTab() {
                     logOutfitWorn({
                       label: outfit.label,
                       items: outfit.items.map((i) => i.desc),
-                      color: outfit.items[0]?.color || "#D40067",
+                      color: outfit.items[0]?.color || THEME_COLORS.pink,
                       direction: "Event Stylist",
                     });
                     setCtrlMode((m) => ({ ...m, [outfit.id]: "default" }));
@@ -756,10 +682,7 @@ export default function GeneratorTab() {
       {/* Why Modal */}
       {activeWhyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div
-            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-border bg-card">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">
                 Why This Outfit Fits
@@ -778,8 +701,7 @@ export default function GeneratorTab() {
             <button
               type="button"
               onClick={() => setActiveWhyModal(null)}
-              className="w-full py-2.5 rounded-xl text-xs font-bold text-white"
-              style={{ background: "var(--magenta)" }}
+              className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 shadow-md shadow-pink/20 transition-all"
             >
               Close
             </button>
@@ -787,13 +709,10 @@ export default function GeneratorTab() {
         </div>
       )}
 
-      {/* Swap item modal */}
+      {/* Swap Item Modal */}
       {swapTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div
-            className="rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl border border-border bg-card">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">
                 Choose Alternative Piece
@@ -801,25 +720,21 @@ export default function GeneratorTab() {
               <button
                 type="button"
                 onClick={() => setSwapTarget(null)}
-                className="text-xs text-muted-foreground"
+                className="text-xs text-muted-foreground hover:text-white"
               >
                 ✕
               </button>
             </div>
-            <div className="space-y-2 max-h-56 overflow-y-auto">
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {wardrobe.slice(0, 5).map((wItem) => (
                 <button
                   key={wItem.id}
                   type="button"
                   onClick={() => handleSwapItem(wItem.name, wItem.color)}
-                  className="w-full p-2.5 rounded-xl flex items-center gap-2.5 border text-left hover:border-sky-400"
-                  style={{
-                    background: "var(--muted)",
-                    borderColor: "var(--border)",
-                  }}
+                  className="w-full p-2.5 rounded-xl flex items-center gap-2.5 border border-border bg-muted text-left hover:border-turquoise transition-all"
                 >
                   <div
-                    className="w-5 h-5 rounded-md"
+                    className="w-5 h-5 rounded-md border border-white/10"
                     style={{ background: wItem.color }}
                   />
                   <div className="min-w-0 flex-1">
@@ -830,7 +745,7 @@ export default function GeneratorTab() {
                       {wItem.category}
                     </p>
                   </div>
-                  <span className="text-xs text-sky-400 font-bold">Swap</span>
+                  <span className="text-xs text-turquoise font-bold">Swap</span>
                 </button>
               ))}
             </div>

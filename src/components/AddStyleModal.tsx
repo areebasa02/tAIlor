@@ -9,14 +9,14 @@ interface AddStyleModalProps {
 }
 
 const ACCENT_COLORS = [
-  { label: "Magenta", value: "#D40067", bgRgba: "rgba(212,0,103,0.12)" },
-  { label: "Sky Blue", value: "#72D4F0", bgRgba: "rgba(114,212,240,0.12)" },
-  { label: "Pastel Pink", value: "#FFB4D8", bgRgba: "rgba(255,180,216,0.12)" },
-  { label: "Soft Mint", value: "#B4F0C0", bgRgba: "rgba(180,240,192,0.12)" },
-  { label: "Warm Gold", value: "#FFD83D", bgRgba: "rgba(255,216,61,0.12)" },
-  { label: "Coral Orange", value: "#E84B1A", bgRgba: "rgba(232,75,26,0.12)" },
-  { label: "Deep Teal", value: "#007A8A", bgRgba: "rgba(0,122,138,0.12)" },
-  { label: "Lavender", value: "#A78BFA", bgRgba: "rgba(167,139,250,0.12)" },
+  { label: "Pink", value: "#ce005a", bgRgba: "rgba(206,0,90,0.15)" },
+  { label: "Turquoise", value: "#69d5e6", bgRgba: "rgba(105,213,230,0.15)" },
+  { label: "Rose", value: "#e2828f", bgRgba: "rgba(226,130,143,0.15)" },
+  { label: "Light Green", value: "#76e09a", bgRgba: "rgba(118,224,154,0.15)" },
+  { label: "Gold", value: "#ffcb44", bgRgba: "rgba(255,203,68,0.15)" },
+  { label: "Red", value: "#da400c", bgRgba: "rgba(218,64,12,0.15)" },
+  { label: "Dark Teal", value: "#007880", bgRgba: "rgba(0,120,128,0.15)" },
+  { label: "Green", value: "#40b066", bgRgba: "rgba(64,176,102,0.15)" },
 ]
 
 export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
@@ -125,7 +125,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-bold shadow-md"
               style={{
                 background: selectedAccent,
-                color: ["#FFD83D", "#B4F0C0", "#FFB4D8", "#72D4F0"].includes(selectedAccent)
+                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(selectedAccent)
                   ? "#0D0F18"
                   : "#ffffff",
               }}
@@ -151,7 +151,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
           {error && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold">
+            <div className="p-3 rounded-xl bg-red/10 border border-red/30 text-red text-xs font-semibold">
               {error}
             </div>
           )}
@@ -159,7 +159,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
           {/* Style Name */}
           <div>
             <label className="block text-xs font-bold text-white mb-1">
-              Style Name <span className="text-pink-400">*</span>
+              Style Name <span className="text-pink">*</span>
             </label>
             <input
               type="text"
@@ -169,7 +169,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
                 setError("")
               }}
               placeholder="e.g. Presentation Day, Rainy Day, Cozy Coffee, Studio Work"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink-400 transition-colors"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors"
             />
           </div>
 
@@ -183,7 +183,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               value={tagline}
               onChange={(e) => setTagline(e.target.value)}
               placeholder="e.g. Polished & structured · keynote ready"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink-400 transition-colors"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors"
             />
           </div>
 
@@ -231,9 +231,9 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               <button
                 type="button"
                 onClick={handleAutoPick}
-                className="text-[11px] font-semibold text-pink-400 hover:text-pink-300 flex items-center gap-1 transition-colors"
+                className="text-[11px] font-semibold text-pink hover:brightness-110 flex items-center gap-1 transition-colors"
               >
-                🎲 Auto-pick pieces
+                ✨ Auto-pick pieces
               </button>
             </div>
 
@@ -245,7 +245,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               <select
                 value={selectedTopId}
                 onChange={(e) => setSelectedTopId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink-400"
+                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
               >
                 {tops.map((item) => (
                   <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
@@ -263,7 +263,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               <select
                 value={selectedBottomId}
                 onChange={(e) => setSelectedBottomId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink-400"
+                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
               >
                 {bottoms.map((item) => (
                   <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
@@ -281,7 +281,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               <select
                 value={selectedShoeId}
                 onChange={(e) => setSelectedShoeId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink-400"
+                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
               >
                 {shoes.map((item) => (
                   <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
@@ -302,7 +302,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               value={customRationale}
               onChange={(e) => setCustomRationale(e.target.value)}
               placeholder="Why this outfit works for your needs..."
-              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink-400 transition-colors resize-none"
+              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors resize-none"
             />
           </div>
 
@@ -317,10 +317,10 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md transition-all hover:opacity-90 active:scale-95"
+              className="px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all hover:opacity-90 active:scale-95"
               style={{
                 background: selectedAccent,
-                color: ["#FFD83D", "#B4F0C0", "#FFB4D8", "#72D4F0"].includes(selectedAccent)
+                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(selectedAccent)
                   ? "#0D0F18"
                   : "#ffffff",
               }}

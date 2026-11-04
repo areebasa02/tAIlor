@@ -12,6 +12,7 @@ import type {
   QuizResult,
 } from "../types"
 import { getContrastTextColor } from "../types"
+import { THEME_COLORS } from "../types/theme"
 
 export { getContrastTextColor }
 
@@ -21,7 +22,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Eliora Browning",
     initials: "EB",
     email: "eliora.browning@example.com",
-    avatarBg: "#ffb4d8ff",
+    avatarBg: THEME_COLORS.rose,
     roleTitle: "Front-End & Proposal Research",
     preferredStyle: "Polished · colorful · comfortable",
     typicalSizes: "Tops 3XL · Bottoms 26/28 · Shoes 9",
@@ -40,7 +41,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Ethan Carter",
     initials: "EC",
     email: "ethan.carter@example.com",
-    avatarBg: "#007A8A",
+    avatarBg: THEME_COLORS.darkTeal,
     roleTitle: "Networking & Professional · Flow 01 Persona",
     preferredStyle: "Sharp business-casual · structured · clean lines",
     typicalSizes: "Tops L · Bottoms 32 · Shoes 10.5",
@@ -59,7 +60,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Jordan Miller",
     initials: "JM",
     email: "jordan.miller@example.com",
-    avatarBg: "#3BBF6C",
+    avatarBg: THEME_COLORS.green,
     roleTitle: "Outfit Discovery & Decision Fatigue · Flow 02 Persona",
     preferredStyle: "Minimalist · earth tones · relaxed fit",
     typicalSizes: "Tops M · Bottoms 30 · Shoes 10",
@@ -78,7 +79,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Josephine Davis",
     initials: "JD",
     email: "josephine.davis@example.com",
-    avatarBg: "#FFD83D",
+    avatarBg: THEME_COLORS.gold,
     roleTitle: "Color Accessibility & Tactile · Flow 03 Persona",
     preferredStyle: "High-contrast · soft natural fibers · easy tags",
     typicalSizes: "Tops S · Bottoms 6 · Shoes 7.5",
@@ -97,7 +98,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     name: "Areeba Ahmad",
     initials: "AA",
     email: "areeba.ahmad@example.com",
-    avatarBg: "#E84B1A",
+    avatarBg: THEME_COLORS.red,
     roleTitle: "Team Leader & Project Planner",
     preferredStyle: "Creative chic · dynamic layers · statement accents",
     typicalSizes: "Tops S · Bottoms 4 · Shoes 7",
@@ -118,7 +119,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     id: 1,
     name: "Magenta button-down",
     category: "Tops",
-    color: "#D40067",
+    color: THEME_COLORS.pink,
     colorName: "Vivid Magenta",
     worn: 12,
     favorite: true,
@@ -148,7 +149,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     id: 3,
     name: "Mint ribbed mock-neck",
     category: "Tops",
-    color: "#B4F0C0",
+    color: THEME_COLORS.lightGreen,
     colorName: "Soft Mint",
     worn: 4,
     favorite: false,
@@ -268,7 +269,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     id: 11,
     name: "Teal trench coat",
     category: "Outerwear",
-    color: "#007A8A",
+    color: THEME_COLORS.darkTeal,
     colorName: "Deep Teal",
     worn: 9,
     favorite: true,
@@ -283,7 +284,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     id: 12,
     name: "Gold hoop earrings",
     category: "Accessories",
-    color: "#FFD83D",
+    color: THEME_COLORS.gold,
     colorName: "Warm 18K Gold",
     worn: 50,
     favorite: true,
@@ -307,7 +308,7 @@ export function generateRecentLooks(): RecentLook[] {
       id: "look-1",
       day: getOffsetDay(1),
       date: "Yesterday",
-      color: "#007A8A",
+      color: THEME_COLORS.darkTeal,
       items: ["Teal trench", "Black wide-legs", "White sneakers"],
       direction: "Stylish",
       occasion: "Campus & meetings",
@@ -316,7 +317,7 @@ export function generateRecentLooks(): RecentLook[] {
       id: "look-2",
       day: getOffsetDay(2),
       date: "2 days ago",
-      color: "#D40067",
+      color: THEME_COLORS.pink,
       items: ["Magenta blouse", "Camel trousers", "Tan loafers"],
       direction: "Stylish",
       occasion: "Project presentation",
@@ -343,7 +344,7 @@ export function generateRecentLooks(): RecentLook[] {
       id: "look-5",
       day: getOffsetDay(5),
       date: "5 days ago",
-      color: "#B4F0C0",
+      color: THEME_COLORS.lightGreen,
       items: ["Mint mock-neck", "Black wide-legs", "Platforms"],
       direction: "Rediscover",
       occasion: "Art gallery visit",
@@ -352,7 +353,7 @@ export function generateRecentLooks(): RecentLook[] {
       id: "look-6",
       day: getOffsetDay(6),
       date: "6 days ago",
-      color: "#FFD83D",
+      color: THEME_COLORS.gold,
       items: ["Gold hoops", "Slim jeans", "Navy tee"],
       direction: "Safe",
       occasion: "Dinner with friends",
@@ -451,12 +452,12 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       rationale:
         "Dusty pastel pink blouse contrasted against fluid midnight black trousers — your signature pastel goth look.",
       accent: "var(--pink)",
-      bg: "rgba(245,160,181,0.08)",
+      bg: "rgba(226,130,143,0.08)",
       items: [
         {
           type: "Top",
           desc: "Pastel pink tailored blouse",
-          color: "#FFB4D8",
+          color: THEME_COLORS.rose,
           emoji: "👚",
           reason: "Soft pastel pink focal point with delicate drape.",
         },
@@ -488,8 +489,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Comfort-first · tagless cotton",
       rationale:
         "Ultra-soft tagless cotton scoop tee with fluid crepe trousers. Dark pastel goth staples with zero texture friction.",
-      accent: "var(--magenta)",
-      bg: "rgba(212,0,103,0.08)",
+      accent: "var(--pink)",
+      bg: "rgba(206,0,90,0.08)",
       items: [
         {
           type: "Top",
@@ -526,8 +527,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Relaxed study fit · all-day ease",
       rationale:
         "Effortless breathable layers with relaxed denim, optimized for long university hours and studio movement.",
-      accent: "var(--sky)",
-      bg: "rgba(114,212,240,0.08)",
+      accent: "var(--turquoise)",
+      bg: "rgba(105,213,230,0.08)",
       items: [
         {
           type: "Top",
@@ -564,13 +565,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Mint pastel pop · unexpected touch",
       rationale:
         "Your mint mock-neck knit brings a vibrant pastel pop grounded by fluid midnight black trousers.",
-      accent: "var(--mint)",
-      bg: "rgba(180,240,192,0.08)",
+      accent: "var(--light-green)",
+      bg: "rgba(118,224,154,0.08)",
       items: [
         {
           type: "Top",
           desc: "Mint ribbed mock-neck",
-          color: "#B4F0C0",
+          color: THEME_COLORS.lightGreen,
           emoji: "🧶",
           reason: "Brings an unworn pastel gem back into rotation.",
         },
@@ -604,8 +605,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Classic tailored Oxford · zero morning stress",
       rationale:
         "Impeccably tailored classic business-casual for high-confidence office presentations.",
-      accent: "var(--sky)",
-      bg: "rgba(114,212,240,0.08)",
+      accent: "var(--turquoise)",
+      bg: "rgba(105,213,230,0.08)",
       items: [
         {
           type: "Top",
@@ -642,8 +643,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Sharp executive presence · networking ready",
       rationale:
         "Complementary navy structured knit blazer and warm camel trousers engineered for networking dinners.",
-      accent: "var(--teal)",
-      bg: "rgba(0,122,138,0.08)",
+      accent: "var(--dark-teal)",
+      bg: "rgba(0,120,128,0.08)",
       items: [
         {
           type: "Top",
@@ -680,8 +681,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Smart denim · polished comfort",
       rationale:
         "Airy linen blouse paired with slim medium denim and clean white leather sneakers for relaxed office days.",
-      accent: "var(--yellow)",
-      bg: "rgba(255,216,61,0.08)",
+      accent: "var(--gold)",
+      bg: "rgba(255,203,68,0.08)",
       items: [
         {
           type: "Top",
@@ -718,13 +719,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Structured layer · urban commute",
       rationale:
         "Sleek teal trench coat layered over navy chinos for sudden weather changes and sharp transit.",
-      accent: "var(--orange)",
-      bg: "rgba(232,75,26,0.08)",
+      accent: "var(--red)",
+      bg: "rgba(218,64,12,0.08)",
       items: [
         {
           type: "Top",
           desc: "Teal trench coat",
-          color: "#007A8A",
+          color: THEME_COLORS.darkTeal,
           emoji: "🧥",
           reason: "Water-resistant outerwear with sharp silhouette.",
         },
@@ -758,8 +759,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "1-second choice · reliable favorites",
       rationale:
         "Zero morning stress: your most-worn, familiar comfort staples with proven fit and zero friction.",
-      accent: "var(--sky)",
-      bg: "rgba(114,212,240,0.08)",
+      accent: "var(--turquoise)",
+      bg: "rgba(105,213,230,0.08)",
       items: [
         {
           type: "Top",
@@ -797,12 +798,12 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       rationale:
         "Your mint mock-neck knit hasn't been logged in 21 days! Paired with midnight black trousers to refresh your rotation.",
       accent: "var(--green)",
-      bg: "rgba(59,191,108,0.08)",
+      bg: "rgba(64,176,102,0.08)",
       items: [
         {
           type: "Top",
           desc: "Mint ribbed mock-neck",
-          color: "#B4F0C0",
+          color: THEME_COLORS.lightGreen,
           emoji: "🧶",
           reason: "Brings an unworn gem back into rotation.",
         },
@@ -834,8 +835,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Warm neutral drape · minimalist calm",
       rationale:
         "Organic linen in warm cream paired with camel trousers for grounded, minimalist daily calm.",
-      accent: "var(--orange)",
-      bg: "rgba(232,75,26,0.08)",
+      accent: "var(--red)",
+      bg: "rgba(218,64,12,0.08)",
       items: [
         {
           type: "Top",
@@ -872,8 +873,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Easy weekend run · effortless slip-on",
       rationale:
         "Crisp white tee, comfortable stretch jeans, and cushioned sneakers for quick errands and weekend coffee.",
-      accent: "var(--yellow)",
-      bg: "rgba(255,216,61,0.08)",
+      accent: "var(--gold)",
+      bg: "rgba(255,203,68,0.08)",
       items: [
         {
           type: "Top",
@@ -912,8 +913,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "15:1 visual ratio · crisp boundaries",
       rationale:
         "Maximum visual contrast with soft tactile seams to eliminate dressing hesitation and visual strain.",
-      accent: "var(--yellow)",
-      bg: "rgba(255,216,61,0.08)",
+      accent: "var(--gold)",
+      bg: "rgba(255,203,68,0.08)",
       items: [
         {
           type: "Top",
@@ -950,13 +951,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Ribbed knit · instant touch recognition",
       rationale:
         "Rediscover your tactile ribbed knit — instantly recognizable by touch with distinct high-contrast borders.",
-      accent: "var(--mint)",
-      bg: "rgba(180,240,192,0.08)",
+      accent: "var(--light-green)",
+      bg: "rgba(118,224,154,0.08)",
       items: [
         {
           type: "Top",
           desc: "Mint ribbed mock-neck",
-          color: "#B4F0C0",
+          color: THEME_COLORS.lightGreen,
           emoji: "🧶",
           reason: "Unique ribbed texture gives instant tactile recognition.",
         },
@@ -988,8 +989,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Clear color boundaries · distinct tiers",
       rationale:
         "Rich cobalt blue contrasted with warm camel trousers for clear visual segmentation and tactile comfort.",
-      accent: "var(--sky)",
-      bg: "rgba(114,212,240,0.08)",
+      accent: "var(--turquoise)",
+      bg: "rgba(105,213,230,0.08)",
       items: [
         {
           type: "Top",
@@ -1026,8 +1027,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Sensory-soothing · zero tags",
       rationale:
         "Ultra-soft tagless scoop tee in deep burgundy with non-restrictive elastic waist trousers for gentle daily wear.",
-      accent: "var(--magenta)",
-      bg: "rgba(212,0,103,0.08)",
+      accent: "var(--pink)",
+      bg: "rgba(206,0,90,0.08)",
       items: [
         {
           type: "Top",
@@ -1066,8 +1067,8 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Linen drape · gold statement",
       rationale:
         "Effortless creative chic grounded by relaxed denim and warm gold accents for design syncs.",
-      accent: "var(--yellow)",
-      bg: "rgba(255,216,61,0.08)",
+      accent: "var(--gold)",
+      bg: "rgba(255,203,68,0.08)",
       items: [
         {
           type: "Top",
@@ -1104,13 +1105,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Statement trench · executive chic",
       rationale:
         "Statement teal trench with warm camel trousers — bold, polished, and commanding for capstone presentations.",
-      accent: "var(--orange)",
-      bg: "rgba(232,75,26,0.08)",
+      accent: "var(--red)",
+      bg: "rgba(218,64,12,0.08)",
       items: [
         {
           type: "Top",
           desc: "Teal trench coat",
-          color: "#007A8A",
+          color: THEME_COLORS.darkTeal,
           emoji: "🧥",
           reason: "Dramatic focal layer with creative flair and Snoopy pin.",
         },
@@ -1142,13 +1143,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Vivid magenta · bold accents",
       rationale:
         "Vivid magenta button-down paired with tailored camel trousers and gold hoops for striking presentation energy.",
-      accent: "var(--magenta)",
-      bg: "rgba(212,0,103,0.08)",
+      accent: "var(--pink)",
+      bg: "rgba(206,0,90,0.08)",
       items: [
         {
           type: "Top",
           desc: "Magenta button-down",
-          color: "#D40067",
+          color: THEME_COLORS.pink,
           emoji: "👚",
           reason: "Vivid magenta statement top with radiant sheen.",
         },
@@ -1180,13 +1181,13 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
       tagline: "Pastel mock-neck · street silhouette",
       rationale:
         "Fresh mint knit with midnight black trousers and chunky platforms for an unexpected playful spin.",
-      accent: "var(--sky)",
-      bg: "rgba(114,212,240,0.08)",
+      accent: "var(--turquoise)",
+      bg: "rgba(105,213,230,0.08)",
       items: [
         {
           type: "Top",
           desc: "Mint ribbed mock-neck",
-          color: "#B4F0C0",
+          color: THEME_COLORS.lightGreen,
           emoji: "🧶",
           reason: "Fresh mint knit brings playful energy back.",
         },
@@ -1371,10 +1372,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setWornToday(false)
     const alternateTops: OutfitItem[] = [
       { type: "Top", desc: "Cream linen blouse", color: "#F5EFD8", emoji: "👚", reason: "Crisp light layer with gentle drape." },
-      { type: "Top", desc: "Teal trench coat", color: "#007A8A", emoji: "🧥", reason: "Polished statement top layer." },
+      { type: "Top", desc: "Teal trench coat", color: THEME_COLORS.darkTeal, emoji: "🧥", reason: "Polished statement top layer." },
       { type: "Top", desc: "Navy relaxed crew tee", color: "#2B4B8C", emoji: "👕", reason: "Minimalist neutral base." },
       { type: "Top", desc: "Burgundy soft scoop tee", color: "#6A1A32", emoji: "👕", reason: "Deep burgundy soft cotton staple." },
-      { type: "Top", desc: "Mint ribbed mock-neck", color: "#B4F0C0", emoji: "🧶", reason: "Textured pastel rediscovery." },
+      { type: "Top", desc: "Mint ribbed mock-neck", color: THEME_COLORS.lightGreen, emoji: "🧶", reason: "Textured pastel rediscovery." },
     ]
     const randomTop = alternateTops[Math.floor(Math.random() * alternateTops.length)]
     setOutfits((prev) => {
@@ -1437,7 +1438,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addCustomStyle = (input: AddCustomStyleInput) => {
     const key = `custom_${Date.now()}`
-    const accentColor = input.accent || "var(--magenta)"
+    const accentColor = input.accent || "var(--pink)"
     const newOutfit: Outfit = {
       id: key,
       direction: key,
@@ -1449,7 +1450,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       items: input.items,
       accent: accentColor,
       bg: accentColor.startsWith("var")
-        ? "rgba(212,0,103,0.08)"
+        ? "rgba(206,0,90,0.08)"
         : `${accentColor}18`,
       isCustom: true,
       whyDetails: input.whyDetails || {

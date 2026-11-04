@@ -2,6 +2,22 @@
 @import 'tailwindcss';
 
 @theme inline {
+  --color-pink: var(--pink);
+  --color-rose: var(--rose);
+  --color-gold: var(--gold);
+  --color-red: var(--red);
+  --color-turquoise: var(--turquoise);
+  --color-dark-teal: var(--dark-teal);
+  --color-green: var(--green);
+  --color-light-green: var(--light-green);
+
+  --color-magenta: var(--pink);
+  --color-yellow: var(--gold);
+  --color-orange: var(--red);
+  --color-sky: var(--turquoise);
+  --color-teal: var(--dark-teal);
+  --color-mint: var(--light-green);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -16,6 +32,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-border: var(--border);
   --color-ring: var(--ring);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 4px);
@@ -27,27 +44,34 @@
   --foreground: #F0EEF8;
   --card: #161924;
   --card-foreground: #F0EEF8;
-  --primary: #D40067;
-  --primary-foreground: #ffffff;
-  --secondary: #007A8A;
-  --secondary-foreground: #ffffff;
   --muted: #1E2133;
   --muted-foreground: #8B8FA8;
-  --accent: #72D4F0;
-  --accent-foreground: #0D0F18;
   --border: rgba(255, 255, 255, 0.08);
-  --ring: #D40067;
   --radius: 14px;
 
-  /* brand palette */
-  --magenta: #D40067;
-  --pink: #F5A0B5;
-  --yellow: #FFD83D;
-  --orange: #E84B1A;
-  --sky: #72D4F0;
-  --teal: #007A8A;
-  --green: #3BBF6C;
-  --mint: #B4F0C0;
+  --pink: #ce005a;
+  --rose: #e2828f;
+  --gold: #ffcb44;
+  --red: #da400c;
+  --turquoise: #69d5e6;
+  --dark-teal: #007880;
+  --green: #40b066;
+  --light-green: #76e09a;
+
+  --primary: var(--pink);            /* #ce005a */
+  --primary-foreground: #ffffff;
+  --secondary: var(--dark-teal);     /* #007880 */
+  --secondary-foreground: #ffffff;
+  --accent: var(--turquoise);        /* #69d5e6 */
+  --accent-foreground: #0D0F18;
+  --ring: var(--pink);
+
+  --magenta: var(--pink);
+  --yellow: var(--gold);
+  --orange: var(--red);
+  --sky: var(--turquoise);
+  --teal: var(--dark-teal);
+  --mint: var(--light-green);
 }
 
 * {
@@ -77,6 +101,12 @@ h1, h2, h3 {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 
-/* smooth transitions */
-* { transition-property: color, background-color, border-color, opacity, transform; transition-duration: 150ms; transition-timing-function: ease; }
-button, a { cursor: pointer; }
+* {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+button, a {
+  cursor: pointer;
+}

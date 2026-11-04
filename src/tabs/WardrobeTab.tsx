@@ -3,6 +3,7 @@ import { ImageUploadWidget, type UploadState } from "../components/AIComponents"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
 import type { Category, WardrobeItem } from "../types"
+import { THEME_COLORS } from "../types/theme"
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Tops: "👕",
@@ -52,16 +53,16 @@ export default function WardrobeTab() {
     category: Category
   }>({
     name: "Teal Gabardine Trench",
-    color: "#007A8A",
+    color: THEME_COLORS.darkTeal,
     colorName: "Deep Teal",
     category: "Outerwear",
   })
 
-  // Manual entry form state
+  // Manual entry form state - typed with <string> to permit any custom hex from the color picker
   const [manualName, setManualName] = useState("")
   const [manualCat, setManualCat] = useState<Category>("Tops")
   const [manualColorName, setManualColorName] = useState("")
-  const [manualColorHex, setManualColorHex] = useState("#D40067")
+  const [manualColorHex, setManualColorHex] = useState<string>(THEME_COLORS.pink)
   const [manualMaterial, setManualMaterial] = useState("")
   const [manualLocation, setManualLocation] = useState("")
   const [manualCare, setManualCare] = useState("")
@@ -168,8 +169,7 @@ export default function WardrobeTab() {
           <button
             type="button"
             onClick={() => setSection("wardrobe")}
-            className="text-xs font-semibold"
-            style={{ color: "var(--sky)" }}
+            className="text-xs font-semibold text-turquoise hover:underline transition-colors"
           >
             ← Back to wardrobe
           </button>
@@ -180,7 +180,7 @@ export default function WardrobeTab() {
   }
 
   return (
-    <div className="px-5 pt-2 pb-4 space-y-4">
+    <div className="px-5 pt-2 pb-6 space-y-4">
       {/* Wardrobe Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -190,7 +190,7 @@ export default function WardrobeTab() {
           >
             {user.name.split(" ")[0]}'s Wardrobe
           </h2>
-          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+          <p className="text-xs text-muted-foreground">
             {wardrobe.length} total pieces ·{" "}
             {wardrobe.filter((i) => i.worn < 5).length} rarely worn ·{" "}
             {wardrobe.filter((i) => i.favorite).length} favorites
@@ -201,12 +201,7 @@ export default function WardrobeTab() {
           <button
             type="button"
             onClick={() => setSection("colors")}
-            className="h-8 rounded-full px-3 flex items-center justify-center gap-1.5 text-xs font-semibold transition-transform active:scale-95"
-            style={{
-              background: "var(--muted)",
-              color: "var(--sky)",
-              border: "1px solid var(--border)",
-            }}
+            className="h-8 rounded-full px-3 flex items-center justify-center gap-1.5 text-xs font-semibold transition-transform active:scale-95 bg-muted text-turquoise border border-border hover:border-turquoise/40"
             title="Open Flow 03 Color matcher and analyzer"
           >
             <span aria-hidden="true">🎨</span>
@@ -220,8 +215,7 @@ export default function WardrobeTab() {
               setUploadState("empty")
             }}
             aria-label="Add wardrobe item"
-            className="h-8 px-3 rounded-full flex items-center justify-center font-bold text-xs gap-1 shadow-md transition-transform active:scale-95"
-            style={{ background: "var(--magenta)", color: "#fff" }}
+            className="h-8 px-3 rounded-full flex items-center justify-center font-bold text-xs gap-1 shadow-md shadow-pink/20 transition-all active:scale-95 bg-pink text-white hover:brightness-110"
           >
             <span>+</span>
             <span>Add Item</span>
@@ -231,10 +225,7 @@ export default function WardrobeTab() {
 
       {/* Add Item — Photo flow with AI Recognition */}
       {addStep === "photo" && (
-        <div
-          className="rounded-3xl p-5 space-y-3.5 shadow-xl border animate-in fade-in zoom-in-95 duration-150"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}
-        >
+        <div className="rounded-3xl p-5 space-y-3.5 shadow-xl border border-border bg-card animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-white">
@@ -257,26 +248,26 @@ export default function WardrobeTab() {
           {/* Quick Demo Clothing Samples for Instant Testing */}
           {uploadState === "empty" && (
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
                 Quick Test Samples:
               </span>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   {
                     name: "Teal trench coat",
-                    color: "#007A8A",
+                    color: THEME_COLORS.darkTeal,
                     colorName: "Deep Teal",
                     category: "Outerwear" as Category,
                   },
                   {
                     name: "Magenta silk blouse",
-                    color: "#D40067",
+                    color: THEME_COLORS.pink,
                     colorName: "Vivid Magenta",
                     category: "Tops" as Category,
                   },
                   {
                     name: "Gold knit cardigan",
-                    color: "#FFD83D",
+                    color: THEME_COLORS.gold,
                     colorName: "Warm Gold",
                     category: "Tops" as Category,
                   },
@@ -285,14 +276,10 @@ export default function WardrobeTab() {
                     key={sample.name}
                     type="button"
                     onClick={() => startUpload(sample)}
-                    className="p-2 rounded-xl border text-left transition-transform active:scale-95"
-                    style={{
-                      background: "var(--muted)",
-                      borderColor: "var(--border)",
-                    }}
+                    className="p-2 rounded-xl border border-border bg-muted text-left transition-transform active:scale-95 hover:border-turquoise/40"
                   >
                     <div
-                      className="w-4 h-4 rounded-full mb-1"
+                      className="w-4 h-4 rounded-full mb-1 border border-white/20"
                       style={{ background: sample.color }}
                     />
                     <p className="text-[10px] font-semibold text-white truncate">
@@ -354,8 +341,7 @@ export default function WardrobeTab() {
       {addStep === "manual" && (
         <form
           onSubmit={handleSaveManual}
-          className="rounded-3xl p-5 space-y-3.5 shadow-xl border animate-in fade-in duration-150"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}
+          className="rounded-3xl p-5 space-y-3.5 shadow-xl border border-border bg-card animate-in fade-in duration-150"
         >
           <div className="flex items-center justify-between">
             <div>
@@ -386,12 +372,7 @@ export default function WardrobeTab() {
                 value={manualName}
                 onChange={(e) => setManualName(e.target.value)}
                 placeholder="e.g. Lavender Linen Shirt"
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               />
             </div>
 
@@ -402,12 +383,7 @@ export default function WardrobeTab() {
               <select
                 value={manualCat}
                 onChange={(e) => setManualCat(e.target.value as Category)}
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               >
                 <option value="Tops">Tops</option>
                 <option value="Bottoms">Bottoms</option>
@@ -425,12 +401,7 @@ export default function WardrobeTab() {
                 value={manualColorName}
                 onChange={(e) => setManualColorName(e.target.value)}
                 placeholder="e.g. Soft Lavender"
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               />
             </div>
 
@@ -459,12 +430,7 @@ export default function WardrobeTab() {
                 value={manualMaterial}
                 onChange={(e) => setManualMaterial(e.target.value)}
                 placeholder="e.g. 100% Linen, Tagless"
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               />
             </div>
 
@@ -476,12 +442,7 @@ export default function WardrobeTab() {
                 value={manualLocation}
                 onChange={(e) => setManualLocation(e.target.value)}
                 placeholder="e.g. Top Shelf Closet A"
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               />
             </div>
 
@@ -493,12 +454,7 @@ export default function WardrobeTab() {
                 value={manualCare}
                 onChange={(e) => setManualCare(e.target.value)}
                 placeholder="e.g. Cold hand wash"
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               />
             </div>
 
@@ -513,12 +469,7 @@ export default function WardrobeTab() {
                     e.target.value as "Low" | "Medium" | "High",
                   )
                 }
-                className="w-full rounded-xl px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--muted)",
-                  color: "var(--foreground)",
-                  border: "1px solid var(--border)",
-                }}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               >
                 <option value="High">High (Cherished / Favorite)</option>
                 <option value="Medium">Medium (Regular)</option>
@@ -529,8 +480,7 @@ export default function WardrobeTab() {
 
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl text-xs font-bold transition-all hover:brightness-110 active:scale-98"
-            style={{ background: "var(--magenta)", color: "#fff" }}
+            className="w-full py-2.5 rounded-xl text-xs font-bold transition-all hover:brightness-110 active:scale-98 bg-pink text-white shadow-md shadow-pink/20"
           >
             Save to Digital Wardrobe
           </button>
@@ -548,18 +498,13 @@ export default function WardrobeTab() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, color, or material…"
-              className="w-full rounded-2xl pl-9 pr-4 py-2.5 text-xs outline-none transition-colors"
-              style={{
-                background: "var(--muted)",
-                color: "var(--foreground)",
-                border: "1px solid var(--border)",
-              }}
+              className="w-full rounded-2xl pl-9 pr-4 py-2.5 text-xs outline-none transition-colors bg-muted text-foreground border border-border focus:border-turquoise"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-white"
               >
                 ✕
               </button>
@@ -569,18 +514,11 @@ export default function WardrobeTab() {
           <button
             type="button"
             onClick={() => setFavoritesOnly(!favoritesOnly)}
-            className="h-10 px-3 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all"
-            style={{
-              background: favoritesOnly
-                ? "rgba(212,0,103,0.15)"
-                : "var(--muted)",
-              color: favoritesOnly
-                ? "var(--magenta)"
-                : "var(--muted-foreground)",
-              border: `1px solid ${
-                favoritesOnly ? "var(--magenta)" : "var(--border)"
-              }`,
-            }}
+            className={`h-10 px-3 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+              favoritesOnly
+                ? "bg-pink/15 text-pink border-pink shadow-md shadow-pink/20"
+                : "bg-muted text-muted-foreground border-border hover:text-white"
+            }`}
             title="Filter favorites only"
           >
             <span>{favoritesOnly ? "♥" : "♡"}</span>
@@ -590,8 +528,7 @@ export default function WardrobeTab() {
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
-            className="h-10 px-2.5 rounded-2xl text-[11px] font-semibold outline-none border text-muted-foreground"
-            style={{ background: "var(--muted)", borderColor: "var(--border)" }}
+            className="h-10 px-2.5 rounded-2xl text-[11px] font-semibold outline-none border border-border bg-muted text-muted-foreground hover:text-white"
           >
             <option value="newest">Newest First</option>
             <option value="most_worn">Most Worn</option>
@@ -609,12 +546,11 @@ export default function WardrobeTab() {
                 key={c}
                 type="button"
                 onClick={() => setCat(c)}
-                className="shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all"
-                style={{
-                  background: active ? "var(--magenta)" : "var(--muted)",
-                  color: active ? "#fff" : "var(--muted-foreground)",
-                  boxShadow: active ? "0 2px 8px rgba(212,0,103,0.3)" : "none",
-                }}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  active
+                    ? "bg-pink text-white shadow-md shadow-pink/30"
+                    : "bg-muted text-muted-foreground hover:text-white"
+                }`}
               >
                 {c !== "All" && (
                   <span className="mr-1">{CATEGORY_EMOJI[c]}</span>
@@ -626,14 +562,13 @@ export default function WardrobeTab() {
         </div>
       </div>
 
-      {/* Wardrobe Items Grid - 2 cols on mobile, up to 7 cols on presentation screens */}
+      {/* Wardrobe Items Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
         {filtered.map((item) => (
           <div
             key={item.id}
             onClick={() => setSelectedItem(item)}
-            className="rounded-3xl overflow-hidden flex flex-col border shadow-sm cursor-pointer transition-all hover:scale-[1.02] hover:border-[#72D4F0]/40 group"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            className="rounded-3xl overflow-hidden flex flex-col border border-border bg-card shadow-sm cursor-pointer transition-all hover:scale-[1.02] hover:border-turquoise/40 group"
           >
             {/* Garment Visual Header */}
             <div
@@ -651,13 +586,11 @@ export default function WardrobeTab() {
                   e.stopPropagation()
                   toggleFavorite(item.id)
                 }}
-                className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs backdrop-blur-md transition-transform active:scale-90"
-                style={{
-                  background: item.favorite
-                    ? "rgba(212,0,103,0.85)"
-                    : "rgba(0,0,0,0.4)",
-                  color: "#fff",
-                }}
+                className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs backdrop-blur-md transition-transform active:scale-90 text-white ${
+                  item.favorite
+                    ? "bg-pink/85 shadow-md shadow-pink/30"
+                    : "bg-black/40 hover:bg-black/60"
+                }`}
                 aria-label={item.favorite ? "Unfavorite item" : "Favorite item"}
               >
                 {item.favorite ? "♥" : "♡"}
@@ -665,7 +598,7 @@ export default function WardrobeTab() {
 
               {/* Status Badge */}
               {item.worn < 5 && (
-                <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase bg-black/60 text-green-400 backdrop-blur-xs">
+                <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase bg-black/60 text-green backdrop-blur-xs">
                   Rediscover
                 </span>
               )}
@@ -701,7 +634,7 @@ export default function WardrobeTab() {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-12 rounded-3xl border border-dashed border-white/10 p-6">
+        <div className="text-center py-12 rounded-3xl border border-dashed border-white/10 p-6 bg-card/50">
           <span className="text-3xl">👗</span>
           <p className="text-sm font-semibold text-white mt-2">
             No wardrobe pieces found
@@ -712,8 +645,7 @@ export default function WardrobeTab() {
           <button
             type="button"
             onClick={() => setAddStep("photo")}
-            className="mt-3 px-4 py-2 rounded-xl text-xs font-bold"
-            style={{ background: "var(--magenta)", color: "#fff" }}
+            className="mt-3 px-4 py-2 rounded-xl text-xs font-bold bg-pink text-white hover:brightness-110 shadow-md shadow-pink/20 transition-all"
           >
             + Add New Item
           </button>
@@ -723,14 +655,11 @@ export default function WardrobeTab() {
       {/* Item Detail Modal */}
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div
-            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-border bg-card">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-md shrink-0"
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-md shrink-0 border border-white/10"
                   style={{ background: selectedItem.color }}
                 >
                   {CATEGORY_EMOJI[selectedItem.category] ?? "👗"}
@@ -800,8 +729,7 @@ export default function WardrobeTab() {
                     prev ? { ...prev, worn: prev.worn + 1 } : null,
                   )
                 }}
-                className="py-2.5 rounded-xl text-xs font-bold text-white"
-                style={{ background: "var(--green)" }}
+                className="py-2.5 rounded-xl text-xs font-bold text-white bg-green hover:brightness-110 shadow-md shadow-green/20 transition-all"
               >
                 +1 Worn Today
               </button>
@@ -814,8 +742,7 @@ export default function WardrobeTab() {
                     prev ? { ...prev, favorite: !prev.favorite } : null,
                   )
                 }}
-                className="py-2.5 rounded-xl text-xs font-bold text-white"
-                style={{ background: "var(--muted)" }}
+                className="py-2.5 rounded-xl text-xs font-bold text-white bg-muted hover:bg-muted/80 transition-colors"
               >
                 {selectedItem.favorite ? "♥ Favorited" : "♡ Add Favorite"}
               </button>
@@ -826,7 +753,7 @@ export default function WardrobeTab() {
                   deleteWardrobeItem(selectedItem.id)
                   setSelectedItem(null)
                 }}
-                className="col-span-2 py-2 rounded-xl text-xs font-semibold text-orange-400 hover:text-red-400"
+                className="col-span-2 py-2 rounded-xl text-xs font-semibold text-red hover:underline transition-colors"
               >
                 Delete from Wardrobe
               </button>
