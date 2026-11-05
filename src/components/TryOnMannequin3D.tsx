@@ -1,7 +1,7 @@
 /**
- * Synapp-exact anatomical doll mannequin.
- * CapsuleGeometry limbs + SphereGeometry ball joints with custom rim ShaderMaterial.
- * Garment layers tint clothing segments via uBaseColor; body shape stays independent.
+ * Continuous LatheGeometry pearl anatomy + custom rim ShaderMaterial.
+ * Geometry matches earlier smooth V-torso / tapered limbs (not capsule doll).
+ * limbMat / jointMat uniforms + PointLight preserved; garments tint via uBaseColor.
  */
 import {
   Suspense,
@@ -78,11 +78,9 @@ void main() {
   vec3 L = normalize(uLightDir);
   vec3 V = normalize(vViewDir);
 
-  // Soft diffuse ramp (half-lambert)
   float ndl = dot(N, L) * 0.5 + 0.5;
   vec3 diffuse = uBaseColor * mix(0.55, 1.0, ndl);
 
-  // Fresnel rim
   float rim = pow(1.0 - max(dot(N, V), 0.0), uRimPower);
   vec3 color = diffuse + uRimColor * rim;
 
@@ -98,16 +96,16 @@ function createRimMaterial(
   opacity = 1,
 ): THREE.ShaderMaterial {
   const isJoint = kind === "joint"
-  const base = new THREE.Color(
-    baseOverride ?? (isJoint ? JOINT_BASE : LIMB_BASE),
-  )
-  const rim = new THREE.Color(isJoint ? JOINT_RIM : LIMB_RIM)
   return new THREE.ShaderMaterial({
     vertexShader: MANNEQUIN_VERT,
     fragmentShader: MANNEQUIN_FRAG,
     uniforms: {
-      uBaseColor: { value: base },
-      uRimColor: { value: rim },
+      uBaseColor: {
+        value: new THREE.Color(
+          baseOverride ?? (isJoint ? JOINT_BASE : LIMB_BASE),
+        ),
+      },
+      uRimColor: { value: new THREE.Color(isJoint ? JOINT_RIM : LIMB_RIM) },
       uLightDir: { value: LIGHT_DIR.clone() },
       uRimPower: { value: isJoint ? 2.0 : 2.5 },
       uOpacity: { value: opacity },
@@ -116,14 +114,12 @@ function createRimMaterial(
   })
 }
 
-/** limbMat / jointMat / garment-tint (same shader, uBaseColor override) */
-function SynappMat({
+function RimMat({
   kind = "limb",
   baseColor,
   opacity = 1,
 }: {
   kind?: MatKind
-  /** When set (garment tint), overrides uBaseColor; rim stays lavender */
   baseColor?: string
   opacity?: number
 }) {
@@ -135,27 +131,84 @@ function SynappMat({
   return <primitive object={mat} attach="material" />
 }
 
-/** High-segment capsule between two points (Synapp limb) */
-function CapsuleBetween({
+function useLathe(
+  height: number,
+  radiusAt: (t: number) => number,
+  segments = 36,
+  radial = 32,
+) {
+  return useMemo(() => {
+    const pts: THREE.Vector2[] = []
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments
+      pts.push(
+        new THREE.Vector2(Math.max(0.003, radiusAt(t)), (t - 0.5) * height),
+      )
+    }
+    const g = new THREE.LatheGeometry(pts, radial)
+    g.computeVertexNormals()
+    return g
+  }, [height, radiusAt, segments, radial])
+}
+
+function LathePart({
+  height,
+  radiusAt,
+  position,
+  rotation,
+  scale,
+  kind = "limb",
+  baseColor,
+  opacity = 1,
+  segments = 36,
+}: {
+  height: number
+  radiusAt: (t: number) => number
+  position?: [number, number, number]
+  rotation?: [number, number, number]
+  scale?: [number, number, number]
+  kind?: MatKind
+  baseColor?: string
+  opacity?: number
+  segments?: number
+}) {
+  const geo = useLathe(height, radiusAt, segments)
+  useEffect(() => () => geo.dispose(), [geo])
+  return (
+    <mesh
+      geometry={geo}
+      position={position}
+      rotation={rotation}
+      scale={scale}
+      castShadow
+      receiveShadow
+    >
+      <RimMat kind={kind} baseColor={baseColor} opacity={opacity} />
+    </mesh>
+  )
+}
+
+/** Continuous anatomical tapered limb (lathe, no ball joints) */
+function Limb({
   from,
   to,
-  radius,
-  color,
-  radial = 20,
+  r0,
+  r1,
+  r2,
+  baseColor,
 }: {
   from: [number, number, number]
   to: [number, number, number]
-  radius: number
-  /** Garment tint for uBaseColor; omit for default limbMat */
-  color?: string
-  radial?: number
+  r0: number
+  r1: number
+  r2: number
+  baseColor?: string
 }) {
   const dx = to[0] - from[0]
   const dy = to[1] - from[1]
   const dz = to[2] - from[2]
   const dist = Math.hypot(dx, dy, dz)
-  // Overshoot into ball joints so ends nest snug (Synapp AO gaps, not floating)
-  const length = Math.max(0.02, dist + radius * 0.55)
+  const height = dist * 1.22
   const mid: [number, number, number] = [
     (from[0] + to[0]) / 2,
     (from[1] + to[1]) / 2,
@@ -168,37 +221,31 @@ function CapsuleBetween({
     )
   }, [dx, dy, dz])
 
+  const radiusAt = useMemo(
+    () => (t: number) => {
+      const hermite = (a: number, b: number, u: number) => {
+        const s = u * u * (3 - 2 * u)
+        return a + (b - a) * s
+      }
+      if (t < 0.4) return hermite(r0, r1, t / 0.4)
+      return hermite(r1, r2, (t - 0.4) / 0.6)
+    },
+    [r0, r1, r2],
+  )
+
   return (
-    <mesh position={mid} rotation={[e.x, e.y, e.z]} castShadow receiveShadow>
-      <capsuleGeometry args={[radius, length, 8, radial]} />
-      <SynappMat kind="limb" baseColor={color} />
-    </mesh>
+    <LathePart
+      height={height}
+      radiusAt={radiusAt}
+      position={mid}
+      rotation={[e.x, e.y, e.z]}
+      baseColor={baseColor}
+      segments={40}
+    />
   )
 }
 
-function Ball({
-  position,
-  radius,
-  kind = "joint",
-  baseColor,
-  scale,
-}: {
-  position: [number, number, number]
-  radius: number
-  kind?: MatKind
-  /** Garment tint for torso/pelvis volumes; omit for default joint/limb */
-  baseColor?: string
-  scale?: [number, number, number]
-}) {
-  return (
-    <mesh position={position} scale={scale} castShadow receiveShadow>
-      <sphereGeometry args={[radius, 28, 24]} />
-      <SynappMat kind={kind} baseColor={baseColor} />
-    </mesh>
-  )
-}
-
-function Mitten({
+function Hand({
   position,
   side,
   s = 1,
@@ -209,39 +256,48 @@ function Mitten({
 }) {
   return (
     <group position={position} scale={s}>
-      <mesh castShadow position={[0, -0.02, 0.01]} rotation={[0.15, 0, 0]}>
-        <capsuleGeometry args={[0.028, 0.035, 6, 14]} />
-        <SynappMat kind="limb" />
+      <mesh castShadow position={[0, -0.015, 0.012]} scale={[1, 1.2, 0.65]}>
+        <sphereGeometry args={[0.034, 18, 14]} />
+        <RimMat kind="limb" />
+      </mesh>
+      <mesh castShadow position={[0, -0.048, 0.016]} scale={[0.8, 1.05, 0.6]}>
+        <sphereGeometry args={[0.028, 14, 12]} />
+        <RimMat kind="limb" />
       </mesh>
       <mesh
         castShadow
-        position={[side * 0.022, -0.01, 0.015]}
-        rotation={[0.2, 0, side * 0.6]}
+        position={[side * 0.026, -0.02, 0.018]}
+        rotation={[0.15, 0, side * 0.5]}
+        scale={[0.5, 0.85, 0.5]}
       >
-        <capsuleGeometry args={[0.012, 0.018, 4, 10]} />
-        <SynappMat kind="limb" />
+        <sphereGeometry args={[0.02, 12, 10]} />
+        <RimMat kind="limb" />
       </mesh>
     </group>
   )
 }
 
-function RoundedFoot({
+function Foot({
   position,
-  color,
+  baseColor,
 }: {
   position: [number, number, number]
-  color?: string
+  baseColor?: string
 }) {
-  const tint = color && color !== LIMB_BASE ? color : undefined
   return (
     <group position={position}>
-      <mesh castShadow receiveShadow position={[0, 0.02, 0.045]} scale={[0.9, 0.55, 1.35]}>
-        <sphereGeometry args={[0.045, 20, 16]} />
-        <SynappMat kind="limb" baseColor={tint} />
+      <mesh
+        castShadow
+        receiveShadow
+        position={[0, 0.018, 0.055]}
+        scale={[0.85, 0.5, 1.4]}
+      >
+        <sphereGeometry args={[0.048, 18, 14]} />
+        <RimMat kind="limb" baseColor={baseColor} />
       </mesh>
-      <mesh castShadow position={[0, 0.025, -0.02]} scale={[0.85, 0.7, 0.9]}>
-        <sphereGeometry args={[0.032, 16, 14]} />
-        <SynappMat kind="limb" baseColor={tint} />
+      <mesh castShadow position={[0, 0.025, -0.015]} scale={[0.8, 0.65, 0.85]}>
+        <sphereGeometry args={[0.035, 14, 12]} />
+        <RimMat kind="limb" baseColor={baseColor} />
       </mesh>
     </group>
   )
@@ -267,7 +323,6 @@ function MannequinFigure({
   const showShoes = Boolean(activeLayers.Shoes && shoes)
   const showOuter = Boolean(activeLayers.Outerwear && outer)
 
-  // Garment tint → uBaseColor override; undefined = default limbMat/jointMat
   const torsoTint = showOuter
     ? outer!.color
     : showTop
@@ -280,138 +335,189 @@ function MannequinFigure({
 
   const ls = fit.limb
 
-  return (
-    <group position={[0, 0.13, 0]}>
-      {/* —— HEAD: elongated oval (limbMat) —— */}
-      <Ball
-        position={[0, 1.58, 0.01]}
-        radius={0.105}
-        kind="limb"
-        scale={[0.9, 1.35, 0.92]}
-      />
+  const bodyRadius = useMemo(
+    () => (t: number) => {
+      const pts: [number, number][] = [
+        [0.0, 0.115],
+        [0.14, 0.092],
+        [0.32, 0.12],
+        [0.5, 0.155],
+        [0.68, 0.178],
+        [0.82, 0.2],
+        [0.92, 0.12],
+        [1.0, 0.05],
+      ]
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [t0, r0] = pts[i]
+        const [t1, r1] = pts[i + 1]
+        if (t >= t0 && t <= t1) {
+          const u = (t - t0) / (t1 - t0)
+          const s = u * u * (3 - 2 * u)
+          return r0 + (r1 - r0) * s
+        }
+      }
+      return pts[pts.length - 1][1]
+    },
+    [],
+  )
 
-      {/* —— NECK: short thick —— */}
-      <mesh position={[0, 1.405, 0]} castShadow>
-        <capsuleGeometry args={[0.05, 0.07, 6, 16]} />
-        <SynappMat kind="limb" />
+  const pelvisRadius = useMemo(
+    () => (t: number) => {
+      const pts: [number, number][] = [
+        [0, 0.07],
+        [0.35, 0.13],
+        [0.7, 0.135],
+        [1, 0.112],
+      ]
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [t0, r0] = pts[i]
+        const [t1, r1] = pts[i + 1]
+        if (t >= t0 && t <= t1) {
+          const u = (t - t0) / (t1 - t0)
+          const s = u * u * (3 - 2 * u)
+          return r0 + (r1 - r0) * s
+        }
+      }
+      return 0.11
+    },
+    [],
+  )
+
+  const neckRadius = useMemo(
+    () => (t: number) => 0.038 + 0.01 * Math.sin(t * Math.PI),
+    [],
+  )
+
+  const outerRadius = useMemo(
+    () => (t: number) => bodyRadius(t) * 1.1 + 0.012,
+    [bodyRadius],
+  )
+
+  return (
+    <group position={[0, 0.14, 0]}>
+      {/* Head — elongated oval */}
+      <mesh position={[0, 1.58, 0.01]} scale={[0.88, 1.32, 0.9]} castShadow>
+        <sphereGeometry args={[0.1, 40, 32]} />
+        <RimMat kind="limb" />
       </mesh>
 
-      {/* —— TORSO —— */}
-      <group scale={[fit.torsoX, 1, fit.torsoZ * 0.82]}>
-        <Ball
-          position={[-0.07, 1.24, 0.055]}
-          radius={0.095}
-          kind="limb"
+      <LathePart
+        height={0.11}
+        radiusAt={neckRadius}
+        position={[0, 1.42, 0]}
+        segments={24}
+      />
+
+      {/* Continuous V-torso */}
+      <group scale={[fit.torsoX, 1, fit.torsoZ * 0.78]}>
+        <LathePart
+          height={0.62}
+          radiusAt={bodyRadius}
+          position={[0, 1.05, 0]}
           baseColor={torsoTint}
-          scale={[1.05, 0.85, 0.75]}
+          segments={48}
         />
-        <Ball
-          position={[0.07, 1.24, 0.055]}
-          radius={0.095}
-          kind="limb"
-          baseColor={torsoTint}
-          scale={[1.05, 0.85, 0.75]}
-        />
-        <Ball
-          position={[0, 1.26, -0.01]}
-          radius={0.12}
-          kind="limb"
-          baseColor={torsoTint}
-          scale={[1.35, 0.75, 0.7]}
-        />
-        <mesh position={[0, 1.08, 0]} castShadow receiveShadow>
-          <capsuleGeometry args={[0.125, 0.16, 8, 20]} />
-          <SynappMat kind="limb" baseColor={torsoTint} />
-        </mesh>
-        <mesh position={[0, 0.86, 0]} castShadow receiveShadow>
-          <capsuleGeometry args={[0.092, 0.12, 8, 18]} />
-          <SynappMat kind="limb" baseColor={torsoTint} />
+        <mesh position={[0, 1.18, 0.04]} scale={[1.05, 0.75, 0.55]} castShadow>
+          <sphereGeometry args={[0.12, 24, 18]} />
+          <RimMat kind="limb" baseColor={torsoTint} />
         </mesh>
       </group>
 
       {showOuter && (
-        <group scale={[fit.torsoX * 1.12, 1.03, fit.torsoZ * 0.95]}>
-          <mesh position={[0, 1.1, 0]} castShadow>
-            <capsuleGeometry args={[0.17, 0.32, 8, 22]} />
-            <SynappMat kind="limb" baseColor={outer!.color} opacity={0.92} />
-          </mesh>
+        <group scale={[fit.torsoX * 1.1, 1.02, fit.torsoZ * 0.88]}>
+          <LathePart
+            height={0.68}
+            radiusAt={outerRadius}
+            position={[0, 1.02, 0]}
+            baseColor={outer!.color}
+            opacity={0.9}
+            segments={40}
+          />
         </group>
       )}
 
-      <group scale={[fit.hipX, 1, fit.hipZ * 0.9]}>
-        <Ball
-          position={[0, 0.72, 0]}
-          radius={0.125}
-          kind="limb"
+      {/* Pelvis — slightly joint-toned when unclothed for depth */}
+      <group scale={[fit.hipX * 1.08, 1, fit.hipZ * 0.92]}>
+        <LathePart
+          height={0.22}
+          radiusAt={pelvisRadius}
+          position={[0, 0.7, 0]}
+          kind={pelvisTint ? "limb" : "joint"}
           baseColor={pelvisTint}
-          scale={[1.25, 0.78, 1]}
+          segments={36}
         />
       </group>
 
-      {/* —— ARMS —— */}
+      {/* Arms — continuous lathe, A-pose */}
       {([-1, 1] as const).map((side) => {
         const sh: [number, number, number] = [
-          side * 0.22 * fit.torsoX,
-          1.3,
+          side * 0.16 * fit.torsoX,
+          1.28,
           0.02,
         ]
-        const el: [number, number, number] = [side * 0.4 * ls, 0.98, 0.04]
-        const wr: [number, number, number] = [side * 0.48 * ls, 0.66, 0.05]
-        const hd: [number, number, number] = [side * 0.5 * ls, 0.55, 0.06]
+        const el: [number, number, number] = [side * 0.38 * ls, 0.96, 0.04]
+        const wr: [number, number, number] = [side * 0.46 * ls, 0.64, 0.05]
+        const hd: [number, number, number] = [side * 0.48 * ls, 0.54, 0.06]
         return (
           <group key={`arm-${side}`}>
-            <Ball position={sh} radius={0.058 * ls} kind="joint" />
-            <CapsuleBetween
+            <Limb
               from={sh}
               to={el}
-              radius={0.042 * ls}
-              color={sleeveTint}
+              r0={0.052 * ls}
+              r1={0.04 * ls}
+              r2={0.032 * ls}
+              baseColor={sleeveTint}
             />
-            <Ball position={el} radius={0.04 * ls} kind="joint" />
-            <CapsuleBetween from={el} to={wr} radius={0.034 * ls} />
-            <Ball position={wr} radius={0.032 * ls} kind="joint" />
-            <Mitten position={hd} side={side} s={ls} />
+            <Limb
+              from={el}
+              to={wr}
+              r0={0.032 * ls}
+              r1={0.029 * ls}
+              r2={0.024 * ls}
+            />
+            <Hand position={hd} side={side} s={ls} />
           </group>
         )
       })}
 
-      {/* —— LEGS —— */}
+      {/* Legs — continuous lathe */}
       {([-1, 1] as const).map((side) => {
         const hip: [number, number, number] = [
-          side * 0.09 * fit.hipX,
-          0.64,
+          side * 0.07 * fit.hipX,
+          0.66,
           0,
         ]
         const knee: [number, number, number] = [
-          side * 0.095 * fit.hipX,
-          0.3,
+          side * 0.085 * fit.hipX,
+          0.28,
           0.01,
         ]
         const ankle: [number, number, number] = [
-          side * 0.09 * fit.hipX,
-          -0.04,
+          side * 0.08 * fit.hipX,
+          -0.05,
           0.015,
         ]
         return (
           <group key={`leg-${side}`}>
-            <Ball position={hip} radius={0.06 * ls} kind="joint" />
-            <CapsuleBetween
+            <Limb
               from={hip}
               to={knee}
-              radius={0.058 * ls}
-              color={legTint}
+              r0={0.07 * ls}
+              r1={0.058 * ls}
+              r2={0.044 * ls}
+              baseColor={legTint}
             />
-            <Ball position={knee} radius={0.045 * ls} kind="joint" />
-            <CapsuleBetween
+            <Limb
               from={knee}
               to={ankle}
-              radius={0.042 * ls}
-              color={legTint}
+              r0={0.044 * ls}
+              r1={0.038 * ls}
+              r2={0.028 * ls}
+              baseColor={legTint}
             />
-            <Ball position={ankle} radius={0.035 * ls} kind="joint" />
-            <RoundedFoot
-              position={[side * 0.09 * fit.hipX, -0.12, 0.02]}
-              color={shoeTint}
+            <Foot
+              position={[side * 0.08 * fit.hipX, -0.13, 0.025]}
+              baseColor={shoeTint}
             />
           </group>
         )
@@ -445,7 +551,6 @@ function SceneContent(props: {
       <color attach="background" args={[STUDIO]} />
       <fog attach="fog" args={[STUDIO, 9, 18]} />
 
-      {/* Soft diffuse Synapp studio */}
       <ambientLight intensity={0.55} />
       <hemisphereLight args={["#ffffff", "#c8c4d6", 0.4]} />
       <directionalLight
@@ -461,7 +566,6 @@ function SceneContent(props: {
         shadow-camera-bottom={-2}
         shadow-bias={-0.00015}
       />
-      {/* User-specified fill for rim shader scene */}
       <pointLight position={[-2, 4, 3]} intensity={0.6} color="#ddd8f8" />
       <directionalLight position={[0, 3, -2.5]} intensity={0.25} />
 
