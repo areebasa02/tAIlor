@@ -2,18 +2,21 @@ import { useState } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
 import type { PersonaId } from "../types"
 import { getContrastTextColor } from "../types"
+import OnboardingQuiz from "../components/OnboardingQuiz"
 
 export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const {
     user,
     switchUser,
     updateAccessibility,
+    applyQuizResult,
     logout,
     wardrobe,
     recentLooks,
     showToast,
   } = useApp()
   const [confirmLogout, setConfirmLogout] = useState(false)
+  const [quizOpen, setQuizOpen] = useState(false)
 
   const cleanItems = wardrobe.filter((i) => i.status !== "dirty").length
   const dirtyItems = wardrobe.filter((i) => i.status === "dirty").length
@@ -27,8 +30,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           onClick={onBack}
-          className="text-xs font-bold hover:underline flex items-center gap-1"
-          style={{ color: "var(--sky)" }}
+          className="text-xs font-bold hover:underline flex items-center gap-1 text-turquoise transition-colors"
         >
           ← Back to Today
         </button>
@@ -36,7 +38,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           onClick={() => setConfirmLogout(true)}
-          className="text-xs font-bold px-3 py-1.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+          className="text-xs font-bold px-3 py-1.5 rounded-xl border border-red/30 text-red hover:bg-red/10 transition-colors"
         >
           Sign Out
         </button>
@@ -47,37 +49,47 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
         {/* Left Column on Desktop: User Hero, Persona Switcher & Closet Analytics */}
         <div className="lg:col-span-5 space-y-4">
           {/* User Hero */}
-          <div className="flex items-center gap-4 p-4 rounded-3xl border shadow-sm" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-lg shrink-0"
-              style={{
-                background: user.avatarBg,
-                color: getContrastTextColor(user.avatarBg),
-              }}
-            >
-              {user.initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2
-                className="text-xl font-bold text-white truncate"
-                style={{ fontFamily: "Nunito, sans-serif" }}
+          <div
+            className="flex flex-col p-4 rounded-3xl border shadow-sm bg-card border-border"
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-lg shrink-0 border border-white/20"
+                style={{
+                  background: user.avatarBg,
+                  color: getContrastTextColor(user.avatarBg),
+                }}
               >
-                {user.name}
-              </h2>
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-sky-400">
-                {user.roleTitle}
-              </span>
+                {user.initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2
+                  className="text-xl font-bold text-white truncate"
+                  style={{ fontFamily: "Nunito, sans-serif" }}
+                >
+                  {user.name}
+                </h2>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-turquoise">
+                  {user.roleTitle}
+                </span>
+              </div>
             </div>
+
+            {/* Retake Style Quiz Button */}
+            <button
+              type="button"
+              onClick={() => setQuizOpen(true)}
+              className="w-full py-2.5 px-3 rounded-2xl border border-turquoise/30 text-turquoise text-xs font-bold hover:bg-turquoise/10 transition-colors flex items-center justify-center gap-2 mt-3"
+            >
+              <span>✦</span> Retake Onboarding Style Quiz
+            </button>
           </div>
 
           {/* Persona Switcher - Crucial for Presentation / HCI Testing */}
-          <div
-            className="rounded-3xl p-4 space-y-3 border shadow-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-4 space-y-3 border shadow-sm bg-card border-border">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
                 ⚡ Switch Active HCI Persona
               </span>
               <span className="text-[9px] text-muted-foreground">
@@ -93,14 +105,14 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                     key={p.id}
                     type="button"
                     onClick={() => switchUser(p.id)}
-                    className="p-2 rounded-2xl border text-left flex items-center gap-2 transition-all hover:scale-[1.02]"
-                    style={{
-                      background: active ? "rgba(212,0,103,0.15)" : "var(--muted)",
-                      borderColor: active ? "var(--magenta)" : "var(--border)",
-                    }}
+                    className={`p-2 rounded-2xl border text-left flex items-center gap-2 transition-all hover:scale-[1.02] ${
+                      active
+                        ? "bg-pink/15 border-pink shadow-md shadow-pink/20"
+                        : "bg-muted border-border hover:border-turquoise/40"
+                    }`}
                   >
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border border-white/20"
                       style={{
                         background: p.avatarBg,
                         color: getContrastTextColor(p.avatarBg),
@@ -122,11 +134,8 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
-          {/* Wardrobe & Sustainability Analytics (Proposal Item 3) */}
-          <div
-            className="rounded-3xl p-4 space-y-3 border shadow-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          {/* Wardrobe & Sustainability Analytics */}
+          <div className="rounded-3xl p-4 space-y-3 border shadow-sm bg-card border-border">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
               Closet & Wear Analytics
             </span>
@@ -137,15 +146,15 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                 <p className="text-[9px] text-muted-foreground">Total Pieces</p>
               </div>
               <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-green-400">{cleanItems}</p>
+                <p className="text-lg font-bold text-green">{cleanItems}</p>
                 <p className="text-[9px] text-muted-foreground">Clean & Ready</p>
               </div>
               <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-pink-400">{dirtyItems}</p>
+                <p className="text-lg font-bold text-rose">{dirtyItems}</p>
                 <p className="text-[9px] text-muted-foreground">In Laundry</p>
               </div>
               <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-yellow-400">{favItems}</p>
+                <p className="text-lg font-bold text-gold">{favItems}</p>
                 <p className="text-[9px] text-muted-foreground">Favorites ♥</p>
               </div>
             </div>
@@ -166,11 +175,8 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
         {/* Right Column on Desktop: Accessibility Settings & Profile Details */}
         <div className="lg:col-span-7 space-y-4">
           {/* Accessibility & Sensory Toggles */}
-          <div
-            className="rounded-3xl p-4 sm:p-5 space-y-3 border shadow-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">
+          <div className="rounded-3xl p-4 sm:p-5 space-y-3 border shadow-sm bg-card border-border">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise block">
               Accessibility & Neurodivergent Settings
             </span>
 
@@ -193,12 +199,11 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                       !user.accessibility.highContrastColors,
                     )
                   }
-                  className="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0"
-                  style={{
-                    background: user.accessibility.highContrastColors
-                      ? "var(--sky)"
-                      : "var(--muted)",
-                  }}
+                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
+                    user.accessibility.highContrastColors
+                      ? "bg-turquoise"
+                      : "bg-muted"
+                  }`}
                 >
                   <div
                     className={`w-5 h-5 rounded-full bg-white transition-transform ${
@@ -226,12 +231,11 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                       !user.accessibility.lowDecisionMode,
                     )
                   }
-                  className="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0"
-                  style={{
-                    background: user.accessibility.lowDecisionMode
-                      ? "var(--magenta)"
-                      : "var(--muted)",
-                  }}
+                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
+                    user.accessibility.lowDecisionMode
+                      ? "bg-pink"
+                      : "bg-muted"
+                  }`}
                 >
                   <div
                     className={`w-5 h-5 rounded-full bg-white transition-transform ${
@@ -261,12 +265,11 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                       !user.accessibility.sensorySensitive,
                     )
                   }
-                  className="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0"
-                  style={{
-                    background: user.accessibility.sensorySensitive
-                      ? "var(--green)"
-                      : "var(--muted)",
-                  }}
+                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
+                    user.accessibility.sensorySensitive
+                      ? "bg-green"
+                      : "bg-muted"
+                  }`}
                 >
                   <div
                     className={`w-5 h-5 rounded-full bg-white transition-transform ${
@@ -281,10 +284,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* Profile Details List */}
-          <div
-            className="rounded-3xl overflow-hidden border shadow-sm"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl overflow-hidden border shadow-sm bg-card border-border">
             {[
               ["Preferred style", user.preferredStyle],
               ["Typical sizes", user.typicalSizes],
@@ -305,15 +305,8 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* AI Personalization Notice */}
-          <div
-            className="rounded-3xl p-4 border leading-relaxed"
-            style={{
-              background: "rgba(114,212,240,0.06)",
-              borderColor: "rgba(114,212,240,0.2)",
-              color: "var(--muted-foreground)",
-            }}
-          >
-            <p className="text-xs font-bold text-sky-400">
+          <div className="rounded-3xl p-4 border leading-relaxed bg-turquoise/5 border-turquoise/20 text-muted-foreground">
+            <p className="text-xs font-bold text-turquoise">
               About tAIlor AI Personalization
             </p>
             <p className="text-[11px] mt-1 leading-relaxed">
@@ -327,10 +320,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
       {/* Confirm Logout Dialog */}
       {confirmLogout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div
-            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
+          <div className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border bg-card border-border">
             <h3 className="text-base font-bold text-white">
               Sign Out of tAIlor?
             </h3>
@@ -342,8 +332,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
               <button
                 type="button"
                 onClick={() => setConfirmLogout(false)}
-                className="py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white"
-                style={{ background: "var(--muted)" }}
+                className="py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white bg-muted transition-colors"
               >
                 Cancel
               </button>
@@ -353,14 +342,24 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                   setConfirmLogout(false)
                   logout()
                 }}
-                className="py-2.5 rounded-xl text-xs font-bold text-white"
-                style={{ background: "var(--magenta)" }}
+                className="py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 shadow-md shadow-pink/20 transition-all"
               >
                 Confirm Sign Out
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Onboarding Style Quiz Retake Modal */}
+      {quizOpen && (
+        <OnboardingQuiz
+          onCancel={() => setQuizOpen(false)}
+          onComplete={(result) => {
+            setQuizOpen(false)
+            if (result) applyQuizResult(result)
+          }}
+        />
       )}
     </div>
   )

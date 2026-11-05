@@ -1,5 +1,54 @@
 export type PersonaId = "eliora" | "ethan" | "jordan" | "josephine" | "areeba"
 
+export interface ColorStats {
+  palette: string
+  swatches: string[]
+  mean_L: number
+  L_range: number
+  mean_chroma: number
+  mean_b: number
+  range_label: "wide" | "medium" | "narrow"
+  temperature: "near-neutral" | "warm-leaning" | "cool-leaning" | "balanced"
+}
+
+export interface DerivedProfile {
+  color?: ColorStats
+  ui: {
+    color_names: boolean
+    high_contrast_ui: boolean
+  }
+  filters: {
+    soft_fabric: boolean
+    easy_closures: boolean
+    fit_feel?: string
+  }
+  consent: {
+    outfit_history: boolean
+    item_photo_ai: boolean
+    tryon_camera: boolean
+    sizes: boolean
+  }
+  stylist: {
+    context?: string
+    dresscode_help?: string
+    mood_exploratory?: string
+    explain_default?: "none" | "short" | "full" | "tap"
+    confidence_display?: "percent" | "words" | "unsure" | "hide"
+    contrast_pref?: string
+  }
+  wardrobe: {
+    attribute_terms?: string[]
+    item_fields?: string[]
+  }
+}
+
+export interface QuizResult {
+  path: "privacy" | "short" | "long" | "guest"
+  answers: Record<string, any>
+  derived: DerivedProfile
+  seconds_per_question: Record<string, number>
+}
+
 export interface UserProfile {
   id: PersonaId
   name: string
@@ -17,6 +66,7 @@ export interface UserProfile {
     lowDecisionMode: boolean
     voiceNarration: boolean
   }
+  quizProfile?: QuizResult
 }
 
 export type Category = "Tops" | "Bottoms" | "Shoes" | "Outerwear" | "Accessories"
