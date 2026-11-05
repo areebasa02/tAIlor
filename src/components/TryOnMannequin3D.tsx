@@ -150,7 +150,7 @@ function Limb({
   const dy = to[1] - from[1]
   const dz = to[2] - from[2]
   const dist = Math.hypot(dx, dy, dz)
-  const height = dist * 1.12
+  const height = dist * 1.22
   const mid: [number, number, number] = [
     (from[0] + to[0]) / 2,
     (from[1] + to[1]) / 2,
@@ -181,26 +181,6 @@ function Limb({
       color={color}
       segments={40}
     />
-  )
-}
-
-function Blend({
-  position,
-  radius,
-  color,
-  scale,
-}: {
-  position: [number, number, number]
-  radius: number
-  color: string
-  scale?: [number, number, number]
-}) {
-  // Tiny flush blend — same color as neighboring limb, not a visible ball joint
-  return (
-    <mesh position={position} scale={scale ?? [1, 1, 1]} castShadow>
-      <sphereGeometry args={[radius, 24, 20]} />
-      <PearlMaterial color={color} />
-    </mesh>
   )
 }
 
@@ -306,14 +286,14 @@ function MannequinFigure({
     () => (t: number) => {
       // t=0 bottom of abdomen, t=1 top at neck base
       const pts: [number, number][] = [
-        [0.0, 0.118], // into pelvis
-        [0.12, 0.1], // waist
-        [0.28, 0.108],
-        [0.45, 0.145], // lower chest
-        [0.62, 0.168], // chest
-        [0.78, 0.182], // upper chest / deltoid
-        [0.9, 0.155], // shoulder slope
-        [1.0, 0.055], // neck base
+        [0.0, 0.115], // into pelvis
+        [0.14, 0.092], // narrow waist (V-taper)
+        [0.32, 0.12],
+        [0.5, 0.155], // lower chest
+        [0.68, 0.178], // chest
+        [0.82, 0.2], // deltoid / shoulder breadth
+        [0.92, 0.12], // shoulder slope into neck
+        [1.0, 0.05], // neck base
       ]
       for (let i = 0; i < pts.length - 1; i++) {
         const [t0, r0] = pts[i]
@@ -422,104 +402,89 @@ function MannequinFigure({
         />
       </group>
 
-      {/* Arms — A-pose, flush blends */}
+      {/* Arms — A-pose; no ball joints — limbs overshoot into torso/each other */}
       {([-1, 1] as const).map((side) => {
+        // Origin buried inside shoulder mass of torso lathe
         const sh: [number, number, number] = [
-          side * 0.195 * fit.torsoX,
-          1.3,
-          0.01,
+          side * 0.16 * fit.torsoX,
+          1.28,
+          0.02,
         ]
         const el: [number, number, number] = [
-          side * 0.4 * ls,
-          0.98,
+          side * 0.38 * ls,
+          0.96,
           0.04,
         ]
         const wr: [number, number, number] = [
-          side * 0.48 * ls,
-          0.66,
+          side * 0.46 * ls,
+          0.64,
           0.05,
         ]
         const hd: [number, number, number] = [
-          side * 0.5 * ls,
-          0.56,
+          side * 0.48 * ls,
+          0.54,
           0.06,
         ]
         return (
           <group key={`arm-${side}`}>
-            <Blend
-              position={sh}
-              radius={0.048 * ls}
-              color={sleeveColor}
-              scale={[1.15, 0.95, 1.05]}
-            />
             <Limb
               from={sh}
               to={el}
-              r0={0.048 * ls}
-              r1={0.042 * ls}
-              r2={0.034 * ls}
+              r0={0.052 * ls}
+              r1={0.04 * ls}
+              r2={0.032 * ls}
               color={sleeveColor}
             />
-            <Blend position={el} radius={0.032 * ls} color={sleeveColor} />
             <Limb
               from={el}
               to={wr}
-              r0={0.033 * ls}
-              r1={0.03 * ls}
-              r2={0.025 * ls}
+              r0={0.032 * ls}
+              r1={0.029 * ls}
+              r2={0.024 * ls}
               color={PEARL}
             />
-            <Blend position={wr} radius={0.024 * ls} color={PEARL} />
             <Hand position={hd} side={side} s={ls} color={PEARL} />
           </group>
         )
       })}
 
-      {/* Legs */}
+      {/* Legs — continuous overshoot at hip/knee/ankle, no joint spheres */}
       {([-1, 1] as const).map((side) => {
         const hip: [number, number, number] = [
-          side * 0.085 * fit.hipX,
-          0.64,
+          side * 0.07 * fit.hipX,
+          0.66,
           0,
         ]
         const knee: [number, number, number] = [
-          side * 0.09 * fit.hipX,
-          0.3,
+          side * 0.085 * fit.hipX,
+          0.28,
           0.01,
         ]
         const ankle: [number, number, number] = [
-          side * 0.085 * fit.hipX,
-          -0.04,
+          side * 0.08 * fit.hipX,
+          -0.05,
           0.015,
         ]
         return (
           <group key={`leg-${side}`}>
-            <Blend
-              position={hip}
-              radius={0.055 * ls}
-              color={legColor}
-              scale={[1.1, 0.95, 1.05]}
-            />
             <Limb
               from={hip}
               to={knee}
-              r0={0.068 * ls}
-              r1={0.06 * ls}
-              r2={0.045 * ls}
+              r0={0.07 * ls}
+              r1={0.058 * ls}
+              r2={0.044 * ls}
               color={legColor}
             />
-            <Blend position={knee} radius={0.04 * ls} color={legColor} />
             <Limb
               from={knee}
               to={ankle}
-              r0={0.042 * ls}
+              r0={0.044 * ls}
               r1={0.038 * ls}
               r2={0.028 * ls}
               color={legColor}
             />
-            <Blend position={ankle} radius={0.026 * ls} color={shoeColor} />
             <Foot
-              position={[side * 0.085 * fit.hipX, -0.12, 0.025]}
+              position={[side * 0.08 * fit.hipX, -0.13, 0.025]}
               color={shoeColor}
             />
           </group>
