@@ -85,8 +85,8 @@ function CapsuleBetween({
   const dy = to[1] - from[1]
   const dz = to[2] - from[2]
   const dist = Math.hypot(dx, dy, dz)
-  // Length = joint gap minus ball radii overlap — ends nest into spheres
-  const length = Math.max(0.02, dist - radius * 0.35)
+  // Overshoot into ball joints so ends nest snug (Synapp AO gaps, not floating)
+  const length = Math.max(0.02, dist + radius * 0.55)
   const mid: [number, number, number] = [
     (from[0] + to[0]) / 2,
     (from[1] + to[1]) / 2,
@@ -214,9 +214,9 @@ function MannequinFigure({
       {/* —— HEAD: elongated oval —— */}
       <Ball position={[0, 1.58, 0.01]} radius={0.105} scale={[0.9, 1.35, 0.92]} />
 
-      {/* —— NECK: short thick cylinder/capsule —— */}
-      <mesh position={[0, 1.42, 0]} castShadow>
-        <capsuleGeometry args={[0.048, 0.055, 6, 16]} />
+      {/* —— NECK: short thick — nests into head & chest —— */}
+      <mesh position={[0, 1.405, 0]} castShadow>
+        <capsuleGeometry args={[0.05, 0.07, 6, 16]} />
         <Pearl />
       </mesh>
 
@@ -242,14 +242,14 @@ function MannequinFigure({
           color={torsoC}
           scale={[1.35, 0.75, 0.7]}
         />
-        {/* Mid torso / ribcage tapering down */}
-        <mesh position={[0, 1.05, 0]} castShadow receiveShadow>
-          <capsuleGeometry args={[0.13, 0.14, 8, 20]} />
+        {/* Mid torso / ribcage — overlaps pecs above & waist below */}
+        <mesh position={[0, 1.08, 0]} castShadow receiveShadow>
+          <capsuleGeometry args={[0.125, 0.16, 8, 20]} />
           <Pearl color={torsoC} />
         </mesh>
-        {/* Waist — narrow V-taper */}
-        <mesh position={[0, 0.88, 0]} castShadow receiveShadow>
-          <capsuleGeometry args={[0.095, 0.1, 8, 18]} />
+        {/* Waist — narrow V-taper, nests into pelvis */}
+        <mesh position={[0, 0.86, 0]} castShadow receiveShadow>
+          <capsuleGeometry args={[0.092, 0.12, 8, 18]} />
           <Pearl color={torsoC} />
         </mesh>
       </group>
@@ -264,13 +264,13 @@ function MannequinFigure({
         </group>
       )}
 
-      {/* —— PELVIS —— */}
+      {/* —— PELVIS — snug under waist —— */}
       <group scale={[fit.hipX, 1, fit.hipZ * 0.9]}>
         <Ball
-          position={[0, 0.7, 0]}
-          radius={0.13}
+          position={[0, 0.72, 0]}
+          radius={0.125}
           color={pelvisC}
-          scale={[1.2, 0.75, 1]}
+          scale={[1.25, 0.78, 1]}
         />
       </group>
 
