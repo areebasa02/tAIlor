@@ -1,8 +1,7 @@
 /**
  * Synapp-exact anatomical doll mannequin.
- * CapsuleGeometry limbs + SphereGeometry ball joints, dual pec masses,
- * elongated oval head, pearl MeshPhysicalMaterial.
- * Garment layers tint clothing segments; body shape stays independent.
+ * CapsuleGeometry limbs + SphereGeometry ball joints with custom rim ShaderMaterial.
+ * Garment layers tint clothing segments via uBaseColor; body shape stays independent.
  */
 import {
   Suspense,
@@ -32,8 +31,12 @@ export interface TryOnMannequin3DProps {
   className?: string
 }
 
-const PEARL = "#f5f3f0"
 const STUDIO = "#e8e6ee"
+const LIMB_BASE = "#f0eef8"
+const LIMB_RIM = "#c8bfe8"
+const JOINT_BASE = "#e2dcf5"
+const JOINT_RIM = "#b8aee0"
+const LIGHT_DIR = new THREE.Vector3(-0.6, 1, 0.8).normalize()
 
 const FIT: Record<
   FitStyle,
@@ -48,23 +51,88 @@ function findItem(items: MannequinGarment[], type: string) {
   return items.find((i) => i.type === type)
 }
 
-function Pearl({ color = PEARL, opacity = 1 }: { color?: string; opacity?: number }) {
-  return (
-    <meshPhysicalMaterial
-      color={color}
-      roughness={0.22}
-      metalness={0.02}
-      clearcoat={0.7}
-      clearcoatRoughness={0.18}
-      sheen={0.25}
-      sheenColor="#ffffff"
-      sheenRoughness={0.35}
-      reflectivity={0.55}
-      envMapIntensity={0.45}
-      transparent={opacity < 1}
-      opacity={opacity}
-    />
+const MANNEQUIN_VERT = /* glsl */ `
+varying vec3 vNormal;
+varying vec3 vViewDir;
+
+void main() {
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vNormal = normalize(mat3(modelMatrix) * normal);
+  vViewDir = normalize(cameraPosition - worldPos.xyz);
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
+}
+`
+
+const MANNEQUIN_FRAG = /* glsl */ `
+uniform vec3 uBaseColor;
+uniform vec3 uRimColor;
+uniform vec3 uLightDir;
+uniform float uRimPower;
+uniform float uOpacity;
+
+varying vec3 vNormal;
+varying vec3 vViewDir;
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(uLightDir);
+  vec3 V = normalize(vViewDir);
+
+  // Soft diffuse ramp (half-lambert)
+  float ndl = dot(N, L) * 0.5 + 0.5;
+  vec3 diffuse = uBaseColor * mix(0.55, 1.0, ndl);
+
+  // Fresnel rim
+  float rim = pow(1.0 - max(dot(N, V), 0.0), uRimPower);
+  vec3 color = diffuse + uRimColor * rim;
+
+  gl_FragColor = vec4(color, uOpacity);
+}
+`
+
+type MatKind = "limb" | "joint"
+
+function createRimMaterial(
+  kind: MatKind,
+  baseOverride?: string,
+  opacity = 1,
+): THREE.ShaderMaterial {
+  const isJoint = kind === "joint"
+  const base = new THREE.Color(
+    baseOverride ?? (isJoint ? JOINT_BASE : LIMB_BASE),
   )
+  const rim = new THREE.Color(isJoint ? JOINT_RIM : LIMB_RIM)
+  return new THREE.ShaderMaterial({
+    vertexShader: MANNEQUIN_VERT,
+    fragmentShader: MANNEQUIN_FRAG,
+    uniforms: {
+      uBaseColor: { value: base },
+      uRimColor: { value: rim },
+      uLightDir: { value: LIGHT_DIR.clone() },
+      uRimPower: { value: isJoint ? 2.0 : 2.5 },
+      uOpacity: { value: opacity },
+    },
+    transparent: opacity < 1,
+  })
+}
+
+/** limbMat / jointMat / garment-tint (same shader, uBaseColor override) */
+function SynappMat({
+  kind = "limb",
+  baseColor,
+  opacity = 1,
+}: {
+  kind?: MatKind
+  /** When set (garment tint), overrides uBaseColor; rim stays lavender */
+  baseColor?: string
+  opacity?: number
+}) {
+  const mat = useMemo(
+    () => createRimMaterial(kind, baseColor, opacity),
+    [kind, baseColor, opacity],
+  )
+  useEffect(() => () => mat.dispose(), [mat])
+  return <primitive object={mat} attach="material" />
 }
 
 /** High-segment capsule between two points (Synapp limb) */
@@ -78,7 +146,8 @@ function CapsuleBetween({
   from: [number, number, number]
   to: [number, number, number]
   radius: number
-  color: string
+  /** Garment tint for uBaseColor; omit for default limbMat */
+  color?: string
   radial?: number
 }) {
   const dx = to[0] - from[0]
@@ -102,7 +171,7 @@ function CapsuleBetween({
   return (
     <mesh position={mid} rotation={[e.x, e.y, e.z]} castShadow receiveShadow>
       <capsuleGeometry args={[radius, length, 8, radial]} />
-      <Pearl color={color} />
+      <SynappMat kind="limb" baseColor={color} />
     </mesh>
   )
 }
@@ -110,18 +179,21 @@ function CapsuleBetween({
 function Ball({
   position,
   radius,
-  color = PEARL,
+  kind = "joint",
+  baseColor,
   scale,
 }: {
   position: [number, number, number]
   radius: number
-  color?: string
+  kind?: MatKind
+  /** Garment tint for torso/pelvis volumes; omit for default joint/limb */
+  baseColor?: string
   scale?: [number, number, number]
 }) {
   return (
     <mesh position={position} scale={scale} castShadow receiveShadow>
       <sphereGeometry args={[radius, 28, 24]} />
-      <Pearl color={color} />
+      <SynappMat kind={kind} baseColor={baseColor} />
     </mesh>
   )
 }
@@ -130,19 +202,16 @@ function Mitten({
   position,
   side,
   s = 1,
-  color,
 }: {
   position: [number, number, number]
   side: 1 | -1
   s?: number
-  color: string
 }) {
   return (
     <group position={position} scale={s}>
-      {/* Palm mitt — short rounded capsule, no fingers */}
       <mesh castShadow position={[0, -0.02, 0.01]} rotation={[0.15, 0, 0]}>
         <capsuleGeometry args={[0.028, 0.035, 6, 14]} />
-        <Pearl color={color} />
+        <SynappMat kind="limb" />
       </mesh>
       <mesh
         castShadow
@@ -150,7 +219,7 @@ function Mitten({
         rotation={[0.2, 0, side * 0.6]}
       >
         <capsuleGeometry args={[0.012, 0.018, 4, 10]} />
-        <Pearl color={color} />
+        <SynappMat kind="limb" />
       </mesh>
     </group>
   )
@@ -161,17 +230,18 @@ function RoundedFoot({
   color,
 }: {
   position: [number, number, number]
-  color: string
+  color?: string
 }) {
+  const tint = color && color !== LIMB_BASE ? color : undefined
   return (
     <group position={position}>
       <mesh castShadow receiveShadow position={[0, 0.02, 0.045]} scale={[0.9, 0.55, 1.35]}>
         <sphereGeometry args={[0.045, 20, 16]} />
-        <Pearl color={color} />
+        <SynappMat kind="limb" baseColor={tint} />
       </mesh>
       <mesh castShadow position={[0, 0.025, -0.02]} scale={[0.85, 0.7, 0.9]}>
         <sphereGeometry args={[0.032, 16, 14]} />
-        <Pearl color={color} />
+        <SynappMat kind="limb" baseColor={tint} />
       </mesh>
     </group>
   )
@@ -197,84 +267,88 @@ function MannequinFigure({
   const showShoes = Boolean(activeLayers.Shoes && shoes)
   const showOuter = Boolean(activeLayers.Outerwear && outer)
 
-  // Base mannequin always pearl; garments tint clothing segments
-  const torsoC = showOuter ? outer!.color : showTop ? top!.color : PEARL
-  const sleeveC = showOuter ? outer!.color : showTop ? top!.color : PEARL
-  const legC = showBottom ? bottom!.color : PEARL
-  const shoeC = showShoes ? shoes!.color : PEARL
-  const pelvisC = showBottom ? bottom!.color : PEARL
+  // Garment tint → uBaseColor override; undefined = default limbMat/jointMat
+  const torsoTint = showOuter
+    ? outer!.color
+    : showTop
+      ? top!.color
+      : undefined
+  const sleeveTint = torsoTint
+  const legTint = showBottom ? bottom!.color : undefined
+  const shoeTint = showShoes ? shoes!.color : undefined
+  const pelvisTint = showBottom ? bottom!.color : undefined
 
   const ls = fit.limb
 
-  // ~8-heads fashion proportions (head unit ≈ 0.21)
-  // Joints always pearl (Synapp doll look); clothing colors on limb/torso volumes
-
   return (
     <group position={[0, 0.13, 0]}>
-      {/* —— HEAD: elongated oval —— */}
-      <Ball position={[0, 1.58, 0.01]} radius={0.105} scale={[0.9, 1.35, 0.92]} />
+      {/* —— HEAD: elongated oval (limbMat) —— */}
+      <Ball
+        position={[0, 1.58, 0.01]}
+        radius={0.105}
+        kind="limb"
+        scale={[0.9, 1.35, 0.92]}
+      />
 
-      {/* —— NECK: short thick — nests into head & chest —— */}
+      {/* —— NECK: short thick —— */}
       <mesh position={[0, 1.405, 0]} castShadow>
         <capsuleGeometry args={[0.05, 0.07, 6, 16]} />
-        <Pearl />
+        <SynappMat kind="limb" />
       </mesh>
 
       {/* —— TORSO —— */}
       <group scale={[fit.torsoX, 1, fit.torsoZ * 0.82]}>
-        {/* Dual rounded pec masses */}
         <Ball
           position={[-0.07, 1.24, 0.055]}
           radius={0.095}
-          color={torsoC}
+          kind="limb"
+          baseColor={torsoTint}
           scale={[1.05, 0.85, 0.75]}
         />
         <Ball
           position={[0.07, 1.24, 0.055]}
           radius={0.095}
-          color={torsoC}
+          kind="limb"
+          baseColor={torsoTint}
           scale={[1.05, 0.85, 0.75]}
         />
-        {/* Upper chest bridge behind pecs */}
         <Ball
           position={[0, 1.26, -0.01]}
           radius={0.12}
-          color={torsoC}
+          kind="limb"
+          baseColor={torsoTint}
           scale={[1.35, 0.75, 0.7]}
         />
-        {/* Mid torso / ribcage — overlaps pecs above & waist below */}
         <mesh position={[0, 1.08, 0]} castShadow receiveShadow>
           <capsuleGeometry args={[0.125, 0.16, 8, 20]} />
-          <Pearl color={torsoC} />
+          <SynappMat kind="limb" baseColor={torsoTint} />
         </mesh>
-        {/* Waist — narrow V-taper, nests into pelvis */}
         <mesh position={[0, 0.86, 0]} castShadow receiveShadow>
           <capsuleGeometry args={[0.092, 0.12, 8, 18]} />
-          <Pearl color={torsoC} />
+          <SynappMat kind="limb" baseColor={torsoTint} />
         </mesh>
       </group>
 
-      {/* Outerwear shell */}
       {showOuter && (
         <group scale={[fit.torsoX * 1.12, 1.03, fit.torsoZ * 0.95]}>
           <mesh position={[0, 1.1, 0]} castShadow>
             <capsuleGeometry args={[0.17, 0.32, 8, 22]} />
-            <Pearl color={outer!.color} opacity={0.92} />
+            <SynappMat kind="limb" baseColor={outer!.color} opacity={0.92} />
           </mesh>
         </group>
       )}
 
-      {/* —— PELVIS — snug under waist —— */}
       <group scale={[fit.hipX, 1, fit.hipZ * 0.9]}>
         <Ball
           position={[0, 0.72, 0]}
           radius={0.125}
-          color={pelvisC}
+          kind="limb"
+          baseColor={pelvisTint}
           scale={[1.25, 0.78, 1]}
         />
       </group>
 
-      {/* —— ARMS (A-pose) —— */}
+      {/* —— ARMS —— */}
       {([-1, 1] as const).map((side) => {
         const sh: [number, number, number] = [
           side * 0.22 * fit.torsoX,
@@ -286,22 +360,17 @@ function MannequinFigure({
         const hd: [number, number, number] = [side * 0.5 * ls, 0.55, 0.06]
         return (
           <group key={`arm-${side}`}>
-            <Ball position={sh} radius={0.058 * ls} color={PEARL} />
+            <Ball position={sh} radius={0.058 * ls} kind="joint" />
             <CapsuleBetween
               from={sh}
               to={el}
               radius={0.042 * ls}
-              color={sleeveC}
+              color={sleeveTint}
             />
-            <Ball position={el} radius={0.04 * ls} color={PEARL} />
-            <CapsuleBetween
-              from={el}
-              to={wr}
-              radius={0.034 * ls}
-              color={PEARL}
-            />
-            <Ball position={wr} radius={0.032 * ls} color={PEARL} />
-            <Mitten position={hd} side={side} s={ls} color={PEARL} />
+            <Ball position={el} radius={0.04 * ls} kind="joint" />
+            <CapsuleBetween from={el} to={wr} radius={0.034 * ls} />
+            <Ball position={wr} radius={0.032 * ls} kind="joint" />
+            <Mitten position={hd} side={side} s={ls} />
           </group>
         )
       })}
@@ -325,24 +394,24 @@ function MannequinFigure({
         ]
         return (
           <group key={`leg-${side}`}>
-            <Ball position={hip} radius={0.06 * ls} color={PEARL} />
+            <Ball position={hip} radius={0.06 * ls} kind="joint" />
             <CapsuleBetween
               from={hip}
               to={knee}
               radius={0.058 * ls}
-              color={legC}
+              color={legTint}
             />
-            <Ball position={knee} radius={0.045 * ls} color={PEARL} />
+            <Ball position={knee} radius={0.045 * ls} kind="joint" />
             <CapsuleBetween
               from={knee}
               to={ankle}
               radius={0.042 * ls}
-              color={legC}
+              color={legTint}
             />
-            <Ball position={ankle} radius={0.035 * ls} color={PEARL} />
+            <Ball position={ankle} radius={0.035 * ls} kind="joint" />
             <RoundedFoot
               position={[side * 0.09 * fit.hipX, -0.12, 0.02]}
-              color={shoeC}
+              color={shoeTint}
             />
           </group>
         )
@@ -377,11 +446,11 @@ function SceneContent(props: {
       <fog attach="fog" args={[STUDIO, 9, 18]} />
 
       {/* Soft diffuse Synapp studio */}
-      <ambientLight intensity={0.7} />
-      <hemisphereLight args={["#ffffff", "#c8c4d6", 0.55]} />
+      <ambientLight intensity={0.55} />
+      <hemisphereLight args={["#ffffff", "#c8c4d6", 0.4]} />
       <directionalLight
         position={[2.4, 5.5, 3]}
-        intensity={0.75}
+        intensity={0.45}
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
@@ -392,10 +461,9 @@ function SceneContent(props: {
         shadow-camera-bottom={-2}
         shadow-bias={-0.00015}
       />
-      <directionalLight position={[-2.5, 2.2, 1.5]} intensity={0.35} color="#efeaf8" />
-      <directionalLight position={[0, 3, -2.5]} intensity={0.3} />
-      {/* Soft fill for AO-like contact between segments */}
-      <pointLight position={[0, 1.2, 1.5]} intensity={0.2} distance={4} />
+      {/* User-specified fill for rim shader scene */}
+      <pointLight position={[-2, 4, 3]} intensity={0.6} color="#ddd8f8" />
+      <directionalLight position={[0, 3, -2.5]} intensity={0.25} />
 
       <Studio />
       <MannequinFigure {...props} />
