@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 import {
   PulseOrb,
   AIErrorBanner,
@@ -6,6 +6,8 @@ import {
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
 import { THEME_COLORS } from "../types/theme"
+
+const TryOnMannequin3D = lazy(() => import("../components/TryOnMannequin3D"))
 
 type Step = "outfit" | "consent" | "processing" | "preview" | "error"
 
@@ -469,124 +471,43 @@ export default function TryOnTab() {
             </div>
 
             <div
-              className="rounded-3xl overflow-hidden relative border border-border shadow-2xl p-6 sm:p-8 flex flex-col items-center justify-center min-h-[400px]"
+              className="rounded-3xl overflow-hidden relative border shadow-2xl min-h-[420px] h-[420px] sm:h-[480px]"
               style={{
-                background:
-                  "radial-gradient(circle at 50% 30%, #1c2236 0%, #0D0F18 100%)",
+                background: "#e4e2ea",
+                borderColor: "var(--border)",
               }}
             >
-              {/* Visual Mannequin with Garment Layers */}
-              <div className="relative flex flex-col items-center py-4">
-                {/* Head / Avatar */}
-                <div className="relative mb-2">
-                  <div
-                    className="w-16 h-16 rounded-full flex items-center justify-center text-base font-bold shadow-lg border border-white/20 text-white"
-                    style={{
-                      background:
-                        avatarType === "mannequin" ? "#32374e" : user.avatarBg,
-                    }}
-                  >
-                    {avatarType === "mannequin" ? "👤" : user.initials}
+              {/* Synapp-style anatomical pearl mannequin + garment tints */}
+              <Suspense
+                fallback={
+                  <div className="flex h-full min-h-[360px] items-center justify-center bg-[#e4e2ea]">
+                    <p className="text-[11px] text-neutral-500">
+                      Loading 3D mannequin…
+                    </p>
                   </div>
-                  <div className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-pink text-white">
-                    {fitStyle}
-                  </div>
-                </div>
-
-                {/* Upper Body (Top / Outerwear) */}
-                <div className="relative flex flex-col items-center">
-                  {activeLayers["Outerwear"] &&
-                    selectedOutfit.items.some(
-                      (i) => i.type === "Outerwear",
-                    ) && (
-                      <div
-                        className="w-48 sm:w-56 h-28 rounded-t-2xl shadow-xl flex items-center justify-center relative transition-all duration-300 border border-white/20"
-                        style={{ background: selectedOutfit.colors[0] }}
-                      >
-                        <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
-                          {
-                            selectedOutfit.items.find(
-                              (i) => i.type === "Outerwear",
-                            )?.name
-                          }
-                        </span>
-                        <div className="absolute top-2 right-2 text-xs">🧥</div>
-                      </div>
-                    )}
-
-                  {activeLayers["Top"] && (
-                    <div
-                      className="w-44 sm:w-52 h-24 rounded-2xl shadow-md flex items-center justify-center relative -mt-2 transition-all duration-300 border border-white/15"
-                      style={{
-                        background:
-                          selectedOutfit.items.find((i) => i.type === "Top")
-                            ?.color || selectedOutfit.colors[0],
-                      }}
-                    >
-                      <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
-                        {
-                          selectedOutfit.items.find((i) => i.type === "Top")
-                            ?.name
-                        }
-                      </span>
-                      <div className="absolute top-2 right-2 text-xs">👚</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Lower Body (Bottoms) */}
-                {activeLayers["Bottom"] && (
-                  <div
-                    className="w-36 sm:w-44 h-36 rounded-b-2xl shadow-md flex items-center justify-center relative -mt-1 transition-all duration-300 border border-white/15"
-                    style={{
-                      background:
-                        selectedOutfit.items.find((i) => i.type === "Bottom")
-                          ?.color || selectedOutfit.colors[1],
-                    }}
-                  >
-                    <span className="text-xs font-bold text-white drop-shadow-md text-center px-2">
-                      {
-                        selectedOutfit.items.find((i) => i.type === "Bottom")
-                          ?.name
-                      }
-                    </span>
-                    <div className="absolute bottom-2 right-2 text-xs">👖</div>
-                  </div>
-                )}
-
-                {/* Shoes */}
-                {activeLayers["Shoes"] && (
-                  <div className="flex gap-4 mt-2">
-                    <div
-                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black border border-white/20"
-                      style={{
-                        background:
-                          selectedOutfit.items.find((i) => i.type === "Shoes")
-                            ?.color || "#fff",
-                      }}
-                    >
-                      👟 L
-                    </div>
-                    <div
-                      className="w-14 h-6 rounded-lg shadow-sm flex items-center justify-center text-[10px] font-bold text-black border border-white/20"
-                      style={{
-                        background:
-                          selectedOutfit.items.find((i) => i.type === "Shoes")
-                            ?.color || "#fff",
-                      }}
-                    >
-                      👟 R
-                    </div>
-                  </div>
-                )}
-              </div>
+                }
+              >
+                <TryOnMannequin3D
+                  items={selectedOutfit.items}
+                  activeLayers={activeLayers}
+                  fitStyle={fitStyle}
+                  avatarLabel={fitStyle}
+                />
+              </Suspense>
 
               {/* Bottom Canvas Tag */}
-              <div className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] bg-black/85 backdrop-blur-md border border-white/10">
-                <span className="text-muted-foreground">
+              <div
+                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] z-20 shadow-sm"
+                style={{
+                  background: "rgba(255,255,255,0.92)",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                }}
+              >
+                <span className="text-neutral-500">
                   cat-VTON Diffusion · Color harmony: 96% match
                 </span>
-                <span className="font-semibold text-white">
+                <span className="font-semibold text-neutral-800">
                   Size: {user.typicalSizes.split("·")[0]}
                 </span>
               </div>
