@@ -1,6 +1,6 @@
 services:
   - type: web
     name: tailor
-    runtime: static
+    runtime: node
     buildCommand: pnpm install && pnpm build
-    staticPublishPath: dist
+    startCommand: pnpm start

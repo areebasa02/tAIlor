@@ -20,6 +20,7 @@ interface GeneratedOutfit {
   rationale: string;
   items: { type: string; desc: string; color: string; emoji: string }[];
   whyExplanation: string;
+  usedFallback: boolean;
 }
 
 const PRESET_EVENTS = [
@@ -42,8 +43,6 @@ export default function GeneratorTab() {
     wardrobe,
     logOutfitWorn,
     showToast,
-    stylistNetworkErrorTriggered,
-    setStylistNetworkErrorTriggered,
   } = useApp();
   const errorTimerRef = useRef<number | null>(null);
 
@@ -65,6 +64,7 @@ export default function GeneratorTab() {
     2: "default",
   });
   const [serviceError, setServiceError] = useState(false);
+  const [serviceErrorMessage, setServiceErrorMessage] = useState("");
   const [slowResponse, setSlowResponse] = useState(false);
   const [activeWhyModal, setActiveWhyModal] = useState<GeneratedOutfit | null>(
     null,
@@ -74,66 +74,7 @@ export default function GeneratorTab() {
     itemIndex: number;
   } | null>(null);
 
-  const [results, setResults] = useState<GeneratedOutfit[]>([
-    {
-      id: 1,
-      label: "Option A — Polished & Authoritative",
-      dresscodeMatch: "98% match for Business-Casual Networking",
-      rationale:
-        "A monochromatic warm-toned look reads as approachable yet distinctly authoritative — ideal for networking dinners where you want to make an impression without feeling overdressed.",
-      items: [
-        {
-          type: "Top",
-          desc: "Cream linen blouse",
-          color: "#F5EFD8",
-          emoji: "👚",
-        },
-        {
-          type: "Bottom",
-          desc: "Camel wide trousers",
-          color: "#C8965A",
-          emoji: "👖",
-        },
-        {
-          type: "Shoes",
-          desc: "Tan leather loafers",
-          color: "#B8825A",
-          emoji: "👞",
-        },
-      ],
-      whyExplanation:
-        "The rooftop temperature will drop after sunset; linen paired with structured wool-blend trousers protects against drafts while maintaining sophisticated warm-tonal elegance.",
-    },
-    {
-      id: 2,
-      label: "Option B — Intentional Statement",
-      dresscodeMatch: "95% match for Creative Professional",
-      rationale:
-        "The magenta-black-white triad commands visual focus in a room dominated by navy and grey suits. The black wide trousers ground the vibrant blouse with dignity.",
-      items: [
-        {
-          type: "Top",
-          desc: "Magenta button-down",
-          color: THEME_COLORS.pink,
-          emoji: "👚",
-        },
-        {
-          type: "Bottom",
-          desc: "Black wide-leg trousers",
-          color: "#1A1A2E",
-          emoji: "👖",
-        },
-        {
-          type: "Shoes",
-          desc: "White chunky platforms",
-          color: "#E8E8E8",
-          emoji: "👟",
-        },
-      ],
-      whyExplanation:
-        "High-contrast triads signal confidence and creative leadership. Breathable rayon blouse handles indoor dining heat effortlessly.",
-    },
-  ]);
+  const [results, setResults] = useState<GeneratedOutfit[]>([]);
 
   const inputTooVague =
     eventDesc.trim().length > 0 && eventDesc.trim().length < 14;
@@ -144,9 +85,13 @@ export default function GeneratorTab() {
       clearTimeout(errorTimerRef.current);
       errorTimerRef.current = null;
     }
-    setServiceError(false);
-    setStylistNetworkErrorTriggered(true);
-    setStep("loading");
+    if (serviceError) {
+      setServiceError(false);
+      setServiceErrorMessage("");
+      setStep("input");
+      return;
+    }
+    void handleGenerate();
   };
 
   const cancelLoading = () => {
@@ -157,7 +102,7 @@ export default function GeneratorTab() {
     setStep("input");
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!inputReady) return;
     if (errorTimerRef.current) {
       clearTimeout(errorTimerRef.current);
@@ -168,25 +113,58 @@ export default function GeneratorTab() {
       return;
     }
     setStep("loading");
-    if (!stylistNetworkErrorTriggered) {
-      errorTimerRef.current = window.setTimeout(() => {
-        setStylistNetworkErrorTriggered(true);
-        setStep("error");
-      }, 1500);
-      return;
-    }
-    if (slowResponse) {
-      window.setTimeout(() => {
-        handleLoadingComplete();
-      }, 20000);
+    setServiceErrorMessage("");
+    try {
+      const response = await fetch("/api/stylist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: eventDesc,
+          dresscode,
+          wardrobe: wardrobe.map(({ name, category, color }) => ({
+            name,
+            category,
+            color,
+          })),
+        }),
+      });
+      const result = (await response.json()) as {
+        advice?: string;
+        outfits?: GeneratedOutfit[];
+        error?: string;
+      };
+      if (!response.ok || !result.advice || !result.outfits?.length) {
+        throw new Error(result.error || "The stylist service returned no advice.");
+      }
+      setResults(result.outfits);
+      setCtrlMode(
+        Object.fromEntries(
+          result.outfits.map((outfit) => [outfit.id, "default" as ControlMode]),
+        ),
+      );
+      setServiceErrorMessage("");
+      if (slowResponse) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      }
+      handleLoadingComplete(result.outfits.length);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Please try again.";
+      setServiceErrorMessage(message);
+      setStep("error");
+      showToast(
+        "Stylist unavailable",
+        message,
+        "warning",
+      );
     }
   };
 
-  const handleLoadingComplete = () => {
+  const handleLoadingComplete = (outfitCount = results.length) => {
     setStep("results");
     showToast(
       "Outfits Generated",
-      "2 tailored event looks ready for review.",
+      `${outfitCount} tailored event looks ready for review.`,
       "success",
     );
   };
@@ -456,21 +434,11 @@ export default function GeneratorTab() {
       {/* Loading */}
       {step === "loading" && (
         <div className="rounded-3xl p-6 space-y-4 shadow-xl border border-border bg-card">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-white">Synthesizing Looks</p>
-            <AIStatusPill state="loading" label="Llama-3.2 Engine Active" />
-          </div>
+          <p className="text-sm font-bold text-white">Synthesizing Looks</p>
 
           <AnimatedStepProgress
             steps={GENERATION_STEPS}
             intervalMs={750}
-            onComplete={
-              !stylistNetworkErrorTriggered
-                ? undefined
-                : slowResponse
-                  ? undefined
-                  : handleLoadingComplete
-            }
           />
 
           <button
@@ -493,9 +461,10 @@ export default function GeneratorTab() {
                 : "Network Error"
             }
             message={
-              serviceError
+              serviceErrorMessage ||
+              (serviceError
                 ? "We could not establish a connection with the neural wardrobe model. Your digital wardrobe is still accessible for manual browsing."
-                : "The connection was interrupted. Please try again."
+                : "The connection was interrupted. Please try again.")
             }
             actions={[
               {
@@ -520,7 +489,7 @@ export default function GeneratorTab() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-white">
-                2 Outfits Tailored for Event
+                {results.length} Outfits Tailored for Event
               </p>
               <p className="text-[10px] text-muted-foreground">
                 Select an option to approve, edit, or explain
@@ -563,6 +532,11 @@ export default function GeneratorTab() {
                     <span className="text-[10px] font-semibold text-green">
                       {outfit.dresscodeMatch}
                     </span>
+                    {outfit.usedFallback && (
+                      <span className="block text-[9px] font-semibold text-gold">
+                        Fallback normalization used
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -622,12 +596,6 @@ export default function GeneratorTab() {
                   ))}
                 </div>
 
-                {/* Rationale */}
-                <div className="rounded-2xl p-3 text-xs leading-relaxed bg-turquoise/5 border border-turquoise/20 text-muted-foreground">
-                  <strong className="text-white">Stylist Note:</strong>{" "}
-                  {outfit.rationale}
-                </div>
-
                 {/* Control Bar */}
                 <UserControlBar
                   mode={ctrlMode[outfit.id]}
@@ -685,7 +653,7 @@ export default function GeneratorTab() {
           <div className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-border bg-card">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">
-                Why This Outfit Fits
+                Why This Outfit Works
               </h3>
               <button
                 type="button"
