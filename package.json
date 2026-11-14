@@ -4,9 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "server": "node server/server.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server/server.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
