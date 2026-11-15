@@ -13,6 +13,31 @@ const CATEGORY_EMOJI: Record<string, string> = {
   Accessories: "💍",
 }
 
+const handleImageFile = (file: File) => {
+  if (!file.type.startsWith("image/")) {
+    showToast("Image Required", "Choose a JPG, PNG, or WebP garment image.", "warning")
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const source = new Image()
+    source.onload = () => {
+      const scale = Math.min(1, 1200 / Math.max(source.naturalWidth, source.naturalHeight))
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(source.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(source.naturalHeight * scale))
+      canvas.getContext("2d")?.drawImage(source, 0, 0, canvas.width, canvas.height)
+      const imageData = canvas.toDataURL("image/jpeg", 0.82)
+      setDetectedItem((prev) => ({ ...prev, imageData }))
+      startUpload()
+    }
+    source.onerror = () => showToast("Image Error", "Could not decode that garment image.", "warning")
+    source.src = String(reader.result)
+  }
+  reader.onerror = () => showToast("Image Error", "Could not read that garment image.", "warning")
+  reader.readAsDataURL(file)
+}
+
 const CATS: (Category | "All")[] = [
   "All",
   "Tops",
@@ -51,6 +76,7 @@ export default function WardrobeTab() {
     color: string
     colorName: string
     category: Category
+    imageData?: string
   }>({
     name: "Teal Gabardine Trench",
     color: THEME_COLORS.darkTeal,
@@ -94,6 +120,7 @@ export default function WardrobeTab() {
     color: string
     colorName: string
     category: Category
+    imageData?: string
   }) => {
     if (sampleChoice) {
       setDetectedItem(sampleChoice)
@@ -118,6 +145,7 @@ export default function WardrobeTab() {
     addWardrobeItem({
       name: detectedItem.name,
       category: detectedItem.category,
+      imageData: detectedItem.imageData,
       color: detectedItem.color,
       colorName: detectedItem.colorName,
       worn: 0,
@@ -291,6 +319,19 @@ export default function WardrobeTab() {
                   </button>
                 ))}
               </div>
+              <label className="block cursor-pointer rounded-xl border border-dashed border-turquoise/40 bg-turquoise/5 px-3 py-2.5 text-center text-[11px] font-semibold text-turquoise hover:bg-turquoise/10">
+                Upload a garment photo to enable Cat-VTON
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) handleImageFile(file)
+                    event.currentTarget.value = ""
+                  }}
+                />
+              </label>
             </div>
           )}
 
@@ -575,9 +616,17 @@ export default function WardrobeTab() {
               className="h-24 relative flex items-center justify-center p-3"
               style={{ background: item.color }}
             >
-              <span className="text-3xl drop-shadow-md select-none group-hover:scale-110 transition-transform">
-                {CATEGORY_EMOJI[item.category] ?? "👗"}
-              </span>
+              {item.imageData ? (
+                <img
+                  src={item.imageData}
+                  alt={item.name}
+                  className="h-full w-full object-contain drop-shadow-md group-hover:scale-110 transition-transform"
+                />
+              ) : (
+                <span className="text-3xl drop-shadow-md select-none group-hover:scale-110 transition-transform">
+                  {CATEGORY_EMOJI[item.category] ?? "👗"}
+                </span>
+              )}
 
               {/* Favorite Heart Button */}
               <button

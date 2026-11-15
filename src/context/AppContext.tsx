@@ -295,6 +295,40 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     cost: "$45",
     status: "clean",
   },
+  {
+    id: 13,
+    name: "Blue jeans",
+    category: "Bottoms",
+    color: "#315A91",
+    colorName: "Classic Blue Denim",
+    imageData:
+      "https://img.hollisterco.com/is/image/anf/KIC_355-7109-00144-278_prod1?policy=product-extra-large",
+    worn: 0,
+    favorite: false,
+    material: "Denim",
+    storageLocation: "Closet · Pants Hanger",
+    careInstructions: "Wash inside out with cold water · line dry",
+    sentimentalValue: "Low",
+    cost: "$70",
+    status: "clean",
+  },
+  {
+    id: 14,
+    name: "Light blue button-up shirt",
+    category: "Tops",
+    color: "#A9D7F2",
+    colorName: "Light Blue",
+    imageData:
+      "https://i5.walmartimages.com/seo/Mens-Slim-Fit-Short-Sleeve-Button-Up-Shirt-S-2XL_63ed11ab-2b3b-43be-89b2-a760c5a1d625_1.0c063b3325864afc82bd1ee88a4b08aa.jpeg",
+    worn: 0,
+    favorite: false,
+    material: "Cotton blend",
+    storageLocation: "Closet · Shirt Rack",
+    careInstructions: "Machine wash cold · hang dry",
+    sentimentalValue: "Low",
+    cost: "$35",
+    status: "clean",
+  },
 ]
 
 export function generateRecentLooks(): RecentLook[] {
@@ -1299,7 +1333,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [wardrobe, setWardrobe] = useState<WardrobeItem[]>(() => {
     try {
       const stored = localStorage.getItem("tailor_wardrobe")
-      if (stored) return JSON.parse(stored)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          const seededItems = INITIAL_ITEMS.filter((item) => item.id >= 13)
+          const missingSeededItems = seededItems.filter(
+            (seededItem) => !parsed.some((item) => item?.id === seededItem.id),
+          )
+          if (missingSeededItems.length > 0) {
+            return [...parsed, ...missingSeededItems]
+          }
+          return parsed
+        }
+      }
     } catch { }
     return INITIAL_ITEMS
   })

@@ -160,6 +160,22 @@ You can also use `npm install && npm run build` if you prefer npm.
 
 A minimal Blueprint is provided in [`render.yaml`](./render.yaml) so Render can pick up the same static-site settings from the repo.
 
+## Cat-VTON virtual try-on
+
+The virtual try-on endpoint uses fal's `fal-ai/image-apps-v2/virtual-try-on`
+model. Set these server
+environment variables in the git-ignored `.env` file before starting the Node
+server:
+
+- `FAL_KEY` — fal API key
+- `FAL_MANNEQUIN_IMAGE_URL` — publicly reachable neutral mannequin image URL
+
+Garment photos uploaded through the wardrobe scanner are stored with the
+wardrobe record in browser storage and are sent to the server only when a
+try-on is requested. The server runs Cat-VTON once for the saved top or
+outerwear item, then uses that returned image as the mannequin input for a
+second run with the saved bottoms.
+
 ## Contributing
 
 1. Create a branch from `main`.
