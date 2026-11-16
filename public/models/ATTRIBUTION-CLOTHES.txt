@@ -1,0 +1,6 @@
+Garment attributions
+====================
+cloth-tshirt.glb — joepal_crude_t-shirt_female — CC0 — MakeHuman Community shirts01.
+cloth-trousers.glb — mindfront_female_trousers_1 / F_Trousers_01 — CC BY 4.0 —
+  Author: Mindfront (Sweden). Source: MakeHuman Community asset pack pants02.
+  https://www.makehumancommunity.org/
