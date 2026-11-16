@@ -150,6 +150,10 @@ export function ImageUploadWidget({
   state,
   progress,
   result,
+  errorMessage,
+  emptyLabel = "Tap to upload a garment photo",
+  analyzingLabel = "Qwen2.5-VL detecting silhouette, hue & fabric…",
+  onFileSelected,
   onRetake,
   onManual,
   onSave,
@@ -157,7 +161,11 @@ export function ImageUploadWidget({
 }: {
   state: UploadState
   progress: number
-  result?: { name: string; hex: string; category: string }
+  result?: { name: string; hex: string; category: string; material?: string; source?: string }
+  errorMessage?: string
+  emptyLabel?: string
+  analyzingLabel?: string
+  onFileSelected?: (file: File) => void
   onRetake: () => void
   onManual: () => void
   onSave: () => void
@@ -165,14 +173,22 @@ export function ImageUploadWidget({
 }) {
   if (state === "empty") {
     return (
-      <div
-        onClick={onRetake}
-        className="rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-8 hover:border-turquoise/50 transition-colors cursor-pointer text-muted-foreground"
-      >
+      <label className="rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-8 hover:border-turquoise/50 transition-colors cursor-pointer text-muted-foreground">
         <span className="text-3xl">📷</span>
-        <p className="text-xs font-semibold text-white">Tap to simulate photo capture</p>
+        <p className="text-xs font-semibold text-white">{emptyLabel}</p>
         <p className="text-[10px]">JPEG, PNG · max 10 MB</p>
-      </div>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ""
+            if (file) onFileSelected?.(file)
+            else onRetake()
+          }}
+        />
+      </label>
     )
   }
 
@@ -198,18 +214,36 @@ export function ImageUploadWidget({
       <div className="space-y-2.5 p-4 rounded-2xl bg-card border border-border">
         <div className="flex items-center gap-2 text-turquoise text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-turquoise animate-ping" />
-          <span>Analyzing RGB and CIELAB color harmony…</span>
+          <span>{analyzingLabel}</span>
         </div>
         <div className="space-y-1">
-          {["Extracting dominant garment hue", "Clustering against palette swatches"].map(
-            (msg, i) => (
-              <p key={i} className="text-[10px] text-muted-foreground">
-                • {msg}
-              </p>
-            ),
-          )}
+          {[
+            "Detecting garment silhouette / category",
+            "Reading dominant hue",
+            "Estimating fabric & care tags",
+          ].map((msg, i) => (
+            <p key={i} className="text-[10px] text-muted-foreground">
+              • {msg}
+            </p>
+          ))}
         </div>
       </div>
+    )
+  }
+
+  if (state === "error") {
+    return (
+      <AIErrorBanner
+        title="Wardrobe scan failed"
+        message={
+          errorMessage ||
+          "Could not reach the vision model. Use a quick-test sample, try again, or enter details manually."
+        }
+        actions={[
+          { label: "Try again", primary: true, onClick: onRetake },
+          { label: "Enter manually", onClick: onManual },
+        ]}
+      />
     )
   }
 
@@ -223,7 +257,15 @@ export function ImageUploadWidget({
           />
           <div className="flex-1 min-w-0">
             <h4 className="text-xs font-bold text-white truncate">{result.name}</h4>
-            <p className="text-[10px] text-muted-foreground">{result.category} · {result.hex}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {result.category} · {result.hex}
+              {result.material ? ` · ${result.material}` : ""}
+            </p>
+            {result.source && (
+              <p className="text-[9px] text-muted-foreground/80 mt-0.5">
+                Source: {result.source}
+              </p>
+            )}
           </div>
           <span className="text-green text-xs font-bold">✓ Identified</span>
         </div>

@@ -13,118 +13,89 @@ pnpm preview   # serve the production build locally
 
 Requires Node.js 22 (see `.node-version`).
 
-## AI stylist backend
+## AI stylist + wardrobe photo scanner
 
-The Stylist page sends requests to the local `/api/stylist` endpoint. The Node
-backend forwards prompts to an OpenAI-compatible model server running locally or
-in Google Colab. Hugging Face is used only to download the gated model weights;
-inference does not use a Hugging Face Inference Provider.
+The app talks to a local Node server (`server/server.mjs`) which proxies to an
+OpenAI-compatible model server (local GPU or Google Colab via cloudflared).
 
-Copy `.env.example` to `.env`. For a local GPU server, use vLLM:
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/stylist` | Outfit recommendations (text) |
+| `POST /api/wardrobe/scan` | Photo → wardrobe JSON (Qwen2.5-VL or mock) |
+| `GET /api/wardrobe/scan/health` | Scanner mock/live status |
+
+Copy `.env.example` to `.env`.
+
+### Mock mode (no GPU) — default for Try Live
+
+With `WARDROBE_SCAN_MOCK=true` (or `LLM_BASE_URL` pointing at localhost),
+Wardrobe → **Add Item** → **AI Photo Wardrobe Scanner** uses deterministic demo
+JSON. Quick-test samples (teal trench / magenta blouse / gold cardigan) and
+photo uploads both work without Colab.
+
+### Live Qwen2.5-VL (Colab)
+
+1. Open [`tailorbackend.ipynb`](./tailorbackend.ipynb) in
+   [Google Colab](https://colab.research.google.com/) (or upload it).
+2. **Runtime → Change runtime type → T4 GPU**.
+3. Run the notebook cells in order. They install deps, start `colab_server.py`
+   with `Qwen/Qwen2.5-VL-3B-Instruct`, and print a cloudflared URL.
+4. Qwen weights download **anonymously** — no Hugging Face token required.
+5. Set local `.env`:
+
+   ```text
+   LLM_BASE_URL=https://your-random-name.trycloudflare.com/v1
+   LLM_MODEL=Qwen/Qwen2.5-VL-3B-Instruct
+   WARDROBE_SCAN_MOCK=false
+   ```
+
+6. Restart with `pnpm dev`. Wardrobe photo uploads call Colab
+   `POST /v1/wardrobe/scan`. If the tunnel drops, the Node proxy falls back to
+   demo JSON so the UI stays usable.
+
+### Colab server contract
+
+`colab_server.py` exposes:
+
+- `GET /health` → `{ status, model, vision, endpoints }`
+- `POST /v1/chat/completions` → OpenAI-compatible chat (text or VL)
+- `POST /v1/wardrobe/scan` → `{ image: base64, mimeType? }` →
+
+  ```json
+  {
+    "item": {
+      "name": "Teal Gabardine Trench",
+      "category": "Outerwear",
+      "color": "#007880",
+      "colorName": "Deep Teal",
+      "material": "Gabardine cotton blend",
+      "careInstructions": "Dry clean or gentle cold wash",
+      "storageLocation": "Closet · Main Rack",
+      "sentimentalValue": "Medium",
+      "cost": "$89",
+      "confidence": 0.94
+    },
+    "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "source": "qwen-vl"
+  }
+  ```
+
+`category` is one of `Tops | Bottoms | Shoes | Outerwear | Accessories`
+(aligned with `WardrobeItem` in `src/types/index.ts`).
+
+### Local GPU (optional)
 
 ```bash
-pip install vllm
-vllm serve Qwen/Qwen2.5-3B-Instruct --host 127.0.0.1 --port 8000
+pip install "torch" "transformers>=4.49.0" accelerate fastapi uvicorn pillow
+export LLM_MODEL=Qwen/Qwen2.5-VL-3B-Instruct
+export WARDROBE_SCAN_MOCK=false
+python colab_server.py
 ```
 
-For Google Colab, run this first:
+Then point `.env` at `LLM_BASE_URL=http://127.0.0.1:8000/v1` and
+`WARDROBE_SCAN_MOCK=false`.
 
-```python
-!pip install -q torch transformers fastapi uvicorn
-```
-
-### Detailed Google Colab setup
-
-Colab runs the model on a temporary cloud GPU. Your computer runs the React
-frontend and Node backend, and the tunnel connects the Node backend to Colab.
-Keep the Colab tab and its server cell running while using the Stylist.
-
-1. Open [Google Colab](https://colab.research.google.com/) and create a new
-   notebook.
-2. Select **Runtime → Change runtime type → T4 GPU** (or another GPU), then
-   click **Save**.
-3. Run this cell to confirm that Colab assigned a GPU:
-
-   ```python
-   !nvidia-smi
-   ```
-
-4. Run this install cell:
-
-   ```python
-   !pip install -q torch transformers fastapi uvicorn
-   ```
-
-5. Upload `colab_server.py` from this repository using the folder icon on the
-   left side of Colab, or run this cell after replacing the URL with your raw
-   GitHub file URL:
-
-   ```python
-   !wget -q https://raw.githubusercontent.com/areebasa02/tAIlor/main/colab_server.py
-   ```
-
-6. Set the model name and start the server in the background:
-
-   ```python
-   import os
-   os.environ["LLM_MODEL"] = "Qwen/Qwen2.5-3B-Instruct"
-   !nohup python colab_server.py > /content/stylist-server.log 2>&1 &
-   ```
-
-7. Wait for the model to finish loading, then check it:
-
-   ```python
-   import time, requests
-   for _ in range(60):
-       try:
-           print(requests.get("http://127.0.0.1:8000/health", timeout=2).json())
-           break
-       except Exception:
-           time.sleep(5)
-   ```
-
-   Do not continue until the response contains `"status": "ok"`.
-
-8. Create a temporary public tunnel. Run this cell:
-
-   ```python
-   !wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /content/cloudflared
-   !chmod +x /content/cloudflared
-   !nohup /content/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate > /content/cloudflared.log 2>&1 &
-   ```
-
-9. Run this cell to print the tunnel URL:
-
-   ```python
-   import re, time
-   for _ in range(30):
-       log = open("/content/cloudflared.log", encoding="utf-8").read()
-       match = re.search(r"https://[-a-z0-9]+\.trycloudflare\.com", log)
-       if match:
-           print(match.group(0))
-           break
-       time.sleep(2)
-   ```
-
-10. Copy the printed URL and set `LLM_BASE_URL` in your local `.env` to that
-    URL plus `/v1`, for example:
-
-    ```text
-    LLM_BASE_URL=https://your-random-name.trycloudflare.com/v1
-    LLM_MODEL=Qwen/Qwen2.5-3B-Instruct
-    ```
-
-11. Restart the local backend with `pnpm dev`. The Node backend will now send
-    Stylist requests through the tunnel to the Colab GPU.
-
-If the Stylist stops responding, first check the Colab health cell, then make
-sure both the server and tunnel cells are still running. Colab sessions can
-disconnect or be reclaimed when idle; repeat steps 6–10 after reconnecting.
-
-Set `STYLIST_DEBUG=true` while diagnosing Stylist responses. The backend logs a request
-ID, model response summary, parse/fallback status, and the final card items to the
-backend terminal; set it to `false` to disable those logs.
-Set `HF_TOKEN` in Colab for gated model access; it is not sent to the browser.
+Set `STYLIST_DEBUG=true` while diagnosing Stylist responses.
 `.env` is ignored by git. `pnpm dev` starts the frontend and Node backend
 automatically.
 
