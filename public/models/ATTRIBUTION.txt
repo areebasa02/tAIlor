@@ -1,0 +1,58 @@
+FIT MIT WITH — 3D ANATOMY ATLAS: SOURCES, LICENSES AND CHANGES
+Notice revised 2026-09-13
+
+The muscle atlas rendered in this app (assets/anatomy/full-body-male-mobile.glb,
+full-body-female-mobile.glb, full-body-map.json and female-muscle-map.json) is
+Adapted Material derived from openly licensed anatomy. These files are
+distributed under the Creative Commons Attribution-ShareAlike 4.0 International
+license: https://creativecommons.org/licenses/by-sa/4.0/
+Only these model files are CC BY-SA; the rest of the app is licensed separately.
+
+CREDITS (wording requested by the licensors)
+
+  "Z-Anatomy - The libre 3D atlas of anatomy - CC-BY-SA 4.0"
+  https://github.com/Z-Anatomy/Models-of-human-anatomy
+  Authors: Kousaku Okubo (original model BodyParts3D), Gauthier Kervyn
+  (design, 3D, anatomy), Marcin Zielinski (Blender add-on) and the
+  contributors named in the upstream License.txt.
+
+  "BodyParts3D - The Database Center for Life Science - CC-BY-SA 2.1 Japan"
+  (the license under which Z-Anatomy obtained the geometry)
+  https://creativecommons.org/licenses/by-sa/2.1/jp/
+
+  "BodyParts3D, © The Database Center for Life Science licensed under
+  CC Attribution 4.0 International"
+  (the credit line the Database Center for Life Science requests today)
+  https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html
+  https://creativecommons.org/licenses/by/4.0/
+
+SOURCE
+
+  Z-Anatomy.zip from the repository above, SHA-256
+  E029688545627BD0214B269E1063143ABB580AAD72B2C2445D6D8A9A0D9DA736,
+  processed with Blender 5.1 on 2026-09-11 and 2026-09-12.
+
+CHANGES MADE
+
+  - Extracted only the skeletal muscles, the supporting skeleton, head/hand/
+    foot context muscles and connective tissue. Removed the source scene
+    hierarchy, materials, text definitions, scripts and textures.
+  - Excluded the separately licensed content bundled with Z-Anatomy (brain,
+    cranial nerves, inner ear, kidney). None of it appears in these files.
+  - Assigned stable muscle IDs (218 regions: 109 muscles, left and right),
+    training-group and layer metadata as glTF node extras.
+  - Reduced the polygon count to a mobile budget (about 129,000 triangles),
+    validated meshes, applied smooth shading, converted Blender Z-up to glTF
+    Y-up and exported GLB files.
+  - Female variant: an artist-authored deformation of the male geometry
+    (about 1.63 m tall) with unverified proportions, plus two illustrative
+    breast-context meshes that carry no muscle IDs. It is not independently
+    sourced female anatomy.
+  - Neither model has been reviewed by an anatomy specialist. Colors shown in
+    the app are training estimates, not measured muscle activation.
+
+PUBLIC COPY (ShareAlike)
+
+  The adapted models, maps, this notice and the Blender build scripts are
+  published under CC BY-SA 4.0 at
+  https://github.com/slfresh/fitmitwith-anatomy-atlas

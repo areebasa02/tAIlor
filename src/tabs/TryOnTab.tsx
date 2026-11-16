@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 import {
   PulseOrb,
   AIErrorBanner,
@@ -6,8 +6,14 @@ import {
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
 import { THEME_COLORS } from "../types/theme"
+import {
+  FIT_EASE,
+  SURFACE_BODY_MEASUREMENTS,
+  fitIndicator,
+  suggestSizes,
+} from "../lib/bodyMeasurements"
 
-const TryOnMannequin3D = lazy(() => import("../components/TryOnMannequin3D"))
+const BodyExplorer3D = lazy(() => import("../components/BodyExplorer3D"))
 
 type Step = "outfit" | "consent" | "processing" | "preview" | "error"
 
@@ -35,13 +41,13 @@ const TRYON_OUTFITS: TryOnOutfit[] = [
       {
         type: "Bottom",
         name: "Camel wide trousers",
-        color: "#C8965A",
+        color: "#5C3D24",
         emoji: "👖",
       },
       {
         type: "Shoes",
         name: "Tan leather loafers",
-        color: "#B8825A",
+        color: "#5C3A1E",
         emoji: "👞",
       },
     ],
@@ -112,12 +118,17 @@ export default function TryOnTab() {
   const [fitStyle, setFitStyle] = useState<"fitted" | "standard" | "relaxed">(
     "standard",
   )
+  const fitHint = useMemo(() => fitIndicator(fitStyle), [fitStyle])
+  const sizeSuggest = useMemo(
+    () => suggestSizes(SURFACE_BODY_MEASUREMENTS),
+    [],
+  )
   const [processingStage, setProcessingStage] = useState(0)
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
     Top: true,
     Bottom: true,
     Shoes: true,
-    Outerwear: true,
+    Outerwear: false,
   })
   const [swapModalOpen, setSwapModalOpen] = useState(false)
   const [simulatedError, setSimulatedError] = useState(false)
@@ -129,8 +140,20 @@ export default function TryOnTab() {
     "Rendering realistic fabric drape & shadows…",
   ]
 
+  /** Layer toggles must match outfit contents (no silent empty ✓). */
+  const syncLayersToOutfit = (o: TryOnOutfit) => {
+    const types = new Set(o.items.map((i) => i.type))
+    setActiveLayers({
+      Top: types.has("Top"),
+      Bottom: types.has("Bottom"),
+      Shoes: types.has("Shoes"),
+      Outerwear: types.has("Outerwear"),
+    })
+  }
+
   const handleSelectOutfit = (o: TryOnOutfit) => {
     setSelectedOutfit(o)
+    syncLayersToOutfit(o)
     setStep("consent")
   }
 
@@ -471,23 +494,24 @@ export default function TryOnTab() {
             </div>
 
             <div
-              className="rounded-3xl overflow-hidden relative border shadow-2xl min-h-[420px] h-[420px] sm:h-[480px]"
+              className="rounded-3xl overflow-hidden relative border shadow-2xl min-h-[520px] h-[520px] sm:h-[580px]"
               style={{
-                background: "#e4e2ea",
+                background:
+                  "radial-gradient(ellipse at 50% 20%, #f3f0f8 0%, #e4e2ea 55%, #d9d5e3 100%)",
                 borderColor: "var(--border)",
               }}
             >
-              {/* Synapp-style anatomical pearl mannequin + garment tints */}
+              {/* Interactive Surface / Muscles body explorer */}
               <Suspense
                 fallback={
                   <div className="flex h-full min-h-[360px] items-center justify-center bg-[#e4e2ea]">
                     <p className="text-[11px] text-neutral-500">
-                      Loading 3D mannequin…
+                      Loading 3D body explorer…
                     </p>
                   </div>
                 }
               >
-                <TryOnMannequin3D
+                <BodyExplorer3D
                   items={selectedOutfit.items}
                   activeLayers={activeLayers}
                   fitStyle={fitStyle}
@@ -497,7 +521,7 @@ export default function TryOnTab() {
 
               {/* Bottom Canvas Tag */}
               <div
-                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] z-20 shadow-sm"
+                className="absolute bottom-2 left-3 right-3 rounded-xl px-3 py-1 flex items-center justify-between text-[10px] z-30 shadow-sm"
                 style={{
                   background: "rgba(255,255,255,0.92)",
                   backdropFilter: "blur(8px)",
@@ -505,7 +529,7 @@ export default function TryOnTab() {
                 }}
               >
                 <span className="text-neutral-500">
-                  cat-VTON Diffusion · Color harmony: 96% match
+                  Body explorer · Surface + Z-Anatomy muscles
                 </span>
                 <span className="font-semibold text-neutral-800">
                   Size: {user.typicalSizes.split("·")[0]}
@@ -537,6 +561,53 @@ export default function TryOnTab() {
                   </button>
                 ))}
               </div>
+              {/* Optional fit indicator */}
+              <div
+                className={`rounded-xl px-3 py-2 text-[11px] leading-snug ${
+                  fitStyle === "fitted"
+                    ? "bg-amber-500/15 text-amber-100"
+                    : fitStyle === "relaxed"
+                      ? "bg-sky-500/15 text-sky-100"
+                      : "bg-emerald-500/15 text-emerald-100"
+                }`}
+              >
+                <span className="font-bold uppercase tracking-wide text-[9px] opacity-80">
+                  Fit indicator · {FIT_EASE[fitStyle].label} · estimate / demo
+                </span>
+                <p className="mt-0.5 opacity-95">{fitHint.summary}</p>
+              </div>
+            </div>
+
+            {/* Mannequin measurements + suggested sizes */}
+            <div className="rounded-3xl p-4 border border-border bg-card space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                Mannequin measurements · estimate / demo
+              </span>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                {(
+                  [
+                    ["Height", `${SURFACE_BODY_MEASUREMENTS.heightCm} cm`],
+                    ["Chest", `${SURFACE_BODY_MEASUREMENTS.chestCm} cm`],
+                    ["Waist", `${SURFACE_BODY_MEASUREMENTS.waistCm} cm`],
+                    ["Hip", `${SURFACE_BODY_MEASUREMENTS.hipCm} cm`],
+                    ["Inseam", `${SURFACE_BODY_MEASUREMENTS.inseamCm} cm`],
+                    ["Shoulder", `${SURFACE_BODY_MEASUREMENTS.shoulderCm} cm`],
+                  ] as const
+                ).map(([k, v]) => (
+                  <div key={k} className="rounded-lg bg-muted/60 px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                      {k}
+                    </div>
+                    <div className="font-semibold text-foreground">{v}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Suggested from figure · Tops {sizeSuggest.tops} · Bottoms{" "}
+                {sizeSuggest.bottoms} · Ease {FIT_EASE[fitStyle].chestEaseCm}/
+                {FIT_EASE[fitStyle].waistEaseCm}/{FIT_EASE[fitStyle].hipEaseCm}{" "}
+                cm (chest/waist/hip)
+              </p>
             </div>
 
             {/* Interactive Layer Visibility Toggles */}
@@ -545,21 +616,35 @@ export default function TryOnTab() {
                 Toggle Garment Layers
               </span>
               <div className="grid grid-cols-2 gap-2">
-                {["Top", "Bottom", "Shoes", "Outerwear"].map((layer) => (
-                  <button
-                    key={layer}
-                    type="button"
-                    onClick={() => toggleLayer(layer)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
-                      activeLayers[layer]
-                        ? "bg-green/15 text-green border-green/40 font-bold"
-                        : "bg-muted text-muted-foreground border-border hover:text-white"
-                    }`}
-                  >
-                    <span>{layer}</span>
-                    <span>{activeLayers[layer] ? "✓" : "✕"}</span>
-                  </button>
-                ))}
+                {["Top", "Bottom", "Shoes", "Outerwear"].map((layer) => {
+                  const hasItem = Boolean(
+                    selectedOutfit?.items.some((i) => i.type === layer),
+                  )
+                  const on = hasItem && activeLayers[layer]
+                  return (
+                    <button
+                      key={layer}
+                      type="button"
+                      disabled={!hasItem}
+                      onClick={() => hasItem && toggleLayer(layer)}
+                      title={
+                        hasItem
+                          ? `Toggle ${layer}`
+                          : `No ${layer} in this outfit`
+                      }
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
+                        !hasItem
+                          ? "bg-muted/40 text-muted-foreground/50 border-border cursor-not-allowed"
+                          : on
+                            ? "bg-green/15 text-green border-green/40 font-bold"
+                            : "bg-muted text-muted-foreground border-border hover:text-white"
+                      }`}
+                    >
+                      <span>{layer}</span>
+                      <span>{!hasItem ? "—" : on ? "✓" : "✕"}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
