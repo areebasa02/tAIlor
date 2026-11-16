@@ -2,6 +2,12 @@ import { useState } from "react"
 import { ImageUploadWidget, type UploadState } from "../components/AIComponents"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
+import {
+  fileToBase64,
+  scanWardrobePhoto,
+  type MockSampleId,
+  type WardrobeScanItem,
+} from "../lib/wardrobeScan"
 import type { Category, WardrobeItem } from "../types"
 import { THEME_COLORS } from "../types/theme"
 
@@ -46,17 +52,51 @@ export default function WardrobeTab() {
   // Photo upload flow state
   const [uploadState, setUploadState] = useState<UploadState>("empty")
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [detectedItem, setDetectedItem] = useState<{
-    name: string
-    color: string
-    colorName: string
-    category: Category
-  }>({
+  const [scanError, setScanError] = useState("")
+  const [scanSource, setScanSource] = useState<string>("")
+  const [scanNote, setScanNote] = useState("")
+  const [detectedItem, setDetectedItem] = useState<WardrobeScanItem>({
     name: "Teal Gabardine Trench",
     color: THEME_COLORS.darkTeal,
     colorName: "Deep Teal",
     category: "Outerwear",
+    material: "Gabardine cotton blend",
+    careInstructions: "Dry clean or gentle cold wash · hang dry",
+    storageLocation: "Closet · Main Rack",
+    sentimentalValue: "Medium",
+    cost: "$89",
+    confidence: 0.94,
   })
+
+  const QUICK_SAMPLES: {
+    id: MockSampleId
+    name: string
+    color: string
+    colorName: string
+    category: Category
+  }[] = [
+    {
+      id: "teal-trench",
+      name: "Teal trench coat",
+      color: THEME_COLORS.darkTeal,
+      colorName: "Deep Teal",
+      category: "Outerwear",
+    },
+    {
+      id: "magenta-blouse",
+      name: "Magenta silk blouse",
+      color: THEME_COLORS.pink,
+      colorName: "Vivid Magenta",
+      category: "Tops",
+    },
+    {
+      id: "gold-cardigan",
+      name: "Gold knit cardigan",
+      color: THEME_COLORS.gold,
+      colorName: "Warm Gold",
+      category: "Tops",
+    },
+  ]
 
   // Manual entry form state - typed with <string> to permit any custom hex from the color picker
   const [manualName, setManualName] = useState("")
@@ -88,30 +128,58 @@ export default function WardrobeTab() {
       return b.id - a.id
     })
 
-  // Simulate CV image upload & detection
-  const startUpload = (sampleChoice?: {
-    name: string
-    color: string
-    colorName: string
-    category: Category
-  }) => {
-    if (sampleChoice) {
-      setDetectedItem(sampleChoice)
-    }
-    setUploadState("uploading")
-    setUploadProgress(0)
+  const applyScanResult = (item: WardrobeScanItem, source?: string, note?: string) => {
+    setDetectedItem(item)
+    setScanSource(source || "")
+    setScanNote(note || "")
+    setScanError("")
+    setUploadState("success")
+  }
 
-    const tick = setInterval(() => {
-      setUploadProgress((p) => {
-        if (p >= 100) {
-          clearInterval(tick)
-          setUploadState("analyzing")
-          setTimeout(() => setUploadState("success"), 1400)
-          return 100
-        }
-        return Math.min(100, p + 25)
+  const runScan = async (options: {
+    mockSample?: MockSampleId
+    file?: File
+  }) => {
+    setScanError("")
+    setScanNote("")
+    setScanSource("")
+    setUploadState("uploading")
+    setUploadProgress(15)
+
+    try {
+      let image: string | undefined
+      let mimeType: string | undefined
+      if (options.file) {
+        const encoded = await fileToBase64(options.file)
+        image = encoded.base64
+        mimeType = encoded.mimeType
+        setUploadProgress(55)
+      } else {
+        setUploadProgress(45)
+      }
+
+      setUploadState("analyzing")
+      setUploadProgress(80)
+
+      const result = await scanWardrobePhoto({
+        image,
+        mimeType,
+        mockSample: options.mockSample,
+        useMock: Boolean(options.mockSample),
       })
-    }, 200)
+
+      setUploadProgress(100)
+      applyScanResult(result.item, result.source, result.note)
+      if (result.note) {
+        showToast("Demo scan", result.note, "info")
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Wardrobe scan failed unexpectedly."
+      setScanError(message)
+      setUploadState("error")
+      showToast("Scan failed", message, "warning")
+    }
   }
 
   const handleSaveDetected = () => {
@@ -122,15 +190,22 @@ export default function WardrobeTab() {
       colorName: detectedItem.colorName,
       worn: 0,
       favorite: false,
-      material: "Detected by AI · Soft cotton blend",
-      storageLocation: "Closet · Main Rack",
-      careInstructions: "Machine wash cold · line dry",
-      sentimentalValue: "Medium",
-      cost: "$50",
+      material: detectedItem.material || "Detected by AI",
+      storageLocation: detectedItem.storageLocation || "Closet · Main Rack",
+      careInstructions: detectedItem.careInstructions || "Gentle wash",
+      sentimentalValue: detectedItem.sentimentalValue || "Medium",
+      cost: detectedItem.cost || "$40",
       status: "clean",
     })
+    showToast(
+      "Added to wardrobe",
+      `${detectedItem.name} saved from ${scanSource || "AI scan"}.`,
+      "success",
+    )
     setAddStep("closed")
     setUploadState("empty")
+    setScanNote("")
+    setScanSource("")
   }
 
   const handleSaveManual = (e: React.FormEvent) => {
@@ -252,30 +327,11 @@ export default function WardrobeTab() {
                 Quick Test Samples:
               </span>
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    name: "Teal trench coat",
-                    color: THEME_COLORS.darkTeal,
-                    colorName: "Deep Teal",
-                    category: "Outerwear" as Category,
-                  },
-                  {
-                    name: "Magenta silk blouse",
-                    color: THEME_COLORS.pink,
-                    colorName: "Vivid Magenta",
-                    category: "Tops" as Category,
-                  },
-                  {
-                    name: "Gold knit cardigan",
-                    color: THEME_COLORS.gold,
-                    colorName: "Warm Gold",
-                    category: "Tops" as Category,
-                  },
-                ].map((sample) => (
+                {QUICK_SAMPLES.map((sample) => (
                   <button
-                    key={sample.name}
+                    key={sample.id}
                     type="button"
-                    onClick={() => startUpload(sample)}
+                    onClick={() => void runScan({ mockSample: sample.id })}
                     className="p-2 rounded-xl border border-border bg-muted text-left transition-transform active:scale-95 hover:border-turquoise/40"
                   >
                     <div
@@ -297,33 +353,45 @@ export default function WardrobeTab() {
           <ImageUploadWidget
             state={uploadState}
             progress={uploadProgress}
+            errorMessage={scanError}
             result={
               uploadState === "success"
                 ? {
                     name: detectedItem.name,
                     hex: detectedItem.color,
                     category: `${detectedItem.category} · ${detectedItem.colorName}`,
+                    material: detectedItem.material,
+                    source: scanSource || undefined,
                   }
                 : undefined
             }
+            onFileSelected={(file) => void runScan({ file })}
             onRetake={() => {
-              if (uploadState === "empty" || uploadState === "error") {
-                startUpload()
-              } else {
-                setUploadState("empty")
-              }
+              setScanError("")
+              setScanNote("")
+              setUploadState("empty")
+              setUploadProgress(0)
             }}
             onManual={() => setAddStep("manual")}
             onSave={handleSaveDetected}
             onCorrect={() => {
               showToast(
                 "Color Corrected",
-                "Adjusted to high confidence label.",
+                "Keeping AI labels and saving to wardrobe.",
                 "info",
               )
               handleSaveDetected()
             }}
           />
+
+          {scanNote && uploadState === "success" && (
+            <p
+              className="text-[10px] leading-relaxed"
+              style={{ color: THEME_COLORS.gold }}
+            >
+              {scanNote}
+            </p>
+          )}
 
           {uploadState === "empty" && (
             <button
