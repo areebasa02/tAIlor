@@ -170,6 +170,98 @@ async function readJsonBody(request, maxBytes = 10_000) {
   return JSON.parse(body || "{}")
 }
 
+async function runCatVton(humanImageUrl, garmentImageUrl) {
+  const modelEndpoint = "fal-ai/image-apps-v2/virtual-try-on"
+  const falResponse = await fetch(`https://queue.fal.run/${modelEndpoint}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${process.env.FAL_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      person_image_url: humanImageUrl,
+      clothing_image_url: garmentImageUrl,
+      preserve_pose: true,
+    }),
+  })
+  const submitted = await falResponse.json().catch(() => ({}))
+  if (!falResponse.ok) {
+    const message = submitted?.detail || submitted?.error || "fal Cat-VTON request failed."
+    throw new Error(String(message))
+  }
+
+  let result = submitted
+  if (submitted.request_id) {
+    const requestId = encodeURIComponent(submitted.request_id)
+    const statusUrl = submitted.status_url || `https://queue.fal.run/${modelEndpoint}/requests/${requestId}/status`
+    const responseUrl = submitted.response_url || `https://queue.fal.run/${modelEndpoint}/requests/${requestId}`
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const statusResponse = await fetch(statusUrl, {
+        headers: { Authorization: `Key ${process.env.FAL_KEY}` },
+      })
+      const status = await statusResponse.json().catch(() => ({}))
+      if (status.status === "COMPLETED") {
+        const resultResponse = await fetch(responseUrl, {
+          headers: { Authorization: `Key ${process.env.FAL_KEY}` },
+        })
+        result = await resultResponse.json().catch(() => ({}))
+        break
+      }
+      if (status.status === "FAILED") throw new Error("fal Cat-VTON processing failed.")
+    }
+  }
+
+  const image = result?.images?.[0]
+  if (!image?.url) throw new Error("fal Cat-VTON returned no preview image.")
+  return image.url
+}
+
+async function handleTryOn(request, response) {
+  const body = await readJsonBody(request, 20 * 1024 * 1024)
+  const garments = Array.isArray(body.garments)
+    ? body.garments
+        .filter((garment) => garment && typeof garment.imageUrl === "string")
+        .map((garment) => ({
+          imageUrl: garment.imageUrl.trim(),
+          description: typeof garment.description === "string" ? garment.description : "",
+          type: typeof garment.type === "string" ? garment.type : "",
+        }))
+        .filter((garment) => garment.imageUrl)
+        .slice(0, 2)
+    : []
+  const mannequinImageUrl = process.env.FAL_MANNEQUIN_IMAGE_URL?.trim()
+  if (!process.env.FAL_KEY) {
+    sendJson(response, 503, { error: "FAL_KEY is not configured on the server." })
+    return
+  }
+  if (!mannequinImageUrl) {
+    sendJson(response, 503, {
+      error: "FAL_MANNEQUIN_IMAGE_URL is not configured on the server.",
+    })
+    return
+  }
+  if (garments.length === 0) {
+    sendJson(response, 400, {
+      error: "The selected wardrobe outfit does not have saved garment images.",
+    })
+    return
+  }
+
+  let imageUrl = mannequinImageUrl
+  for (const [index, garment] of garments.entries()) {
+    imageUrl = await runCatVton(imageUrl, garment.imageUrl)
+    if (index === 0 && garments.length > 1) {
+      console.log("[try-on] Cat-VTON top layer complete; using result as the next human image.")
+    }
+  }
+
+  sendJson(response, 200, {
+    imageUrl,
+    runs: garments.length,
+  })
+}
+
 function normalizeWardrobeScanItem(raw = {}) {
   const categories = new Set(["Tops", "Bottoms", "Shoes", "Outerwear", "Accessories"])
   const categoryAliases = {
@@ -646,6 +738,10 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`)
     if (url.pathname === "/api/stylist" && request.method === "POST") {
       await handleStylist(request, response)
+      return
+    }
+    if (url.pathname === "/api/try-on" && request.method === "POST") {
+      await handleTryOn(request, response)
       return
     }
     if (url.pathname === "/api/wardrobe/scan" && request.method === "POST") {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useMemo, useState } from "react"
 import {
   PulseOrb,
   AIErrorBanner,
@@ -15,7 +15,13 @@ interface TryOnOutfit {
   id: number
   label: string
   tagline: string
-  items: { type: string; name: string; color: string; emoji: string }[]
+  items: {
+    type: string
+    name: string
+    color: string
+    emoji: string
+    imageData?: string
+  }[]
   colors: string[]
 }
 
@@ -103,11 +109,29 @@ const TRYON_OUTFITS: TryOnOutfit[] = [
 type AvatarType = "mannequin" | "demo_photo" | "upload_photo"
 
 export default function TryOnTab() {
-  const { user, logOutfitWorn, showToast } = useApp()
+  const { user, wardrobe, logOutfitWorn, showToast } = useApp()
+  const savedOutfit = useMemo(() => {
+    const pieces = [
+      wardrobe.find((item) => item.id === 14),
+      wardrobe.find((item) => item.id === 13),
+    ].filter(Boolean)
+    if (pieces.length < 2) return null
+    return {
+      id: 100,
+      label: "Light Blue Button-Up & Blue Jeans",
+      tagline: "A clean, casual look from your saved wardrobe",
+      colors: pieces.map((item) => item!.color),
+      items: pieces.map((item) => ({
+        type: item!.category === "Accessories" ? "Accessory" : item!.category.slice(0, -1),
+        name: item!.name,
+        color: item!.color,
+        emoji: item!.category === "Shoes" ? "👟" : item!.category === "Bottoms" ? "👖" : "👕",
+        imageData: item!.imageData,
+      })),
+    }
+  }, [wardrobe])
   const [step, setStep] = useState<Step>("outfit")
-  const [selectedOutfit, setSelectedOutfit] = useState<TryOnOutfit | null>(
-    TRYON_OUTFITS[0],
-  )
+  const [selectedOutfit, setSelectedOutfit] = useState<TryOnOutfit | null>(savedOutfit)
   const [avatarType, setAvatarType] = useState<AvatarType>("mannequin")
   const [fitStyle, setFitStyle] = useState<"fitted" | "standard" | "relaxed">(
     "standard",
@@ -121,6 +145,8 @@ export default function TryOnTab() {
   })
   const [swapModalOpen, setSwapModalOpen] = useState(false)
   const [simulatedError, setSimulatedError] = useState(false)
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [generationError, setGenerationError] = useState("")
 
   const STAGES = [
     "Validating garment textures & lighting…",
@@ -134,7 +160,7 @@ export default function TryOnTab() {
     setStep("consent")
   }
 
-  const startGeneration = (avatarChoice: AvatarType) => {
+  const startGeneration = async (avatarChoice: AvatarType) => {
     setAvatarType(avatarChoice)
     if (simulatedError) {
       setStep("error")
@@ -142,24 +168,38 @@ export default function TryOnTab() {
     }
     setStep("processing")
     setProcessingStage(0)
-
-    const interval = setInterval(() => {
-      setProcessingStage((prev) => {
-        if (prev >= STAGES.length - 1) {
-          clearInterval(interval)
-          setTimeout(() => {
-            setStep("preview")
-            showToast(
-              "Preview Ready",
-              "cat-VTON virtual fitting room render complete.",
-              "success",
-            )
-          }, 500)
-          return prev
-        }
-        return prev + 1
+    setGeneratedImage(null)
+    setGenerationError("")
+    const stageTimer = window.setInterval(() => {
+      setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
+    }, 900)
+    try {
+      const garments = selectedOutfit?.items
+        .filter((item) => item.imageData && (item.type === "Top" || item.type === "Bottom" || item.type === "Outerwear"))
+        .sort((a, b) => (a.type === "Top" || a.type === "Outerwear" ? -1 : b.type === "Top" || b.type === "Outerwear" ? 1 : 0))
+        .slice(0, 2)
+      const response = await fetch("/api/try-on", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          garments: garments?.map((garment) => ({
+            imageUrl: garment.imageData,
+            description: garment.name,
+            type: garment.type,
+          })),
+        }),
       })
-    }, 700)
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || "Cat-VTON request failed.")
+      setGeneratedImage(result.imageUrl)
+      setStep("preview")
+      showToast("Preview Ready", "cat-VTON virtual fitting room render complete.", "success")
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Cat-VTON request failed.")
+      setStep("error")
+    } finally {
+      window.clearInterval(stageTimer)
+    }
   }
 
   const handleKeepOutfit = () => {
@@ -184,6 +224,8 @@ export default function TryOnTab() {
   const reset = () => {
     setStep("outfit")
     setProcessingStage(0)
+    setGeneratedImage(null)
+    setGenerationError("")
   }
 
   return (
@@ -245,7 +287,7 @@ export default function TryOnTab() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3.5">
-            {TRYON_OUTFITS.map((o) => (
+            {(savedOutfit ? [savedOutfit] : []).map((o) => (
               <div
                 key={o.id}
                 className="rounded-3xl p-4 sm:p-5 space-y-3 transition-all hover:border-turquoise/50 border border-border bg-card flex flex-col justify-between"
@@ -477,23 +519,28 @@ export default function TryOnTab() {
                 borderColor: "var(--border)",
               }}
             >
-              {/* Synapp-style anatomical pearl mannequin + garment tints */}
-              <Suspense
-                fallback={
-                  <div className="flex h-full min-h-[360px] items-center justify-center bg-[#e4e2ea]">
-                    <p className="text-[11px] text-neutral-500">
-                      Loading 3D mannequin…
-                    </p>
-                  </div>
-                }
-              >
-                <TryOnMannequin3D
-                  items={selectedOutfit.items}
-                  activeLayers={activeLayers}
-                  fitStyle={fitStyle}
-                  avatarLabel={fitStyle}
+              {generatedImage ? (
+                <img
+                  src={generatedImage}
+                  alt={`Cat-VTON preview of ${selectedOutfit.label}`}
+                  className="h-full w-full object-contain"
                 />
-              </Suspense>
+              ) : (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full min-h-[360px] items-center justify-center bg-[#e4e2ea]">
+                      <p className="text-[11px] text-neutral-500">Loading 3D mannequin…</p>
+                    </div>
+                  }
+                >
+                  <TryOnMannequin3D
+                    items={selectedOutfit.items}
+                    activeLayers={activeLayers}
+                    fitStyle={fitStyle}
+                    avatarLabel={fitStyle}
+                  />
+                </Suspense>
+              )}
 
               {/* Bottom Canvas Tag */}
               <div
@@ -682,7 +729,7 @@ export default function TryOnTab() {
         <div className="space-y-4 max-w-lg mx-auto">
           <AIErrorBanner
             title="cat-VTON Neural Preview Failed"
-            message="The virtual try-on model was unable to process the selected clothing mesh due to high server load or invalid lighting."
+            message={generationError || "The virtual try-on model was unable to process the selected clothing mesh."}
             actions={[
               {
                 label: "Retry with Mannequin",

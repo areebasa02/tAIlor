@@ -77,6 +77,7 @@ export interface WardrobeItem {
   category: Category
   color: string
   colorName: string
+  imageData?: string
   worn: number
   favorite: boolean
   material?: string
