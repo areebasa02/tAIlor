@@ -1,15 +1,21 @@
-import { lazy, Suspense, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import {
   PulseOrb,
   AIErrorBanner,
   AIStatusPill,
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
+import {
+  getReadableColorLabel,
+  speakText,
+  stopSpeaking,
+} from "../services/accessibilityHelpers"
 import { THEME_COLORS } from "../types/theme"
 
 const TryOnMannequin3D = lazy(() => import("../components/TryOnMannequin3D"))
 
 type Step = "outfit" | "consent" | "processing" | "preview" | "error"
+type AvatarType = "mannequin" | "demo_photo" | "upload_photo"
 
 interface TryOnOutfit {
   id: number
@@ -98,19 +104,34 @@ const TRYON_OUTFITS: TryOnOutfit[] = [
       },
       {
         type: "Shoes",
-        name: "White chunky platforms",
-        color: "#E8E8E8",
+        name: "White sneakers",
+        color: "#F2F2F2",
         emoji: "👟",
       },
     ],
   },
 ]
 
-type AvatarType = "mannequin" | "demo_photo" | "upload_photo"
+const STAGES = [
+  "Validating garment textures & lighting…",
+  "Analyzing body silhouette (cat-VTON)…",
+  "Warping clothing mesh to virtual mannequin…",
+  "Rendering realistic fabric drape & shadows…",
+]
+
+function getItemEmoji(typeOrCat: string, fallback = "👕"): string {
+  const v = typeOrCat.toLowerCase()
+  if (v.includes("outer") || v.includes("coat") || v.includes("jacket")) return "🧥"
+  if (v.includes("bottom") || v.includes("pant") || v.includes("jean")) return "👖"
+  if (v.includes("shoe") || v.includes("sneaker") || v.includes("loafer")) return "👟"
+  if (v.includes("access")) return "💍"
+  return fallback
+}
 
 export default function TryOnTab() {
-  const { user, wardrobe, logOutfitWorn, showToast } = useApp()
-  const savedOutfit = useMemo(() => {
+  const { wardrobe, logOutfitWorn, showToast, user } = useApp()
+
+  const savedOutfit = useMemo<TryOnOutfit | null>(() => {
     const pieces = [
       wardrobe.find((item) => item.id === 14),
       wardrobe.find((item) => item.id === 13),
@@ -122,19 +143,35 @@ export default function TryOnTab() {
       tagline: "A clean, casual look from your saved wardrobe",
       colors: pieces.map((item) => item!.color),
       items: pieces.map((item) => ({
-        type: item!.category === "Accessories" ? "Accessory" : item!.category.slice(0, -1),
+        type:
+          item!.category === "Accessories"
+            ? "Accessory"
+            : item!.category.slice(0, -1),
         name: item!.name,
         color: item!.color,
-        emoji: item!.category === "Shoes" ? "👟" : item!.category === "Bottoms" ? "👖" : "👕",
+        emoji:
+          item!.category === "Shoes"
+            ? "👟"
+            : item!.category === "Bottoms"
+              ? "👖"
+              : "👕",
         imageData: item!.imageData,
       })),
     }
   }, [wardrobe])
+
+  const tryOnOutfits = useMemo(
+    () => [...(savedOutfit ? [savedOutfit] : []), ...TRYON_OUTFITS],
+    [savedOutfit]
+  )
+
   const [step, setStep] = useState<Step>("outfit")
-  const [selectedOutfit, setSelectedOutfit] = useState<TryOnOutfit | null>(savedOutfit)
+  const [selectedOutfit, setSelectedOutfit] = useState<TryOnOutfit | null>(
+    savedOutfit ?? TRYON_OUTFITS[0]
+  )
   const [avatarType, setAvatarType] = useState<AvatarType>("mannequin")
   const [fitStyle, setFitStyle] = useState<"fitted" | "standard" | "relaxed">(
-    "standard",
+    "standard"
   )
   const [processingStage, setProcessingStage] = useState(0)
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
@@ -147,60 +184,149 @@ export default function TryOnTab() {
   const [simulatedError, setSimulatedError] = useState(false)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState("")
+  const [speakingPreview, setSpeakingPreview] = useState(false)
 
-  const STAGES = [
-    "Validating garment textures & lighting…",
-    "Analyzing body silhouette (cat-VTON)…",
-    "Warping clothing mesh to virtual mannequin…",
-    "Rendering realistic fabric drape & shadows…",
-  ]
+  const intervalRef = useRef<number | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+
+  const clearTimers = () => {
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearTimers()
+      stopSpeaking()
+    }
+  }, [])
+
+  const showListen = Boolean(
+    user.accessibility.visionImpairment || user.accessibility.voiceNarration
+  )
 
   const handleSelectOutfit = (o: TryOnOutfit) => {
     setSelectedOutfit(o)
     setStep("consent")
   }
 
-  const startGeneration = async (avatarChoice: AvatarType) => {
+  const startGeneration = async (
+    avatarChoice: AvatarType,
+    bypassSimulatedError = false
+  ) => {
+    clearTimers()
     setAvatarType(avatarChoice)
-    if (simulatedError) {
+    if (simulatedError && !bypassSimulatedError) {
+      setGenerationError(
+        "Simulated error active. Tap Use Mannequin below or disable Test Error."
+      )
       setStep("error")
       return
     }
+
     setStep("processing")
     setProcessingStage(0)
     setGeneratedImage(null)
     setGenerationError("")
-    const stageTimer = window.setInterval(() => {
-      setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
-    }, 900)
-    try {
-      const garments = selectedOutfit?.items
-        .filter((item) => item.imageData && (item.type === "Top" || item.type === "Bottom" || item.type === "Outerwear"))
-        .sort((a, b) => (a.type === "Top" || a.type === "Outerwear" ? -1 : b.type === "Top" || b.type === "Outerwear" ? 1 : 0))
-        .slice(0, 2)
-      const response = await fetch("/api/try-on", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          garments: garments?.map((garment) => ({
-            imageUrl: garment.imageData,
-            description: garment.name,
-            type: garment.type,
-          })),
-        }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.error || "Cat-VTON request failed.")
-      setGeneratedImage(result.imageUrl)
-      setStep("preview")
-      showToast("Preview Ready", "cat-VTON virtual fitting room render complete.", "success")
-    } catch (error) {
-      setGenerationError(error instanceof Error ? error.message : "Cat-VTON request failed.")
-      setStep("error")
-    } finally {
-      window.clearInterval(stageTimer)
+
+    const garments = selectedOutfit?.items
+      .filter(
+        (item) =>
+          item.imageData &&
+          (item.type === "Top" ||
+            item.type === "Bottom" ||
+            item.type === "Outerwear")
+      )
+      .sort((a, b) =>
+        a.type === "Top" || a.type === "Outerwear"
+          ? -1
+          : b.type === "Top" || b.type === "Outerwear"
+            ? 1
+            : 0
+      )
+      .slice(0, 2)
+
+    if (garments && garments.length > 0) {
+      intervalRef.current = window.setInterval(() => {
+        setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
+      }, 900)
+
+      try {
+        const response = await fetch("/api/try-on", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            garments: garments.map((garment) => ({
+              imageUrl: garment.imageData,
+              description: garment.name,
+              type: garment.type,
+            })),
+          }),
+        })
+        const result = (await response.json().catch(() => ({}))) as {
+          imageUrl?: string
+          error?: string
+        }
+        if (!response.ok || !result.imageUrl) {
+          throw new Error(result.error || "Cat-VTON request failed.")
+        }
+        setGeneratedImage(result.imageUrl)
+        setStep("preview")
+        showToast(
+          "Preview Ready",
+          "cat-VTON virtual fitting room render complete.",
+          "success"
+        )
+      } catch (error) {
+        setGenerationError(
+          error instanceof Error ? error.message : "Cat-VTON request failed."
+        )
+        setStep("error")
+      } finally {
+        clearTimers()
+      }
+      return
     }
+
+    // Preset outfits without photo assets render on the interactive 3D mannequin
+    intervalRef.current = window.setInterval(() => {
+      setProcessingStage((prev) => {
+        if (prev >= STAGES.length - 1) {
+          clearTimers()
+          timeoutRef.current = window.setTimeout(() => {
+            setStep("preview")
+            showToast(
+              "Preview Ready",
+              "3D fitting room look is ready.",
+              "success"
+            )
+          }, 400)
+          return prev
+        }
+        return prev + 1
+      })
+    }, 550)
   }
+
+  const fitNote = selectedOutfit
+    ? {
+        harmonyScore: "96% color harmony",
+        drapeNote:
+          fitStyle === "fitted"
+            ? "Tailored silhouette along shoulders & waist"
+            : fitStyle === "relaxed"
+              ? "Loose, breezy drape for zero constriction"
+              : "Balanced everyday fit across chest & hip",
+        sizeLabel: `Size: ${user.typicalSizes.split("·")[0]?.trim() || "Medium"}`,
+        summary: `${selectedOutfit.label} calibrated for ${fitStyle} comfort.`,
+      }
+    : null
 
   const handleKeepOutfit = () => {
     if (!selectedOutfit) return
@@ -213,7 +339,7 @@ export default function TryOnTab() {
     showToast(
       "Outfit Kept & Logged",
       "Logged to your wear history for today.",
-      "success",
+      "success"
     )
   }
 
@@ -222,134 +348,160 @@ export default function TryOnTab() {
   }
 
   const reset = () => {
-    setStep("outfit")
-    setProcessingStage(0)
+    clearTimers()
+    stopSpeaking()
+    setSpeakingPreview(false)
     setGeneratedImage(null)
     setGenerationError("")
+    setStep("outfit")
+    setProcessingStage(0)
+  }
+
+  const handleDescribePreviewAloud = () => {
+    if (speakingPreview) {
+      stopSpeaking()
+      setSpeakingPreview(false)
+      return
+    }
+    if (!selectedOutfit) return
+    const visibleItems = selectedOutfit.items
+      .filter((item) => activeLayers[item.type] !== false)
+      .map(
+        (item) =>
+          `${item.type}: ${item.name} in ${getReadableColorLabel(item.color, item.name, wardrobe)}`
+      )
+      .join(". ")
+    const hiddenItems = selectedOutfit.items
+      .filter((item) => activeLayers[item.type] === false)
+      .map((item) => item.type)
+      .join(", ")
+    const text = `Virtual Fitting Room Preview for ${selectedOutfit.label}. Silhouette fit is set to ${fitStyle}. Currently visible: ${visibleItems || "no active layers"}.${hiddenItems ? ` Hidden layers: ${hiddenItems}.` : ""} ${fitNote ? `${fitNote.harmonyScore}. ${fitNote.summary}. ${fitNote.drapeNote}.` : ""}`
+    const started = speakText(text, () => setSpeakingPreview(false))
+    if (started) {
+      setSpeakingPreview(true)
+    } else {
+      showToast(
+        "Audio Unavailable",
+        "Voice narration is not supported in this browser.",
+        "warning"
+      )
+    }
   }
 
   return (
-    <div className="pt-2 pb-6 space-y-5">
+    <div className="pt-1 pb-4 space-y-2.5">
       {/* Page Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h2
-            className="text-xl sm:text-2xl font-bold text-white"
-            style={{ fontFamily: "Nunito, sans-serif" }}
-          >
-            Virtual Fitting Room
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Preview generated outfits on a digital mannequin or photo before
-            touching a hanger
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setSimulatedError(!simulatedError)}
-          className={`text-[10px] px-2.5 py-1 rounded-xl border transition-colors shrink-0 ${
-            simulatedError
-              ? "border-red text-red bg-red/10 font-bold"
-              : "border-border text-muted-foreground hover:text-white"
-          }`}
-          title="Toggle Flow 05 AI error recovery simulation"
+      <div className="min-w-0">
+        <h1
+          className="text-xl font-black text-foreground leading-tight"
+          style={{ fontFamily: "Nunito, sans-serif" }}
         >
-          {simulatedError ? "⚠️ Error Mode ON" : "AI Error Test"}
-        </button>
-      </div>
-
-      {/* AI disclosure banner */}
-      <div className="flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs leading-relaxed border border-turquoise/25 bg-turquoise/10 text-foreground">
-        <span className="text-sm shrink-0 text-turquoise">
-          ✦
-        </span>
-        <div className="text-[11px] leading-snug">
-          <span className="font-semibold text-turquoise">
-            cat-VTON Neural Preview ·{" "}
-          </span>
-          <span className="text-muted-foreground">
-            AI-rendered previews help you visualize color harmony and silhouette
-            without touching a hanger.
-          </span>
-        </div>
+          Virtual Fitting Room
+        </h1>
+        <p className="text-xs font-semibold text-muted-foreground mt-0.5 leading-snug">
+          Preview saved photos with cat-VTON or a 3D mannequin before getting dressed.
+        </p>
       </div>
 
       {/* Step 1: Choose Outfit */}
       {step === "outfit" && (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              1. Select Outfit to Try On
-            </p>
-            <span className="text-[10px] text-turquoise font-semibold">
-              {TRYON_OUTFITS.length} options ready
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+              1. Pick an Outfit
+            </h2>
+            <span className="text-xs text-muted-foreground font-extrabold">
+              {tryOnOutfits.length} ready
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3.5">
-            {(savedOutfit ? [savedOutfit] : []).map((o) => (
-              <div
-                key={o.id}
-                className="rounded-3xl p-4 sm:p-5 space-y-3 transition-all hover:border-turquoise/50 border border-border bg-card flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-bold text-white leading-tight">
-                        {o.label}
-                      </h3>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {o.tagline}
-                      </p>
+          <div className="grid grid-cols-1 gap-2.5">
+            {tryOnOutfits.map((o) => {
+              const usesCatVton = o.items.some((i) => Boolean(i.imageData))
+              return (
+                <div
+                  key={o.id}
+                  className="rounded-2xl p-3 space-y-2 transition-all hover:border-turquoise border-2 border-border bg-card flex flex-col justify-between shadow-sm"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="text-base font-black text-foreground leading-tight">
+                            {o.label}
+                          </h3>
+                          {usesCatVton && (
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-turquoise/15 text-turquoise border border-turquoise/40">
+                              cat-VTON Photo
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-medium text-muted-foreground mt-0.5 leading-snug">
+                          {o.tagline}
+                        </p>
+                      </div>
+                      <div
+                        role="img"
+                        aria-label={`Color palette for ${o.label}`}
+                        className="flex gap-1.5 shrink-0 pt-0.5"
+                        title="Outfit palette"
+                      >
+                        {o.colors.map((c, i) => (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className="w-5 h-5 rounded-md shadow-xs border-2 border-foreground/25"
+                            style={{ background: c }}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Color swatches */}
-                  <div className="flex items-center gap-2 mt-3">
-                    <span className="text-[10px] text-muted-foreground">
-                      Palette:
-                    </span>
-                    <div className="flex gap-1.5">
-                      {o.colors.map((c, i) => (
+                    {/* Garments pill list */}
+                    <div className="space-y-1.5 pt-2.5 mt-2 border-t-2 border-border">
+                      {o.items.map((item) => (
                         <div
-                          key={i}
-                          className="w-5 h-5 rounded-md shadow-sm border border-white/20"
-                          style={{ background: c }}
-                        />
+                          key={item.name}
+                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-muted border-2 border-border"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {item.imageData ? (
+                              <img
+                                src={item.imageData}
+                                alt={item.name}
+                                className="w-8 h-8 rounded-lg object-contain bg-card border border-border shrink-0"
+                              />
+                            ) : (
+                              <div
+                                aria-hidden="true"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center border border-border text-sm shrink-0"
+                                style={{ background: `${item.color}22` }}
+                              >
+                                {getItemEmoji(item.type, item.emoji)}
+                              </div>
+                            )}
+                            <p className="text-xs font-bold leading-snug text-foreground truncate">
+                              {item.name}
+                            </p>
+                          </div>
+                          <span className="text-[11px] uppercase tracking-wider font-extrabold text-muted-foreground shrink-0">
+                            {item.type}
+                          </span>
+                        </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Garments pill list */}
-                  <div className="space-y-1.5 pt-3 mt-3 border-t border-white/5">
-                    {o.items.map((item) => (
-                      <div
-                        key={item.name}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-muted"
-                      >
-                        <span className="text-sm">{item.emoji}</span>
-                        <div className="min-w-0">
-                          <p className="text-[9px] uppercase tracking-wider font-semibold text-muted-foreground">
-                            {item.type}
-                          </p>
-                          <p className="text-[11px] font-medium truncate text-white">
-                            {item.name}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectOutfit(o)}
+                    className="w-full min-h-[46px] mt-2 py-2.5 rounded-xl text-sm font-black border-2 border-[#0D0F18]/20 dark:border-white/25 transition-all active:scale-95 bg-pink text-white hover:brightness-110 shadow-md shadow-pink/25 cursor-pointer"
+                  >
+                    Try On
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleSelectOutfit(o)}
-                  className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 bg-pink text-white hover:brightness-110 shadow-md shadow-pink/20"
-                >
-                  Try On Look →
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -360,106 +512,108 @@ export default function TryOnTab() {
           <button
             type="button"
             onClick={reset}
-            className="text-xs font-semibold text-turquoise hover:underline"
+            className="text-xs font-extrabold px-3 min-h-[38px] rounded-xl border-2 border-border bg-muted text-foreground hover:border-pink cursor-pointer"
           >
-            ← Back to outfit choices
+            ← Outfits
           </button>
 
-          <div className="rounded-3xl p-5 sm:p-7 space-y-5 border border-border bg-card shadow-xl">
+          <div className="rounded-3xl p-5 space-y-4 border-2 border-border bg-card shadow-xl">
             <div className="flex items-center gap-3">
               <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 text-white shadow-md"
+                aria-hidden="true"
+                className="w-12 h-12 rounded-2xl border-2 border-border flex items-center justify-center text-2xl shrink-0 text-white shadow-md"
                 style={{ background: selectedOutfit.colors[0] }}
               >
                 🪞
               </div>
               <div>
-                <p className="text-base font-bold text-white">
+                <p className="text-base font-black text-foreground">
                   {selectedOutfit.label}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Choose how you'd like to preview this look:
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Choose how to preview:
                 </p>
               </div>
             </div>
 
-            {/* Avatar choice options */}
             <div className="space-y-2.5">
               <button
                 type="button"
-                onClick={() => startGeneration("mannequin")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-pink/30 bg-pink/10 transition-all hover:scale-[1.01]"
+                onClick={() => void startGeneration("mannequin")}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between gap-2 border-2 border-pink bg-pink/10 transition-all hover:scale-[1.01] cursor-pointer"
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🧍</span>
-                  <div>
-                    <p className="text-xs sm:text-sm font-bold text-white">
-                      Digital Mannequin (Recommended)
+                <div className="flex items-center gap-3 min-w-0">
+                  <span aria-hidden="true" className="text-3xl shrink-0">
+                    🧍
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-foreground">
+                      3D Mannequin (Fastest)
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Zero photo required · Privacy-first 3D neutral avatar
-                      tailored to your sizes
+                    <p className="text-xs text-muted-foreground">
+                      No photo needed · Sized to your profile
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-pink">
+                <span className="text-xs font-black text-pink shrink-0">
                   Start →
                 </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => startGeneration("demo_photo")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-turquoise/30 bg-turquoise/10 transition-all hover:scale-[1.01]"
+                onClick={() => void startGeneration("demo_photo")}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between gap-2 border-2 border-turquoise bg-turquoise/10 transition-all hover:scale-[1.01] cursor-pointer"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white border border-white/20"
+                    aria-hidden="true"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white border-2 border-border shrink-0"
                     style={{ background: user.avatarBg }}
                   >
                     {user.initials}
                   </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-bold text-white">
-                      Use Profile Photo ({user.name.split(" ")[0]})
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-foreground">
+                      Profile Avatar ({user.name.split(" ")[0]})
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Saved safe silhouette · Auto-cleared immediately after
-                      session
+                    <p className="text-xs text-muted-foreground">
+                      Uses saved silhouette privately
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-turquoise">Use →</span>
+                <span className="text-xs font-extrabold text-foreground shrink-0">
+                  Use →
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => startGeneration("upload_photo")}
-                className="w-full text-left p-4 rounded-2xl flex items-center justify-between border border-border bg-muted transition-all hover:scale-[1.01] hover:border-turquoise/40"
+                onClick={() => void startGeneration("upload_photo")}
+                className="w-full text-left p-4 rounded-2xl flex items-center justify-between gap-2 border-2 border-border bg-muted transition-all hover:scale-[1.01] hover:border-turquoise cursor-pointer"
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">📸</span>
-                  <div>
-                    <p className="text-xs sm:text-sm font-bold text-white">
-                      Upload New Photo / Selfie
+                <div className="flex items-center gap-3 min-w-0">
+                  <span aria-hidden="true" className="text-3xl shrink-0">
+                    📸
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-foreground">
+                      Upload Photo
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      One-time photo permission · Never stored or shared with
-                      3rd parties
+                    <p className="text-xs text-muted-foreground">
+                      Private one-time preview
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-muted-foreground">
+                <span className="text-xs font-extrabold text-foreground shrink-0">
                   Browse →
                 </span>
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 text-[10px] text-muted-foreground leading-relaxed">
-              🔒 <strong className="text-white">Privacy Guarantee:</strong>{" "}
-              Photos uploaded to tAIlor are processed entirely in temporary
-              volatile memory to compute garment warp and are discarded
-              immediately.
+            <div className="p-3 rounded-2xl bg-muted border-2 border-border text-xs text-muted-foreground leading-snug">
+              🔒 <strong className="text-foreground">Privacy:</strong> Photos
+              stay temporary on your device and are never saved or shared.
             </div>
           </div>
         </div>
@@ -467,14 +621,14 @@ export default function TryOnTab() {
 
       {/* Step 3: Processing */}
       {step === "processing" && selectedOutfit && (
-        <div className="rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto border border-border bg-card shadow-xl">
-          <PulseOrb label="cat-VTON Neural Cloth Model Active" />
+        <div className="rounded-3xl p-8 text-center space-y-4 max-w-md mx-auto border-2 border-border bg-card shadow-xl">
+          <PulseOrb label="Fitting Your Outfit…" />
 
           <div className="space-y-2 max-w-sm mx-auto">
-            <p className="text-sm font-bold text-white">
+            <p className="text-sm font-black text-foreground">
               {STAGES[processingStage]}
             </p>
-            <div className="h-2 rounded-full overflow-hidden bg-muted">
+            <div className="h-2.5 rounded-full overflow-hidden bg-muted border border-border">
               <div
                 className="h-full rounded-full transition-all duration-300 bg-gradient-to-r from-turquoise to-pink"
                 style={{
@@ -482,38 +636,64 @@ export default function TryOnTab() {
                 }}
               />
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              Fitting {selectedOutfit.items.length} garments onto{" "}
+            <p className="text-xs font-semibold text-muted-foreground">
+              Fitting {selectedOutfit.items.length} pieces on{" "}
               {avatarType === "mannequin"
-                ? "digital mannequin"
-                : `${user.name.split(" ")[0]}'s silhouette`}
+                ? "virtual model"
+                : `${user.name.split(" ")[0]}'s profile`}
             </p>
           </div>
 
           <button
             type="button"
             onClick={reset}
-            className="text-xs py-2 px-4 rounded-xl font-medium text-muted-foreground hover:text-white bg-muted transition-colors"
+            className="min-h-[42px] text-xs py-2 px-5 rounded-xl font-extrabold border-2 border-border text-foreground bg-muted transition-colors cursor-pointer"
           >
-            Cancel Generation
+            Cancel
           </button>
         </div>
       )}
 
       {/* Step 4: Preview Result */}
       {step === "preview" && selectedOutfit && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Side: Interactive Fitting Room Canvas */}
-          <div className="lg:col-span-7 space-y-3">
-            <div className="flex items-center justify-between">
-              <AIStatusPill state="success" label="Neural Preview Ready" />
-              <span className="text-[10px] text-muted-foreground">
-                cat-VTON Model v2
+        <div className="space-y-3">
+          {/* Interactive Fitting Room Canvas */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <AIStatusPill
+                state="success"
+                label={generatedImage ? "cat-VTON Ready" : "3D Preview Ready"}
+              />
+              <span className="text-xs font-extrabold text-muted-foreground">
+                {generatedImage ? "cat-VTON Neural Render" : "3D Mirror"}
               </span>
             </div>
 
+            {showListen && (
+              <button
+                type="button"
+                onClick={handleDescribePreviewAloud}
+                aria-pressed={speakingPreview}
+                aria-label={
+                  speakingPreview
+                    ? "Stop reading try-on preview aloud"
+                    : "Listen to try-on preview description read aloud"
+                }
+                className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-extrabold border-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  speakingPreview
+                    ? "bg-pink text-white border-pink shadow-xs"
+                    : user.accessibility.voiceNarration
+                      ? "bg-turquoise text-[#0D0F18] border-[#0D0F18]/25 shadow-xs"
+                      : "bg-card text-foreground border-border hover:border-turquoise"
+                }`}
+              >
+                <span aria-hidden="true">{speakingPreview ? "⏹" : "🔊"}</span>
+                <span>{speakingPreview ? "Stop" : "Listen"}</span>
+              </button>
+            )}
+
             <div
-              className="rounded-3xl overflow-hidden relative border shadow-2xl min-h-[420px] h-[420px] sm:h-[480px]"
+              className="rounded-2xl overflow-hidden relative border-2 shadow-xl min-h-[260px] h-[clamp(260px,44dvh,400px)]"
               style={{
                 background: "#e4e2ea",
                 borderColor: "var(--border)",
@@ -528,8 +708,10 @@ export default function TryOnTab() {
               ) : (
                 <Suspense
                   fallback={
-                    <div className="flex h-full min-h-[360px] items-center justify-center bg-[#e4e2ea]">
-                      <p className="text-[11px] text-neutral-500">Loading 3D mannequin…</p>
+                    <div className="flex h-full min-h-[240px] items-center justify-center bg-[#e4e2ea]">
+                      <p className="text-xs font-bold text-neutral-700">
+                        Loading 3D mannequin…
+                      </p>
                     </div>
                   }
                 >
@@ -543,121 +725,169 @@ export default function TryOnTab() {
               )}
 
               {/* Bottom Canvas Tag */}
-              <div
-                className="absolute bottom-3 left-4 right-4 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] z-20 shadow-sm"
-                style={{
-                  background: "rgba(255,255,255,0.92)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid rgba(0,0,0,0.06)",
-                }}
-              >
-                <span className="text-neutral-500">
-                  cat-VTON Diffusion · Color harmony: 96% match
-                </span>
-                <span className="font-semibold text-neutral-800">
-                  Size: {user.typicalSizes.split("·")[0]}
-                </span>
-              </div>
+              {fitNote && (
+                <div
+                  className="absolute bottom-2 left-2.5 right-2.5 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 text-xs z-20 shadow-sm border-2 border-black/15"
+                  style={{
+                    background: "rgba(255,255,255,0.95)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <span className="text-neutral-900 font-bold leading-tight">
+                    {fitNote.harmonyScore} · {fitNote.drapeNote}
+                  </span>
+                  <span className="font-black text-neutral-900 shrink-0">
+                    {fitNote.sizeLabel}
+                  </span>
+                </div>
+              )}
             </div>
+
+            {fitNote && (
+              <div className="rounded-xl px-3 py-2 bg-turquoise/10 border-2 border-turquoise/45 text-xs font-medium text-foreground leading-snug">
+                <span className="font-extrabold text-foreground">
+                  <span aria-hidden="true">✦ </span>Fit Note:{" "}
+                </span>
+                {fitNote.summary} {fitNote.drapeNote}.
+              </div>
+            )}
           </div>
 
-          {/* Right Side: Layer Controls, Fit Adjuster & User Actions */}
-          <div className="lg:col-span-5 space-y-4">
-            {/* Fit Adjuster Card */}
-            <div className="rounded-3xl p-4 border border-border bg-card space-y-2.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                Adjust Mannequin Fit Silhouette
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {(["standard", "fitted", "relaxed"] as const).map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    onClick={() => setFitStyle(style)}
-                    className={`py-2 rounded-xl text-xs font-bold capitalize transition-all ${
-                      fitStyle === style
-                        ? "bg-turquoise text-[#0D0F18] shadow-sm"
-                        : "bg-muted text-muted-foreground hover:text-white"
-                    }`}
+          {/* Layer Controls, Fit Adjuster & User Actions */}
+          <div className="space-y-2.5">
+            {!generatedImage && (
+              <>
+                {/* Fit Adjuster Card */}
+                <div className="rounded-2xl p-3 border-2 border-border bg-card space-y-2">
+                  <span
+                    id="fit-silhouette-label"
+                    className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
                   >
-                    {style}
-                  </button>
-                ))}
-              </div>
-            </div>
+                    Fit Style
+                  </span>
+                  <div
+                    role="group"
+                    aria-labelledby="fit-silhouette-label"
+                    className="grid grid-cols-3 gap-2"
+                  >
+                    {(["standard", "fitted", "relaxed"] as const).map((style) => (
+                      <button
+                        key={style}
+                        type="button"
+                        aria-pressed={fitStyle === style}
+                        onClick={() => setFitStyle(style)}
+                        className={`min-h-[40px] py-1.5 rounded-xl text-xs font-extrabold capitalize border-2 transition-all cursor-pointer ${
+                          fitStyle === style
+                            ? "bg-turquoise text-[#0D0F18] border-[#0D0F18]/25 shadow-sm"
+                            : "bg-muted text-foreground border-border hover:border-turquoise"
+                        }`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Interactive Layer Visibility Toggles */}
-            <div className="rounded-3xl p-4 space-y-2.5 border border-border bg-card">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-                Toggle Garment Layers
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {["Top", "Bottom", "Shoes", "Outerwear"].map((layer) => (
-                  <button
-                    key={layer}
-                    type="button"
-                    onClick={() => toggleLayer(layer)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
-                      activeLayers[layer]
-                        ? "bg-green/15 text-green border-green/40 font-bold"
-                        : "bg-muted text-muted-foreground border-border hover:text-white"
-                    }`}
+                {/* Interactive Layer Visibility Toggles */}
+                <div className="rounded-2xl p-3 space-y-2 border-2 border-border bg-card">
+                  <span
+                    id="toggle-layers-label"
+                    className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
                   >
-                    <span>{layer}</span>
-                    <span>{activeLayers[layer] ? "✓" : "✕"}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                    Show / Hide Layers
+                  </span>
+                  <div
+                    role="group"
+                    aria-labelledby="toggle-layers-label"
+                    className="grid grid-cols-2 gap-2"
+                  >
+                    {["Top", "Bottom", "Shoes", "Outerwear"].map((layer) => (
+                      <button
+                        key={layer}
+                        type="button"
+                        aria-pressed={activeLayers[layer]}
+                        aria-label={`${layer} layer (${activeLayers[layer] ? "visible" : "hidden"})`}
+                        onClick={() => toggleLayer(layer)}
+                        className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center justify-between border-2 transition-all cursor-pointer ${
+                          activeLayers[layer]
+                            ? "bg-green/15 text-green border-green"
+                            : "bg-muted text-foreground border-border hover:border-turquoise"
+                        }`}
+                      >
+                        <span>{layer}</span>
+                        <span aria-hidden="true">
+                          {activeLayers[layer] ? "✓" : "✕"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Actions Grid */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
               <button
                 type="button"
                 onClick={handleKeepOutfit}
-                className="py-3 rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md col-span-2 sm:col-span-1 bg-green text-white hover:brightness-110 shadow-green/20"
+                className="min-h-[46px] py-2.5 rounded-xl text-xs font-black border-2 border-[#0D0F18]/20 transition-all active:scale-95 shadow-md bg-green text-white hover:brightness-110 shadow-green/20 cursor-pointer"
               >
-                ✓ Keep & Wear Today
+                <span aria-hidden="true">✓ </span>Wear This Now
               </button>
 
               <button
                 type="button"
                 onClick={() => setSwapModalOpen(true)}
-                className="py-3 rounded-2xl text-xs font-bold transition-all active:scale-95 border border-border bg-muted text-white hover:border-turquoise/50 col-span-2 sm:col-span-1"
+                className="min-h-[46px] py-2.5 rounded-xl text-xs font-extrabold transition-all active:scale-95 border-2 border-border bg-card text-foreground hover:border-turquoise cursor-pointer"
               >
-                ✏ Change an Item
+                <span aria-hidden="true">✏ </span>Swap
               </button>
 
               <button
                 type="button"
-                onClick={() => startGeneration(avatarType)}
-                className="py-2.5 rounded-2xl text-xs font-semibold border border-border bg-muted text-white hover:bg-muted/80 transition-colors"
+                onClick={() => void startGeneration(avatarType)}
+                className="min-h-[44px] py-2 rounded-xl text-xs font-extrabold border-2 border-border bg-muted text-foreground hover:border-pink transition-colors cursor-pointer"
               >
-                ↺ Regenerate Look
+                <span aria-hidden="true">↺ </span>Retry
               </button>
 
               <button
                 type="button"
                 onClick={reset}
-                className="py-2.5 rounded-2xl text-xs font-semibold bg-muted text-muted-foreground hover:text-white transition-colors"
+                className="min-h-[44px] py-2 rounded-xl text-xs font-extrabold bg-muted text-foreground border-2 border-border hover:border-red transition-colors cursor-pointer"
               >
-                ✕ Delete Preview
+                <span aria-hidden="true">✕ </span>Close
               </button>
             </div>
           </div>
 
           {/* Swap modal */}
           {swapModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-              <div className="rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-border bg-card">
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+              onClick={() => setSwapModalOpen(false)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="tryon-swap-modal-title"
+                className="rounded-3xl p-5 max-w-[400px] w-full space-y-4 shadow-2xl border-2 border-border bg-card"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-white">Swap Garment</h3>
+                  <h2
+                    id="tryon-swap-modal-title"
+                    className="text-sm font-bold text-foreground"
+                  >
+                    Swap Garment
+                  </h2>
                   <button
                     type="button"
                     onClick={() => setSwapModalOpen(false)}
-                    className="text-xs text-muted-foreground hover:text-white"
+                    aria-label="Close swap garment dialog"
+                    className="text-xs text-muted-foreground hover:text-foreground p-1.5 rounded-lg cursor-pointer"
                   >
-                    ✕
+                    <span aria-hidden="true">✕</span>
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -665,47 +895,114 @@ export default function TryOnTab() {
                 </p>
 
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {[
-                    {
-                      name: "Mint ribbed mock-neck",
-                      cat: "Top",
-                      color: THEME_COLORS.lightGreen,
-                    },
-                    {
-                      name: "Cream linen blouse",
-                      cat: "Top",
-                      color: "#F5EFD8",
-                    },
-                    {
-                      name: "Black wide-leg trousers",
-                      cat: "Bottom",
-                      color: "#1A1A2E",
-                    },
-                    {
-                      name: "White leather sneakers",
-                      cat: "Shoes",
-                      color: "#F2F2F2",
-                    },
-                  ].map((alt) => (
+                  {(wardrobe.length > 0
+                    ? wardrobe
+                        .filter(
+                          (w) =>
+                            (w.status || "clean") === "clean" &&
+                            w.category !== "Accessories"
+                        )
+                        .slice(0, 8)
+                        .map((w) => ({
+                          name: w.name,
+                          cat:
+                            w.category === "Tops"
+                              ? "Top"
+                              : w.category === "Bottoms"
+                                ? "Bottom"
+                                : w.category,
+                          color: w.color,
+                          imageData: w.imageData,
+                        }))
+                    : [
+                        {
+                          name: "Mint ribbed mock-neck",
+                          cat: "Top",
+                          color: THEME_COLORS.lightGreen,
+                          imageData: undefined,
+                        },
+                        {
+                          name: "Cream linen blouse",
+                          cat: "Top",
+                          color: "#F5EFD8",
+                          imageData: undefined,
+                        },
+                        {
+                          name: "Black wide-leg trousers",
+                          cat: "Bottom",
+                          color: "#1A1A2E",
+                          imageData: undefined,
+                        },
+                        {
+                          name: "White leather sneakers",
+                          cat: "Shoes",
+                          color: "#F2F2F2",
+                          imageData: undefined,
+                        },
+                      ]
+                  ).map((alt) => (
                     <button
                       key={alt.name}
                       type="button"
                       onClick={() => {
+                        setSelectedOutfit((prev) => {
+                          if (!prev) return prev
+                          const hasSlot = prev.items.some(
+                            (i) => i.type === alt.cat
+                          )
+                          const nextItems = hasSlot
+                            ? prev.items.map((i) =>
+                                i.type === alt.cat
+                                  ? {
+                                      ...i,
+                                      name: alt.name,
+                                      color: alt.color,
+                                      imageData: alt.imageData,
+                                    }
+                                  : i
+                              )
+                            : [
+                                ...prev.items,
+                                {
+                                  type: alt.cat,
+                                  name: alt.name,
+                                  color: alt.color,
+                                  emoji: getItemEmoji(alt.cat),
+                                  imageData: alt.imageData,
+                                },
+                              ]
+                          return {
+                            ...prev,
+                            items: nextItems,
+                            colors: nextItems.slice(0, 3).map((i) => i.color),
+                          }
+                        })
                         showToast(
                           "Swapped!",
                           `Updated preview with ${alt.name}`,
-                          "info",
+                          "info"
                         )
                         setSwapModalOpen(false)
                       }}
-                      className="w-full p-2.5 rounded-xl flex items-center gap-3 border border-border bg-muted text-left hover:border-turquoise transition-colors"
+                      className="w-full min-h-[48px] p-2.5 rounded-xl flex items-center gap-3 border border-border bg-muted text-left hover:border-turquoise transition-colors cursor-pointer"
                     >
-                      <div
-                        className="w-6 h-6 rounded-md shrink-0 shadow-sm border border-white/10"
-                        style={{ background: alt.color }}
-                      />
+                      {alt.imageData ? (
+                        <img
+                          src={alt.imageData}
+                          alt={alt.name}
+                          className="w-9 h-9 rounded-lg object-contain bg-card border border-border shrink-0"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden="true"
+                          className="w-9 h-9 rounded-lg flex items-center justify-center border border-border text-base shrink-0"
+                          style={{ background: `${alt.color}22` }}
+                        >
+                          {getItemEmoji(alt.cat)}
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate text-white">
+                        <p className="text-xs font-bold truncate text-foreground">
                           {alt.name}
                         </p>
                         <p className="text-[10px] text-muted-foreground">
@@ -728,25 +1025,51 @@ export default function TryOnTab() {
       {step === "error" && (
         <div className="space-y-4 max-w-lg mx-auto">
           <AIErrorBanner
-            title="cat-VTON Neural Preview Failed"
-            message={generationError || "The virtual try-on model was unable to process the selected clothing mesh."}
+            title="Virtual Try-On Preview Failed"
+            message={
+              generationError ||
+              "The fitting room hit a snag. Try again or go back to choose another outfit."
+            }
             actions={[
               {
-                label: "Retry with Mannequin",
+                label: "Retry",
                 primary: true,
                 onClick: () => {
                   setSimulatedError(false)
-                  startGeneration("mannequin")
+                  void startGeneration("mannequin", true)
                 },
               },
               {
-                label: "Continue Without Preview",
+                label: "Go Back",
                 onClick: reset,
               },
             ]}
           />
         </div>
       )}
+
+      {/* Test Mode Footer Bar */}
+      <div
+        role="group"
+        aria-label="Test mode"
+        className="mt-2 pt-2.5 border-t-2 border-border flex items-center justify-between gap-2 text-xs"
+      >
+        <span className="font-bold text-muted-foreground">Test Mode:</span>
+        <button
+          type="button"
+          onClick={() => setSimulatedError(!simulatedError)}
+          aria-pressed={simulatedError}
+          aria-label="Toggle error recovery test"
+          className={`px-3 py-1.5 min-h-[34px] rounded-xl border-2 font-extrabold transition-colors shrink-0 cursor-pointer ${
+            simulatedError
+              ? "border-red text-white bg-red"
+              : "border-border bg-muted text-foreground hover:border-red"
+          }`}
+          title="Test error message"
+        >
+          {simulatedError ? "⚠ Error ON" : "Test Error"}
+        </button>
+      </div>
     </div>
   )
 }

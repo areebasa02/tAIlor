@@ -1,19 +1,49 @@
-import { useState } from "react";
+import { useEffect, useState } from "react"
 import {
   AnimatedStepProgress,
   UserControlBar,
+  WhyItWorksDisclosure,
+  OutfitFeedbackModal,
+  GarmentFeedbackModal,
   type ControlMode,
-} from "../components/AIComponents";
-import { AddStyleModal } from "../components/AddStyleModal";
-import { useApp } from "../context/AppContext";
-import { THEME_COLORS } from "../types/theme";
+} from "../components/AIComponents"
+import { AddStyleModal } from "../components/AddStyleModal"
+import { useApp } from "../context/AppContext"
+import {
+  getReadableColorLabel,
+  getSensoryInfo,
+  speakText,
+  stopSpeaking,
+} from "../services/accessibilityHelpers"
+import type { OutfitItem } from "../types"
+import { THEME_COLORS } from "../types/theme"
 
 const GENERATION_STEPS = [
   "Reading digital wardrobe & local forecast…",
   "Analyzing wear history & color theory rules…",
   "Synthesizing accessible outfit options…",
   "Finalizing personalized stylist notes…",
-];
+]
+
+function getPieceEmoji(typeOrCategory: string): string {
+  const v = typeOrCategory.toLowerCase()
+  if (v.includes("top") || v.includes("shirt") || v.includes("blouse") || v.includes("sweater")) {
+    return "👕"
+  }
+  if (v.includes("bottom") || v.includes("pant") || v.includes("jean") || v.includes("skirt")) {
+    return "👖"
+  }
+  if (v.includes("outer") || v.includes("jacket") || v.includes("coat") || v.includes("blazer")) {
+    return "🧥"
+  }
+  if (v.includes("shoe") || v.includes("boot") || v.includes("sneaker") || v.includes("heel") || v.includes("loafer")) {
+    return "👟"
+  }
+  if (v.includes("access") || v.includes("bag") || v.includes("belt") || v.includes("scarf")) {
+    return "💍"
+  }
+  return "👗"
+}
 
 export default function HomeTab() {
   const {
@@ -32,28 +62,72 @@ export default function HomeTab() {
     setWornToday,
     regenerateOutfit,
     swapOutfitItem,
-    undoOutfit,
     weather,
     refreshWeather,
-  } = useApp();
+    showToast,
+    favoriteOutfitIds,
+    toggleFavoriteOutfit,
+    saveOutfitFeedback,
+    saveGarmentFeedback,
+  } = useApp()
 
-  const [loading, setLoading] = useState(false);
-  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default");
-  const [whyModalOpen, setWhyModalOpen] = useState(false);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [swapModalOpen, setSwapModalOpen] = useState(false);
-  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null);
-  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false)
+  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default")
+  const [whyModalOpen, setWhyModalOpen] = useState(false)
+  const [rejectModalOpen, setRejectModalOpen] = useState(false)
+  const [customRejectReason, setCustomRejectReason] = useState("")
+  const [swapModalOpen, setSwapModalOpen] = useState(false)
+  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null)
+  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false)
+  const [speakingOutfit, setSpeakingOutfit] = useState(false)
+  const [showRecentHistory, setShowRecentHistory] = useState(false)
+  const [outfitFeedbackModalOpen, setOutfitFeedbackModalOpen] = useState(false)
+  const [garmentFeedbackTarget, setGarmentFeedbackTarget] = useState<{
+    item: OutfitItem
+    index: number
+  } | null>(null)
+
+  useEffect(() => () => stopSpeaking(), [])
+
+  const showListen = Boolean(
+    user.accessibility.visionImpairment || user.accessibility.voiceNarration
+  )
+
+  const handleToggleListen = () => {
+    if (speakingOutfit) {
+      stopSpeaking()
+      setSpeakingOutfit(false)
+      return
+    }
+    if (!currentOutfit) return
+    const pieces = currentOutfit.items
+      .map(
+        (item) =>
+          `${item.type}: ${item.desc}, color ${getReadableColorLabel(item.color, item.desc, wardrobe)}`
+      )
+      .join(". ")
+    const speech = `Today's recommended outfit is ${currentOutfit.label}: ${currentOutfit.tagline}. Weather in ${weather.city.split(",")[0]} is ${weather.temp}. Pieces: ${pieces}. Stylist note: ${currentOutfit.rationale}`
+    const started = speakText(speech, () => setSpeakingOutfit(false))
+    if (started) {
+      setSpeakingOutfit(true)
+    } else {
+      showToast(
+        "Audio Unavailable",
+        "Voice narration is not supported in this browser.",
+        "warning"
+      )
+    }
+  }
 
   const handleRegenerate = (reasonConstraint?: string) => {
-    setLoading(true);
-    setCtrlMode("regenerating");
+    setLoading(true)
+    setCtrlMode("regenerating")
     setTimeout(() => {
-      regenerateOutfit(reasonConstraint);
-      setLoading(false);
-      setCtrlMode("default");
-    }, 900);
-  };
+      regenerateOutfit(reasonConstraint)
+      setLoading(false)
+      setCtrlMode("default")
+    }, 650)
+  }
 
   const handleApprove = () => {
     logOutfitWorn({
@@ -61,627 +135,671 @@ export default function HomeTab() {
       items: currentOutfit.items.map((i) => i.desc),
       color: currentOutfit.items[0]?.color || THEME_COLORS.pink,
       direction: currentOutfit.label,
-    });
-    setWornToday(true);
-    setCtrlMode("default");
-  };
-
-  const handleUndo = () => {
-    const success = undoOutfit();
-    if (success) {
-      setCtrlMode("undone");
-    }
-  };
+    })
+    setWornToday(true)
+    setCtrlMode("default")
+  }
 
   const handleSwapItem = (replacementItem: (typeof wardrobe)[0]) => {
-    if (swapTargetIndex === null) return;
-    swapOutfitItem(swapTargetIndex, replacementItem);
-    setSwapModalOpen(false);
-    setSwapTargetIndex(null);
-  };
+    if (swapTargetIndex === null) return
+    swapOutfitItem(swapTargetIndex, replacementItem)
+    setSwapModalOpen(false)
+    setSwapTargetIndex(null)
+  }
 
   return (
-    <div className="pt-2 pb-6 space-y-6">
-      {/* Responsive Grid: Stacks on Mobile, 2-Column on Presentation / Large Screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column on Desktop: Today's Outfit Card & Controls */}
-        <div className="lg:col-span-7 space-y-4">
-          {/* Section Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2
-                className="text-xl sm:text-2xl font-bold text-white"
-                style={{ fontFamily: "Nunito, sans-serif" }}
-              >
-                Today's Outfit
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {user.accessibility.lowDecisionMode
-                  ? "Low Decision Mode active · AI highlighted top match or switch anytime"
-                  : "Choose a style direction — your AI stylist handles color theory & comfort"}
-              </p>
-            </div>
-
-            {wornToday && (
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider text-green border border-green/40 bg-green/10">
-                ✓ Worn Today
-              </span>
-            )}
-          </div>
-
-          {/* Direction Pills / Styles Recommendation Bar */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Recommended Styles
-              </span>
-              {user.accessibility.lowDecisionMode && (
-                <span className="text-[10px] font-semibold text-turquoise bg-turquoise/10 px-2 py-0.5 rounded-full border border-turquoise/20">
-                  ⚡ AI Recommended Look
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center">
-              {Object.entries(outfits).map(([dirKey, o]) => {
-                const active = selectedDirection === dirKey;
-                const isDefaultPick = dirKey === defaultDirection;
-                const isLightAccent =
-                  o.accent.includes("yellow") ||
-                  o.accent.includes("mint") ||
-                  o.accent.includes("pink") ||
-                  o.accent.includes("sky") ||
-                  o.accent.includes("gold") ||
-                  o.accent.includes("turquoise") ||
-                  o.accent.includes("rose") ||
-                  o.accent.includes("light-green") ||
-                  ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(
-                    o.accent,
-                  );
-
-                return (
-                  <div
-                    key={dirKey}
-                    className="relative group flex items-center"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDirection(dirKey);
-                        setCtrlMode("default");
-                        setWornToday(false);
-                      }}
-                      className="py-2 px-3.5 rounded-2xl text-xs font-bold tracking-wide transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
-                      style={{
-                        background: active ? o.accent : "var(--muted)",
-                        color: active
-                          ? isLightAccent
-                            ? "#0D0F18"
-                            : "#ffffff"
-                          : "var(--muted-foreground)",
-                        border: active
-                          ? `1px solid ${o.accent}`
-                          : "1px solid rgba(255,255,255,0.06)",
-                        boxShadow: active
-                          ? `0 4px 14px ${
-                              o.accent.startsWith("var")
-                                ? "rgba(206,0,90,0.3)"
-                                : `${o.accent}40`
-                            }`
-                          : "none",
-                      }}
-                    >
-                      {user.accessibility.lowDecisionMode && isDefaultPick && (
-                        <span
-                          className="text-[11px] leading-none"
-                          title="AI Primary Recommendation"
-                        >
-                          ⚡
-                        </span>
-                      )}
-                      <span>{o.label}</span>
-                      {o.isCustom && (
-                        <span
-                          className="text-[9px] px-1 py-0.2 rounded font-normal uppercase ml-0.5 opacity-80"
-                          style={{
-                            background: active
-                              ? "rgba(0,0,0,0.15)"
-                              : "rgba(255,255,255,0.1)",
-                          }}
-                        >
-                          Custom
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Delete Custom Style Button */}
-                    {o.isCustom && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeCustomStyle(dirKey);
-                        }}
-                        className="ml-1 w-5 h-5 rounded-full bg-white/10 hover:bg-red/20 text-white/50 hover:text-red flex items-center justify-center text-xs transition-colors cursor-pointer"
-                        title={`Remove custom style "${o.label}"`}
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                );
+    <div className="pt-1 pb-4 space-y-3">
+      {/* 1. Date, Greeting & Weather Card */}
+      <div
+        className="rounded-2xl p-3 pt-3.5 space-y-2 shadow-sm border-2 relative overflow-hidden"
+        style={{ background: "var(--card)", borderColor: "var(--border)" }}
+      >
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-pink via-gold to-turquoise"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] min-[380px]:text-xs font-extrabold uppercase tracking-wider text-muted-foreground leading-snug">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
               })}
-
-              {/* Add Custom Style Button */}
-              <button
-                type="button"
-                onClick={() => setAddStyleModalOpen(true)}
-                className="py-2 px-3 rounded-2xl text-xs font-bold tracking-wide flex items-center gap-1.5 border border-dashed border-white/25 text-white/80 hover:text-white hover:border-pink/60 hover:bg-pink/5 transition-all duration-200 cursor-pointer"
-                title="Add a custom outfit recommendation style"
-              >
-                <span className="text-base leading-none font-bold text-pink">
-                  +
-                </span>
-                <span>Add Style</span>
-              </button>
-            </div>
+            </p>
+            <h1
+              className="text-xl min-[390px]:text-2xl font-black tracking-tight leading-tight text-foreground"
+              style={{ fontFamily: "Nunito, sans-serif" }}
+            >
+              Hi, {user.name.split(" ")[0]}
+            </h1>
           </div>
 
-          {/* Loading State */}
-          {loading && (
-            <div
-              className="rounded-3xl p-6 space-y-3 border"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <p className="text-xs font-bold text-white">
-                Stylist Engine Generating Look…
+          <button
+            type="button"
+            onClick={() => void refreshWeather()}
+            aria-label={`Weather in ${weather.city.split(",")[0]}: ${weather.temp}. Tap to refresh live weather.`}
+            className="flex items-center gap-2 px-3 py-1.5 min-h-[42px] rounded-xl border-2 border-border bg-muted transition-transform active:scale-95 shrink-0 hover:border-turquoise cursor-pointer"
+            title="Tap to refresh live weather"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              {weather.icon}
+            </span>
+            <div className="text-right min-w-0">
+              <p className="text-sm font-black leading-tight text-foreground whitespace-nowrap">
+                {weather.temp}
               </p>
-              <AnimatedStepProgress
-                steps={GENERATION_STEPS}
-                intervalMs={700}
-                onComplete={() => setLoading(false)}
-              />
+              <p className="text-[11px] font-bold leading-tight text-muted-foreground whitespace-nowrap">
+                {weather.city.split(",")[0]}
+              </p>
             </div>
-          )}
-
-          {/* Main Outfit Card */}
-          {!loading && currentOutfit && (
-            <div
-              className="rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl border transition-all"
-              style={{
-                background: currentOutfit.bg,
-                borderColor: `${currentOutfit.accent}40`,
-              }}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <span
-                    className="text-xs font-extrabold uppercase tracking-widest"
-                    style={{ color: currentOutfit.accent }}
-                  >
-                    {currentOutfit.label} Direction
-                  </span>
-                  <p className="text-sm sm:text-base font-semibold text-white mt-0.5">
-                    {currentOutfit.tagline}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setWhyModalOpen(true)}
-                  className="text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1 transition-transform active:scale-95"
-                  style={{
-                    background: "rgba(255,255,255,0.08)",
-                    color: "var(--foreground)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                  }}
-                >
-                  <span>💡</span>
-                  <span>Why this?</span>
-                </button>
-              </div>
-
-              {/* Garments List */}
-              <div className="space-y-2.5">
-                {currentOutfit.items.map((item, idx) => (
-                  <div
-                    key={`${item.type}-${idx}`}
-                    className={`flex items-center justify-between gap-3 p-3 rounded-2xl transition-all ${
-                      ctrlMode === "editing"
-                        ? "border border-turquoise/50"
-                        : "border border-white/5"
-                    }`}
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-md"
-                        style={{
-                          background: item.color,
-                          border: "1.5px solid rgba(255,255,255,0.2)",
-                        }}
-                      >
-                        <span>{item.emoji}</span>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                            {item.type}
-                          </p>
-                          {user.accessibility.highContrastColors && (
-                            <span className="text-[8px] font-bold px-1.5 py-0.2 rounded-full uppercase bg-turquoise/15 text-turquoise">
-                              Color: {item.color}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm font-semibold text-white truncate">
-                          {item.desc}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {item.reason}
-                        </p>
-                      </div>
-                    </div>
-
-                    {ctrlMode === "editing" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSwapTargetIndex(idx);
-                          setSwapModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 rounded-xl text-[10px] font-bold shrink-0 transition-transform active:scale-95 bg-turquoise text-[#0D0F18]"
-                      >
-                        Swap ↺
-                      </button>
-                    ) : (
-                      <span
-                        className="w-4.5 h-9 rounded-full shrink-1 shadow-inner"
-                        style={{
-                          background: item.color,
-                          border: "1px solid rgba(255,255,255,0.3)",
-                        }}
-                        title={item.color}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Rationale */}
-              <div
-                className="rounded-2xl p-3 text-xs leading-relaxed"
-                style={{
-                  background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  color: "var(--foreground)",
-                }}
-              >
-                <span
-                  className="font-semibold"
-                  style={{ color: currentOutfit.accent }}
-                >
-                  Stylist Rationale:
-                </span>{" "}
-                <span style={{ color: "var(--muted-foreground)" }}>
-                  {currentOutfit.rationale}
-                </span>
-              </div>
-
-              {/* Control Bar */}
-              <UserControlBar
-                mode={ctrlMode}
-                approveLabel={
-                  wornToday ? "✓ Approved & Worn Today" : "Approve & Wear Today"
-                }
-                onApprove={handleApprove}
-                onEdit={() =>
-                  setCtrlMode(ctrlMode === "editing" ? "default" : "editing")
-                }
-                onReject={() => setRejectModalOpen(true)}
-                onRegenerate={() => handleRegenerate()}
-                onUndo={handleUndo}
-                onWhy={() => setWhyModalOpen(true)}
-                showWhy={false}
-              />
-
-              {/* Post-Approve Laundry Prompt */}
-              {wornToday && (
-                <div className="rounded-2xl p-3 flex items-center justify-between gap-2 animate-in fade-in duration-200 bg-green/10 border border-green/30">
-                  <div className="text-xs">
-                    <p className="font-bold text-white">
-                      Outfit ready for the day!
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Done with yesterday's clothes?
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sendOutfitToLaundry([
-                        currentOutfit.items[0]?.desc || "Top",
-                        currentOutfit.items[1]?.desc || "Bottom",
-                      ]);
-                    }}
-                    className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white shrink-0 bg-dark-teal hover:brightness-110 transition-all shadow-sm"
-                  >
-                    🧺 Send Items to Hamper
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          </button>
         </div>
 
-        {/* Right Column on Desktop / Bottom on Mobile: Climate & Recent Looks History */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Date & Weather Card */}
-          <div
-            className="rounded-3xl p-4 sm:p-5 space-y-3 shadow-md border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </p>
-                <h1
-                  className="text-lg sm:text-xl font-bold mt-0.5 truncate text-white"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
-                >
-                  Good morning, {user.name.split(" ")[0]}
-                </h1>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                  {user.roleTitle}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={refreshWeather}
-                className="flex items-center gap-2 p-2 rounded-2xl border border-border bg-muted transition-transform active:scale-95 shrink-0 hover:border-turquoise/50"
-                title="Click to refresh local forecast"
-              >
-                <span className="text-2xl leading-none">{weather.icon}</span>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-white">{weather.temp}</p>
-                  <p className="text-[9px] text-muted-foreground">
-                    {weather.city.split(",")[0]}
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            {/* AI Climate Advice */}
-            <div className="rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs bg-turquoise/10 border border-turquoise/20">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm shrink-0 text-turquoise">✦</span>
-                <p className="text-[11px] text-muted-foreground leading-snug">
-                  {weather.advice}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={refreshWeather}
-                className="text-[10px] font-bold text-turquoise hover:underline shrink-0 ml-2"
-                title="Refresh climate advice"
-              >
-                ↻
-              </button>
-            </div>
+        {/* AI Climate Tip */}
+        <div className="rounded-xl px-3 py-2 flex items-center justify-between text-xs bg-turquoise/10 border-2 border-turquoise/45">
+          <div className="flex items-center gap-2 min-w-0">
+            <span aria-hidden="true" className="text-sm shrink-0 text-turquoise font-bold">
+              ✦
+            </span>
+            <p className="text-xs min-[380px]:text-[13px] font-semibold text-foreground leading-snug">
+              {weather.advice}
+            </p>
           </div>
-
-          {/* Recent Looks Wear History */}
-          <div
-            className="rounded-3xl p-4 sm:p-5 space-y-3 shadow-md border"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}
+          <button
+            type="button"
+            onClick={() => void refreshWeather()}
+            className="text-xs font-black text-foreground hover:text-pink shrink-0 ml-2 w-8 h-8 rounded-lg border-2 border-border bg-card flex items-center justify-center cursor-pointer"
+            title="Refresh weather"
+            aria-label="Refresh weather advice"
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3
-                  className="text-sm font-bold text-white"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
-                >
-                  Recent Looks History
-                </h3>
-                <p className="text-[10px] text-muted-foreground">
-                  Tracks rotation to prevent accidental repeats
-                </p>
-              </div>
-              <span className="text-[10px] font-bold text-turquoise">
-                {recentLooks.length} logged
-              </span>
-            </div>
-
-            {/* Natural responsive grid without inner scroll clipping */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3 gap-2.5">
-              {recentLooks.slice(0, 6).map((r) => (
-                <div
-                  key={r.id}
-                  className="rounded-2xl overflow-hidden flex flex-col border border-border bg-muted shadow-sm transition-all hover:scale-[1.02]"
-                >
-                  <div
-                    className="h-10 w-full relative p-2 flex items-start justify-between"
-                    style={{ background: r.color }}
-                  >
-                    <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-black/60 text-white backdrop-blur-xs">
-                      {r.date}
-                    </span>
-                    <span className="text-xs">👔</span>
-                  </div>
-                  <div className="p-2 flex-1 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-white leading-tight">
-                        {r.day}
-                      </p>
-                      <ul className="mt-1 space-y-0.5">
-                        {r.items.slice(0, 2).map((item) => (
-                          <li
-                            key={item}
-                            className="text-[8px] text-muted-foreground truncate"
-                          >
-                            · {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+            <span aria-hidden="true">↻</span>
+          </button>
         </div>
       </div>
 
+      {/* 2. Today's Outfit Header & Style Pills */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            className="text-lg min-[390px]:text-xl font-black leading-tight text-foreground"
+            style={{ fontFamily: "Nunito, sans-serif" }}
+          >
+            Today&apos;s outfit
+          </h2>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {user.accessibility.lowDecisionMode && (
+              <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full text-foreground border-2 border-turquoise bg-turquoise/15">
+                ⚡ Top Match
+              </span>
+            )}
+            {wornToday && (
+              <span
+                role="status"
+                className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider text-green border-2 border-green bg-green/10"
+              >
+                <span aria-hidden="true">✓ </span>Worn
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Horizontal Scrollable Style Direction Pills */}
+        <div
+          role="tablist"
+          aria-label="Outfit style direction"
+          className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 items-center"
+        >
+          {Object.entries(outfits).map(([dirKey, o]) => {
+            const active = selectedDirection === dirKey
+            const isDefaultPick = dirKey === defaultDirection
+
+            return (
+              <div key={dirKey} className="relative group flex items-center shrink-0">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => {
+                    setSelectedDirection(dirKey)
+                    setCtrlMode("default")
+                    setWornToday(false)
+                  }}
+                  className={`shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold tracking-wide transition-all duration-200 flex items-center gap-1 cursor-pointer border-2 ${
+                    active
+                      ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-pink/25"
+                      : "bg-card text-foreground border-border hover:border-pink"
+                  }`}
+                >
+                  {user.accessibility.lowDecisionMode && isDefaultPick && (
+                    <span
+                      aria-hidden="true"
+                      className="text-[11px] leading-none"
+                      title="AI Primary Recommendation"
+                    >
+                      ⚡
+                    </span>
+                  )}
+                  <span>{o.label}</span>
+                  {o.isCustom && (
+                    <span className="text-[10px] px-1 rounded font-bold uppercase ml-0.5 opacity-90 bg-black/20">
+                      Custom
+                    </span>
+                  )}
+                </button>
+
+                {o.isCustom && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeCustomStyle(dirKey)
+                    }}
+                    aria-label={`Remove custom preset ${o.label}`}
+                    className="ml-1 w-7 h-7 rounded-full bg-muted hover:bg-red/20 text-foreground hover:text-red flex items-center justify-center text-xs font-bold transition-colors cursor-pointer border-2 border-border shrink-0"
+                    title={`Remove custom preset "${o.label}"`}
+                  >
+                    <span aria-hidden="true">✕</span>
+                  </button>
+                )}
+              </div>
+            )
+          })}
+
+          <button
+            type="button"
+            onClick={() => setAddStyleModalOpen(true)}
+            aria-label="Create custom style preset"
+            className="shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs font-extrabold tracking-wide flex items-center gap-1 border-2 border-dashed border-border text-foreground hover:border-pink hover:bg-pink/5 transition-all duration-200 cursor-pointer"
+            title="Save a custom style preset"
+          >
+            <span aria-hidden="true" className="text-sm leading-none font-black text-pink">
+              +
+            </span>
+            <span>Style</span>
+          </button>
+        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div
+            className="rounded-2xl p-4 space-y-2.5 border-2 shadow-sm"
+            style={{
+              background: "var(--card)",
+              borderColor: "var(--border)",
+            }}
+          >
+            <p className="text-xs font-bold text-foreground">Building your look…</p>
+            <AnimatedStepProgress
+              steps={GENERATION_STEPS}
+              intervalMs={500}
+              onComplete={() => setLoading(false)}
+            />
+          </div>
+        )}
+
+        {/* Main Outfit Card */}
+        {!loading && currentOutfit && (
+          <div
+            className="rounded-2xl p-3 space-y-2.5 shadow-md border-2 transition-all"
+            style={{
+              background: "var(--card)",
+              borderColor: "var(--border)",
+            }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-xs font-black uppercase tracking-wider block text-pink leading-none">
+                  {currentOutfit.label}
+                </span>
+                <p className="text-sm min-[380px]:text-[15px] font-bold text-foreground leading-snug">
+                  {currentOutfit.tagline}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {showListen && (
+                  <button
+                    type="button"
+                    onClick={handleToggleListen}
+                    aria-pressed={speakingOutfit}
+                    aria-label={
+                      speakingOutfit
+                        ? "Stop reading outfit aloud"
+                        : "Listen to outfit summary read aloud"
+                    }
+                    className={`text-xs font-extrabold px-3 min-h-[44px] min-w-[44px] rounded-full flex items-center gap-1.5 transition-all border-2 shrink-0 cursor-pointer ${
+                      speakingOutfit
+                        ? "bg-pink text-white border-pink shadow-xs"
+                        : user.accessibility.voiceNarration
+                          ? "bg-turquoise text-[#0D0F18] border-[#0D0F18]/25 shadow-xs"
+                          : "bg-muted text-foreground border-border hover:border-turquoise"
+                    }`}
+                  >
+                    <span aria-hidden="true">{speakingOutfit ? "⏹" : "🔊"}</span>
+                    <span>{speakingOutfit ? "Stop" : "Listen"}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setOutfitFeedbackModalOpen(true)}
+                  aria-label="Notes on why outfit doesn't work"
+                  className="text-xs font-extrabold px-3 min-h-[44px] rounded-full flex items-center gap-1 border-2 bg-muted text-foreground border-border hover:border-pink transition-colors shrink-0 cursor-pointer"
+                  title="Give feedback on why this outfit doesn't work"
+                >
+                  <span aria-hidden="true">💬</span>
+                  <span>Feedback</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Garments List */}
+            <div className="space-y-2">
+              {currentOutfit.items.map((item, idx) => {
+                const readableColor = getReadableColorLabel(
+                  item.color,
+                  item.desc,
+                  wardrobe
+                )
+                const sensory = getSensoryInfo(item.desc)
+                const matchedItem = wardrobe.find(
+                  (w) => w.name.toLowerCase() === item.desc.toLowerCase()
+                )
+
+                return (
+                  <div
+                    key={`${item.type}-${idx}`}
+                    className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-card border-2 border-border shadow-2xs transition-all"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span
+                        aria-hidden="true"
+                        className="w-2.5 self-stretch rounded-full shrink-0 border-2 border-foreground/25"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      {matchedItem?.imageData ? (
+                        <img
+                          src={matchedItem.imageData}
+                          alt={item.desc}
+                          className="w-10 h-10 rounded-xl object-contain bg-muted border border-border shrink-0"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden="true"
+                          className="w-10 h-10 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
+                          style={{ background: `${item.color}1E` }}
+                        >
+                          {getPieceEmoji(item.type)}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                            {item.type}
+                          </p>
+                          {user.accessibility.highContrastColors && (
+                            <span className="bg-foreground text-background font-extrabold px-2 py-0.5 rounded-md text-[11px] leading-tight">
+                              {readableColor}
+                            </span>
+                          )}
+                          {user.accessibility.sensorySensitive && (
+                            <span
+                              className={`text-[11px] font-extrabold px-1.5 py-0.5 rounded-md border-2 leading-tight ${
+                                sensory.isSoft
+                                  ? "bg-green/15 text-green border-green/50"
+                                  : "bg-gold/25 text-foreground border-gold"
+                              }`}
+                              title={sensory.summary}
+                            >
+                              {sensory.isSoft ? "✓ Soft" : "ℹ Structured"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[15px] font-extrabold text-foreground leading-snug mt-0.5">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSwapTargetIndex(idx)
+                          setSwapModalOpen(true)
+                        }}
+                        aria-label={`Swap ${item.desc} (${item.type})`}
+                        className="px-3 min-h-[40px] rounded-xl text-xs font-extrabold transition-transform active:scale-95 bg-turquoise/15 text-foreground border-2 border-turquoise hover:bg-turquoise/25 cursor-pointer"
+                        title={`Swap ${item.desc}`}
+                      >
+                        Swap ↺
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGarmentFeedbackTarget({ item, index: idx })}
+                        aria-label={`Feedback for ${item.desc}`}
+                        title={`Give feedback on ${item.desc}`}
+                        className="w-10 h-10 rounded-xl text-xs font-extrabold flex items-center justify-center transition-transform active:scale-95 bg-muted text-foreground border-2 border-border hover:border-pink hover:text-pink cursor-pointer"
+                      >
+                        <span aria-hidden="true">💬</span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Collapsible Why it works dropdown disclosure */}
+            <WhyItWorksDisclosure
+              rationale={currentOutfit.rationale}
+              onDeepDive={() => setWhyModalOpen(true)}
+            />
+
+            {/* Control Bar */}
+            <UserControlBar
+              mode={ctrlMode}
+              approveLabel={wornToday ? "✓ Wearing Now" : "Wear This Now"}
+              onApprove={handleApprove}
+              onReject={() => setRejectModalOpen(true)}
+              onRegenerate={() => handleRegenerate()}
+              onFavorite={() =>
+                toggleFavoriteOutfit(String(currentOutfit.id || currentOutfit.label))
+              }
+              isFavorite={favoriteOutfitIds.includes(
+                String(currentOutfit.id || currentOutfit.label)
+              )}
+            />
+
+            {/* Post-Approve Laundry Prompt */}
+            {wornToday && (
+              <div className="rounded-xl p-2.5 flex items-center justify-between gap-2 animate-in fade-in duration-200 bg-green/10 border-2 border-green/50">
+                <p className="text-xs font-extrabold text-foreground">
+                  ✓ Saved for today! Ready to launder yesterday&apos;s?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sendOutfitToLaundry(currentOutfit.items.map((i) => i.desc))
+                  }}
+                  className="px-3 min-h-[38px] rounded-xl text-xs font-extrabold text-white shrink-0 bg-dark-teal border-2 border-[#0D0F18]/20 hover:brightness-110 transition-all shadow-sm cursor-pointer"
+                >
+                  Hamper
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Recent Looks Wear History (collapsed by default in Low-Decision Mode) */}
+      {user.accessibility.lowDecisionMode && !showRecentHistory ? (
+        <button
+          type="button"
+          onClick={() => setShowRecentHistory(true)}
+          aria-expanded={false}
+          className="w-full min-h-[44px] py-2.5 px-3 rounded-2xl text-xs font-extrabold border-2 border-border bg-card text-foreground hover:border-turquoise flex items-center justify-between transition-all shadow-sm cursor-pointer"
+        >
+          <span>
+            <span aria-hidden="true">📅 </span>
+            Recent Looks ({recentLooks.length})
+          </span>
+        </button>
+      ) : (
+        <div
+          className="rounded-2xl p-3 space-y-2.5 shadow-sm border-2"
+          style={{ background: "var(--card)", borderColor: "var(--border)" }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h3
+              className="text-base font-black text-foreground"
+              style={{ fontFamily: "Nunito, sans-serif" }}
+            >
+              Recent looks
+            </h3>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs font-extrabold text-muted-foreground">
+                {recentLooks.length} saved
+              </span>
+              {user.accessibility.lowDecisionMode && (
+                <button
+                  type="button"
+                  onClick={() => setShowRecentHistory(false)}
+                  aria-expanded={true}
+                  className="text-xs font-extrabold px-2.5 py-1 min-h-[32px] rounded-lg border-2 border-border bg-muted text-foreground hover:border-turquoise cursor-pointer"
+                >
+                  Hide
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 min-[350px]:grid-cols-2 gap-2">
+            {recentLooks.slice(0, 6).map((r) => (
+              <div
+                key={r.id}
+                className="rounded-2xl overflow-hidden flex flex-col border-2 border-border bg-muted shadow-sm"
+              >
+                <div
+                  className="h-7 w-full relative px-2 py-1 flex items-center justify-between border-b-2 border-border"
+                  style={{ background: r.color }}
+                >
+                  <span className="text-[11px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-black/85 text-white leading-none">
+                    {r.date}
+                  </span>
+                </div>
+                <div className="p-2.5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <p className="text-xs font-extrabold text-foreground leading-tight">
+                      {r.day}
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {r.items.slice(0, 3).map((item) => (
+                        <li
+                          key={item}
+                          className="text-[11px] font-medium text-muted-foreground leading-snug"
+                        >
+                          · {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Deep-Dive "Why this outfit?" Modal */}
       {whyModalOpen && currentOutfit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setWhyModalOpen(false)}
+        >
           <div
-            className="rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-why-modal-title"
+            className="rounded-3xl p-4 sm:p-5 max-w-sm w-full max-h-[88dvh] overflow-y-auto space-y-3 shadow-2xl border-2"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b-2 border-border pb-2.5">
               <div className="flex items-center gap-2">
-                <span className="text-xl">💡</span>
-                <h3 className="text-base font-bold text-white">
-                  Stylist Explainability
+                <span aria-hidden="true" className="text-xl">
+                  💡
+                </span>
+                <h3 id="home-why-modal-title" className="text-base font-black text-foreground">
+                  Why this outfit works
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setWhyModalOpen(false)}
-                className="text-xs text-muted-foreground hover:text-white p-1"
+                aria-label="Close outfit details"
+                className="w-9 h-9 rounded-xl border-2 border-border bg-muted text-foreground font-bold flex items-center justify-center cursor-pointer"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Here is how tAIlor chose the{" "}
-              <strong className="text-white">{currentOutfit.label}</strong>{" "}
-              outfit based on your profile, weather, and color science:
-            </p>
-
-            <div className="space-y-2.5">
-              <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
-                  ⛅ Weather Alignment ({weather.temp})
+            <div className="space-y-2">
+              <div className="p-3 rounded-2xl bg-muted border-2 border-border space-y-1">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-turquoise">
+                  ⛅ Weather Fit ({weather.temp})
                 </span>
-                <p className="text-xs text-foreground">
+                <p className="text-xs font-medium text-foreground">
                   {currentOutfit.whyDetails?.weatherReason ||
-                    "Matched to current temperature and humidity."}
+                    "Matched to today's temperature."}
                 </p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-pink">
-                  🎨 Color Theory Harmony
+              <div className="p-3 rounded-2xl bg-muted border-2 border-border space-y-1">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-pink">
+                  🎨 Color Harmony
                 </span>
-                <p className="text-xs text-foreground">
+                <p className="text-xs font-medium text-foreground">
                   {currentOutfit.whyDetails?.colorHarmony ||
-                    "High contrast complementary triad."}
+                    "High contrast balanced palette."}
                 </p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-green">
-                  🔄 Wardrobe Rotation
+              <div className="p-3 rounded-2xl bg-muted border-2 border-border space-y-1">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-green">
+                  🔄 Closet Rotation
                 </span>
-                <p className="text-xs text-foreground">
+                <p className="text-xs font-medium text-foreground">
                   {currentOutfit.whyDetails?.wearFrequency ||
-                    "Keeps your closet rotation healthy."}
+                    "Keeps your closet rotation fresh."}
                 </p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gold">
-                  🧵 Sensory & Accessibility Notes
+              <div className="p-3 rounded-2xl bg-muted border-2 border-border space-y-1">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-foreground">
+                  🧵 Comfort &amp; Piece Notes
                 </span>
-                <p className="text-xs text-foreground">
+                <p className="text-xs font-medium text-foreground">
                   {currentOutfit.whyDetails?.sensoryComfort ||
-                    "Breathable fabrics with soft non-irritating seams."}
+                    "Breathable, comfortable fabrics."}
                 </p>
+                <ul className="pt-1 space-y-1 border-t border-border">
+                  {currentOutfit.items.map((item, i) => (
+                    <li key={`${item.desc}-${i}`} className="text-[11px] text-muted-foreground">
+                      <strong className="text-foreground">{item.type}:</strong> {item.reason}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => setWhyModalOpen(false)}
-              className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-colors bg-pink hover:brightness-110 shadow-md shadow-pink/20"
+              className="w-full min-h-[44px] py-2.5 rounded-xl text-sm font-black text-white transition-colors bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-md cursor-pointer"
             >
-              Understood
+              Got It
             </button>
           </div>
         </div>
       )}
 
-      {/* Reject Reason Modal */}
+      {/* Reject Reason Modal with Custom Feedback Input */}
       {rejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => {
+            setRejectModalOpen(false)
+            setCustomRejectReason("")
+          }}
+        >
           <div
-            className="rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-reject-modal-title"
+            className="rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl border-2"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">
-                Why reject this outfit?
+              <h3 id="home-reject-modal-title" className="text-base font-black text-foreground">
+                What would you change?
               </h3>
               <button
                 type="button"
                 onClick={() => setRejectModalOpen(false)}
-                className="text-xs text-muted-foreground hover:text-white"
+                aria-label="Close feedback dialog"
+                className="w-9 h-9 rounded-xl border-2 border-border bg-muted text-foreground font-bold flex items-center justify-center cursor-pointer"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
-
-            <p className="text-xs text-muted-foreground">
-              Select an optional reason so your AI stylist learns your
-              preferences:
-            </p>
 
             <div className="grid grid-cols-2 gap-2">
               {[
                 "Too formal",
                 "Too casual",
-                "Wrong temperature",
+                "Wrong weather",
                 "Colors clash",
-                "Worn too recently",
-                "Sensory / Fabric issue",
+                "No outerwear",
+                "Uncomfortable fit",
               ].map((reason) => (
                 <button
                   key={reason}
                   type="button"
                   onClick={() => {
-                    setRejectModalOpen(false);
-                    handleRegenerate(reason);
+                    setRejectModalOpen(false)
+                    setCustomRejectReason("")
+                    handleRegenerate(reason)
                   }}
-                  className="p-2.5 rounded-xl text-xs font-medium text-left border border-border bg-muted hover:border-pink hover:bg-white/5 transition-all text-white"
+                  className="p-2.5 min-h-[42px] rounded-xl text-xs font-extrabold text-left border-2 border-border bg-muted hover:border-pink transition-all text-foreground cursor-pointer"
                 >
                   {reason}
                 </button>
               ))}
             </div>
 
+            <div className="space-y-2 pt-2 border-t-2 border-border">
+              <label
+                htmlFor="home-custom-reject-reason"
+                className="text-xs font-extrabold text-foreground block"
+              >
+                Or tell us what you want
+              </label>
+              <textarea
+                id="home-custom-reject-reason"
+                rows={2}
+                value={customRejectReason}
+                onChange={(e) => setCustomRejectReason(e.target.value)}
+                placeholder="e.g. Prefer black shoes, or warmer layer…"
+                className="w-full rounded-xl p-2.5 text-sm outline-none bg-muted text-foreground border-2 border-border focus:border-pink resize-none"
+              />
+              <button
+                type="button"
+                disabled={!customRejectReason.trim()}
+                onClick={() => {
+                  const note = customRejectReason.trim()
+                  setRejectModalOpen(false)
+                  setCustomRejectReason("")
+                  handleRegenerate(note)
+                }}
+                className="w-full min-h-[44px] py-2.5 rounded-xl text-sm font-black text-white bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 disabled:opacity-40 transition-all shadow-md cursor-pointer"
+              >
+                Update Look
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => {
-                setRejectModalOpen(false);
-                handleRegenerate();
+                setRejectModalOpen(false)
+                setCustomRejectReason("")
+                handleRegenerate()
               }}
-              className="w-full py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white"
+              className="w-full min-h-[40px] py-1.5 rounded-xl text-xs font-extrabold text-muted-foreground hover:text-foreground cursor-pointer"
             >
-              Skip reason and regenerate
+              Skip
             </button>
           </div>
         </div>
@@ -689,62 +807,76 @@ export default function HomeTab() {
 
       {/* Garment Swap Modal */}
       {swapModalOpen && swapTargetIndex !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setSwapModalOpen(false)}
+        >
           <div
-            className="rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl border"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-swap-modal-title"
+            className="rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl border-2"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">
+              <h3 id="home-swap-modal-title" className="text-base font-black text-foreground">
                 Swap {currentOutfit.items[swapTargetIndex]?.type}
               </h3>
               <button
                 type="button"
                 onClick={() => setSwapModalOpen(false)}
-                className="text-xs text-muted-foreground hover:text-white"
+                aria-label="Close garment swap dialog"
+                className="w-9 h-9 rounded-xl border-2 border-border bg-muted text-foreground font-bold flex items-center justify-center cursor-pointer"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Choose an alternate piece from your clean digital wardrobe:
-            </p>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {wardrobe
                 .filter((item) => {
                   const targetType =
-                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase();
-                  if (targetType.includes("top"))
-                    return item.category === "Tops";
-                  if (targetType.includes("bottom"))
-                    return item.category === "Bottoms";
-                  if (targetType.includes("shoe"))
-                    return item.category === "Shoes";
-                  return true;
+                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase() || ""
+                  if (targetType.includes("top")) return item.category === "Tops"
+                  if (targetType.includes("outer")) return item.category === "Outerwear"
+                  if (targetType.includes("bottom")) return item.category === "Bottoms"
+                  if (targetType.includes("shoe")) return item.category === "Shoes"
+                  if (targetType.includes("accessor")) return item.category === "Accessories"
+                  return true
                 })
                 .map((wItem) => (
                   <button
                     key={wItem.id}
                     type="button"
                     onClick={() => handleSwapItem(wItem)}
-                    className="w-full p-2.5 rounded-xl flex items-center gap-3 border border-border bg-muted text-left hover:border-turquoise transition-all"
+                    className="w-full min-h-[48px] p-2.5 rounded-xl flex items-center gap-3 border-2 border-border bg-muted text-left hover:border-turquoise transition-all cursor-pointer"
                   >
-                    <div
-                      className="w-7 h-7 rounded-lg shrink-0 shadow-sm border border-white/10"
-                      style={{ background: wItem.color }}
-                    />
+                    {wItem.imageData ? (
+                      <img
+                        src={wItem.imageData}
+                        alt={wItem.name}
+                        className="w-10 h-10 rounded-xl object-contain bg-card border border-border shrink-0"
+                      />
+                    ) : (
+                      <div
+                        aria-hidden="true"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
+                        style={{ background: `${wItem.color}22` }}
+                      >
+                        {getPieceEmoji(wItem.category)}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-white truncate">
+                      <p className="text-sm font-extrabold text-foreground truncate">
                         {wItem.name}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs font-semibold text-muted-foreground">
                         {wItem.colorName}
                       </p>
                     </div>
-                    <span className="text-xs font-bold text-turquoise">
-                      Select
+                    <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg bg-card border-2 border-turquoise text-foreground shrink-0">
+                      Pick
                     </span>
                   </button>
                 ))}
@@ -758,6 +890,53 @@ export default function HomeTab() {
         isOpen={addStyleModalOpen}
         onClose={() => setAddStyleModalOpen(false)}
       />
+
+      {/* Outfit Feedback Modal */}
+      {currentOutfit && (
+        <OutfitFeedbackModal
+          isOpen={outfitFeedbackModalOpen}
+          onClose={() => setOutfitFeedbackModalOpen(false)}
+          outfitLabel={currentOutfit.label}
+          onSaveFeedback={(notes, reasons) => {
+            saveOutfitFeedback(
+              String(currentOutfit.id || currentOutfit.label),
+              notes,
+              reasons
+            )
+          }}
+          onRegenerateWithFeedback={(notes, reasons) => {
+            const combined = [notes, ...reasons].filter(Boolean).join(", ")
+            handleRegenerate(combined || undefined)
+          }}
+        />
+      )}
+
+      {/* Garment Item Feedback Modal */}
+      {garmentFeedbackTarget && (
+        <GarmentFeedbackModal
+          isOpen={Boolean(garmentFeedbackTarget)}
+          onClose={() => setGarmentFeedbackTarget(null)}
+          garmentDesc={garmentFeedbackTarget.item.desc}
+          garmentType={garmentFeedbackTarget.item.type}
+          garmentColor={garmentFeedbackTarget.item.color}
+          onSaveFeedback={(notes, reasons) => {
+            saveGarmentFeedback(
+              `${currentOutfit?.label || "outfit"}-${garmentFeedbackTarget.item.desc}`,
+              notes,
+              reasons
+            )
+          }}
+          onSwapWithFeedback={(notes, reasons) => {
+            saveGarmentFeedback(
+              `${currentOutfit?.label || "outfit"}-${garmentFeedbackTarget.item.desc}`,
+              notes,
+              reasons
+            )
+            setSwapTargetIndex(garmentFeedbackTarget.index)
+            setSwapModalOpen(true)
+          }}
+        />
+      )}
     </div>
-  );
+  )
 }

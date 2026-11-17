@@ -1,14 +1,15 @@
-"""OpenAI-compatible Qwen server for local GPU or Google Colab.
+"""OpenAI-compatible dual-model Qwen server for a local GPU or Google Colab.
 
 Supports:
-  - Text chat: POST /v1/chat/completions (stylist + general)
+  - Text chat: POST /v1/chat/completions (Qwen2.5-3B-Instruct)
   - Wardrobe photo scan: POST /v1/wardrobe/scan (Qwen2.5-VL → wardrobe JSON)
 
-Default model is Qwen2.5-VL-3B-Instruct (vision). Override with LLM_MODEL.
-Qwen weights download anonymously; HF_TOKEN is optional and only used if set.
+Both models are loaded at startup. Override them with LLM_TEXT_MODEL and
+LLM_VISION_MODEL. Qwen weights download anonymously; HF_TOKEN is optional.
 
-In Colab: install deps, run this file, tunnel port 8000, set LLM_BASE_URL in
-tAIlor to the tunnel URL ending in /v1.
+In Colab: install deps, run this file, tunnel port 8000, and set LLM_BASE_URL
+in tAIlor to the tunnel URL ending in /v1. Locally, point LLM_BASE_URL at
+http://127.0.0.1:8000/v1 or the GPU computer's private address.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import io
 import json
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -41,10 +43,19 @@ def load_local_env() -> None:
 
 load_local_env()
 
-MODEL_ID = os.environ.get("LLM_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
-# Optional — Qwen2.5-VL downloads anonymously; only set if your mirror requires it.
+TEXT_MODEL_ID = os.environ.get("LLM_TEXT_MODEL", "Qwen/Qwen2.5-3B-Instruct")
+VISION_MODEL_ID = os.environ.get("LLM_VISION_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
+QUANTIZE_MODELS = os.environ.get("LLM_QUANTIZE", "false").lower() in {"1", "true", "yes"}
+QUANT_BITS = int(os.environ.get("LLM_QUANT_BITS", "8"))
+LOAD_MODE = os.environ.get("LLM_LOAD_MODE", "both").lower()
+if LOAD_MODE not in {"both", "text", "vision"}:
+    LOAD_MODE = "both"
+TEXT_DEVICE = os.environ.get(
+    "LLM_TEXT_DEVICE",
+    "cuda" if torch.cuda.is_available() else "cpu",
+).lower()
+# Optional — Qwen models download anonymously; only set if your mirror requires it.
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY") or None
-IS_VL = "VL" in MODEL_ID.upper() or "vision" in MODEL_ID.lower()
 
 WARDROBE_CATEGORIES = ("Tops", "Bottoms", "Shoes", "Outerwear", "Accessories")
 WARDROBE_SCAN_PROMPT = """Analyze this clothing item photo for a digital wardrobe app.
@@ -61,7 +72,7 @@ Return ONLY a single JSON object (no markdown fences, no extra text) with these 
 - confidence: 0-1 float for overall detection confidence
 """
 
-app = FastAPI(title="tAIlor Colab LLM", version="2.0.0")
+app = FastAPI(title="tAIlor Qwen Model Server", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -69,40 +80,82 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-tokenizer = None
-processor = None
-model = None
-model_device = "cpu"
+text_tokenizer = None
+text_model = None
+text_model_device = "unloaded"
+vision_processor = None
+vision_model = None
+vision_model_device = "unloaded"
+gpu_lock = threading.Lock()
 
 
 def _hf_kwargs() -> dict[str, Any]:
     return {"token": HF_TOKEN} if HF_TOKEN else {}
 
 
-def load_model() -> None:
-    global tokenizer, processor, model, model_device
-    print(f"Loading model {MODEL_ID} (vl={IS_VL})…")
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+def load_models() -> None:
+    global text_tokenizer, text_model, text_model_device
+    global vision_processor, vision_model, vision_model_device
+    has_cuda = torch.cuda.is_available()
+    dtype = (
+        (torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)
+        if has_cuda
+        else torch.float32
+    )
+    text_on_cpu = TEXT_DEVICE == "cpu"
     common = {
         "torch_dtype": dtype,
         "device_map": "auto",
         **_hf_kwargs(),
     }
-    if IS_VL:
-        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    text_common = dict(common)
+    if QUANTIZE_MODELS and has_cuda and not text_on_cpu:
+        from transformers import BitsAndBytesConfig
 
-        processor = AutoProcessor.from_pretrained(MODEL_ID, **_hf_kwargs())
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(MODEL_ID, **common)
-    else:
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        if QUANT_BITS == 4:
+            text_common["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=dtype,
+                bnb_4bit_use_double_quant=True,
+            )
+        else:
+            text_common["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+    text_common = (
+        {
+            **text_common,
+            "device_map": {"": "cpu"},
+            "torch_dtype": torch.float32,
+        }
+        if text_on_cpu
+        else text_common
+    )
+    vision_common = common
+    from transformers import (
+        AutoModelForCausalLM,
+        AutoProcessor,
+        AutoTokenizer,
+        Qwen2_5_VLForConditionalGeneration,
+    )
 
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, **_hf_kwargs())
-        model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **common)
-    model_device = str(getattr(model, "device", "cuda" if torch.cuda.is_available() else "cpu"))
-    print(f"Model ready on {model_device}")
+    if LOAD_MODE in {"both", "text"}:
+        print(f"Loading text model {TEXT_MODEL_ID}…")
+        text_tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_ID, **_hf_kwargs())
+        text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_ID, **text_common)
+        text_model_device = str(next(text_model.parameters()).device)
+        print(f"Text model ready on {text_model_device} (dtype={dtype}, quantize={QUANTIZE_MODELS and has_cuda and not text_on_cpu})")
+
+    if LOAD_MODE in {"both", "vision"}:
+        print(f"Loading vision model {VISION_MODEL_ID}…")
+        vision_processor = AutoProcessor.from_pretrained(VISION_MODEL_ID, **_hf_kwargs())
+        vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            VISION_MODEL_ID, **vision_common
+        )
+        vision_model_device = str(next(vision_model.parameters()).device)
+        print(f"Vision model ready on {vision_model_device} (dtype={dtype})")
 
 
-load_model()
+load_models()
 
 
 class Message(BaseModel):
@@ -139,6 +192,7 @@ def decode_image(image_b64: str) -> Image.Image:
         image = Image.open(io.BytesIO(data)).convert("RGB")
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Could not decode image: {exc}") from exc
+    image.thumbnail((768, 768))
     return image
 
 
@@ -212,23 +266,32 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def generate_text_only(messages: list[dict[str, Any]], max_tokens: int, temperature: float) -> str:
-    assert tokenizer is not None and model is not None
-    prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    with torch.inference_mode():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
-            pad_token_id=tokenizer.eos_token_id,
+    if text_tokenizer is None or text_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Text model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
-    generated = output[0][inputs["input_ids"].shape[1] :]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
+    with gpu_lock:
+        prompt = text_tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        target_device = next(text_model.parameters()).device
+        inputs = text_tokenizer(prompt, return_tensors="pt").to(target_device)
+        do_sample = (not QUANTIZE_MODELS) and temperature > 0.35
+        gen_kwargs: dict[str, Any] = {
+            **inputs,
+            "max_new_tokens": max_tokens,
+            "do_sample": do_sample,
+            "pad_token_id": text_tokenizer.eos_token_id,
+        }
+        if do_sample:
+            gen_kwargs["temperature"] = temperature
+        with torch.inference_mode():
+            output = text_model.generate(**gen_kwargs)
+        generated = output[0][inputs["input_ids"].shape[1] :]
+        return text_tokenizer.decode(generated, skip_special_tokens=True).strip()
 
 
 def generate_vl(
@@ -237,28 +300,44 @@ def generate_vl(
     max_tokens: int,
     temperature: float,
 ) -> str:
-    assert processor is not None and model is not None
-    content: list[dict[str, Any]] = []
-    if image is not None:
-        content.append({"type": "image"})
-    content.append({"type": "text", "text": user_text})
-    messages = [{"role": "user", "content": content}]
-    prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    kwargs: dict[str, Any] = {"text": [prompt], "padding": True, "return_tensors": "pt"}
-    if image is not None:
-        kwargs["images"] = [image]
-    inputs = processor(**kwargs)
-    inputs = {key: value.to(model.device) if hasattr(value, "to") else value for key, value in inputs.items()}
-    with torch.inference_mode():
-        output = model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
+    if vision_processor is None or vision_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Vision model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
-    trimmed = [out[len(inp) :] for inp, out in zip(inputs["input_ids"], output)]
-    text = processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-    return text.strip()
+    with gpu_lock:
+        content: list[dict[str, Any]] = []
+        if image is not None:
+            content.append({"type": "image"})
+        content.append({"type": "text", "text": user_text})
+        messages = [{"role": "user", "content": content}]
+        prompt = vision_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        kwargs: dict[str, Any] = {"text": [prompt], "padding": True, "return_tensors": "pt"}
+        if image is not None:
+            kwargs["images"] = [image]
+        target_device = next(vision_model.parameters()).device
+        inputs = vision_processor(**kwargs)
+        inputs = {
+            key: value.to(target_device) if hasattr(value, "to") else value
+            for key, value in inputs.items()
+        }
+        do_sample = temperature > 0
+        gen_kwargs: dict[str, Any] = {
+            **inputs,
+            "max_new_tokens": max_tokens,
+            "do_sample": do_sample,
+        }
+        if do_sample:
+            gen_kwargs["temperature"] = temperature
+        with torch.inference_mode():
+            output = vision_model.generate(**gen_kwargs)
+        trimmed = [out[len(inp) :] for inp, out in zip(inputs["input_ids"], output)]
+        text = vision_processor.batch_decode(
+            trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return text.strip()
 
 
 def flatten_message_content(content: Any) -> tuple[str, Image.Image | None]:
@@ -288,11 +367,33 @@ def flatten_message_content(content: Any) -> tuple[str, Image.Image | None]:
 
 @app.get("/health")
 def health():
+    has_cuda = torch.cuda.is_available()
+    text_quantized = (
+        QUANTIZE_MODELS
+        and has_cuda
+        and text_model is not None
+        and TEXT_DEVICE != "cpu"
+    )
     return {
         "status": "ok",
-        "model": MODEL_ID,
-        "vision": IS_VL,
-        "device": model_device,
+        "load_mode": LOAD_MODE,
+        "models": {
+            "text": TEXT_MODEL_ID,
+            "vision": VISION_MODEL_ID,
+        },
+        "loaded": {
+            "text": text_model is not None,
+            "vision": vision_model is not None,
+        },
+        "devices": {
+            "text": text_model_device,
+            "vision": vision_model_device,
+        },
+        "text_device_config": TEXT_DEVICE,
+        "quantized": text_quantized,
+        "quant_bits": QUANT_BITS if text_quantized else None,
+        "text_quantized": text_quantized,
+        "vision_quantized": False,
         "endpoints": ["/health", "/v1/chat/completions", "/v1/wardrobe/scan"],
     }
 
@@ -302,12 +403,11 @@ def chat_completion(request: CompletionRequest):
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages is required.")
 
-    if IS_VL:
-        # Use the last user message; support multimodal image+text parts.
-        last = next((m for m in reversed(request.messages) if m.role == "user"), request.messages[-1])
-        text, image = flatten_message_content(last.content)
-        if not text and image is None:
-            raise HTTPException(status_code=400, detail="User message is empty.")
+    last = next((m for m in reversed(request.messages) if m.role == "user"), request.messages[-1])
+    text, image = flatten_message_content(last.content)
+    if not text and image is None:
+        raise HTTPException(status_code=400, detail="User message is empty.")
+    if image is not None:
         result = generate_vl(text or "Describe this image.", image, request.max_tokens, request.temperature)
     else:
         plain = []
@@ -321,7 +421,7 @@ def chat_completion(request: CompletionRequest):
     return {
         "id": "tAIlor-local-completion",
         "object": "chat.completion",
-        "model": MODEL_ID,
+        "model": VISION_MODEL_ID if image is not None else TEXT_MODEL_ID,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": result}, "finish_reason": "stop"}],
     }
 
@@ -329,17 +429,16 @@ def chat_completion(request: CompletionRequest):
 @app.post("/v1/wardrobe/scan")
 def wardrobe_scan(request: WardrobeScanRequest):
     """Image → structured wardrobe entry JSON (silhouette, hue, fabric)."""
-    if not IS_VL:
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                f"Model {MODEL_ID} is text-only. "
-                "Set LLM_MODEL=Qwen/Qwen2.5-VL-3B-Instruct and restart for wardrobe scan."
-            ),
-        )
-
     image = decode_image(request.image)
-    raw_text = generate_vl(WARDROBE_SCAN_PROMPT, image, max_tokens=400, temperature=0.2)
+    try:
+        raw_text = generate_vl(WARDROBE_SCAN_PROMPT, image, max_tokens=400, temperature=0.2)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Vision model inference failed: {exc}. Check Colab GPU memory and the server log.",
+        ) from exc
     if not raw_text:
         raise HTTPException(status_code=502, detail="The vision model returned an empty response.")
     try:
@@ -353,7 +452,7 @@ def wardrobe_scan(request: WardrobeScanRequest):
 
     return {
         "item": entry,
-        "model": MODEL_ID,
+        "model": VISION_MODEL_ID,
         "source": "qwen-vl",
         "raw": raw_text[:800],
     }

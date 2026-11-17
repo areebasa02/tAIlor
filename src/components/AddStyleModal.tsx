@@ -1,7 +1,7 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useApp } from "../context/AppContext"
 import type { AddCustomStyleInput } from "../context/AppContext"
-import type { WardrobeItem, OutfitItem } from "../types"
+import type { OutfitItem } from "../types"
 
 interface AddStyleModalProps {
   isOpen: boolean
@@ -22,7 +22,9 @@ const ACCENT_COLORS = [
 export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
   const { wardrobe, addCustomStyle } = useApp()
 
-  const tops = wardrobe.filter((i) => i.category === "Tops" || i.category === "Outerwear")
+  const tops = wardrobe.filter(
+    (i) => i.category === "Tops" || i.category === "Outerwear"
+  )
   const bottoms = wardrobe.filter((i) => i.category === "Bottoms")
   const shoes = wardrobe.filter((i) => i.category === "Shoes")
 
@@ -30,10 +32,21 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
   const [tagline, setTagline] = useState("")
   const [selectedAccent, setSelectedAccent] = useState(ACCENT_COLORS[0].value)
   const [selectedTopId, setSelectedTopId] = useState<number>(tops[0]?.id || 0)
-  const [selectedBottomId, setSelectedBottomId] = useState<number>(bottoms[0]?.id || 0)
+  const [selectedBottomId, setSelectedBottomId] = useState<number>(
+    bottoms[0]?.id || 0
+  )
   const [selectedShoeId, setSelectedShoeId] = useState<number>(shoes[0]?.id || 0)
   const [customRationale, setCustomRationale] = useState("")
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
 
   if (!isOpen) return null
 
@@ -55,12 +68,15 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!label.trim()) {
-      setError("Please provide a style name (e.g. 'Presentation Day', 'Rainy Day')")
+      setError(
+        "Please provide a style name (e.g. 'Presentation Day', 'Rainy Day')"
+      )
       return
     }
 
     const topItem = wardrobe.find((i) => i.id === selectedTopId) || tops[0]
-    const bottomItem = wardrobe.find((i) => i.id === selectedBottomId) || bottoms[0]
+    const bottomItem =
+      wardrobe.find((i) => i.id === selectedBottomId) || bottoms[0]
     const shoeItem = wardrobe.find((i) => i.id === selectedShoeId) || shoes[0]
 
     if (!topItem || !bottomItem || !shoeItem) {
@@ -101,10 +117,12 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
         customRationale.trim() ||
         `Custom look curated for "${label.trim()}". Combines ${topItem.name} with ${bottomItem.name} and ${shoeItem.name} for tailored comfort.`,
       whyDetails: {
-        weatherReason: `Calibrated for comfortable wear in today's weather.`,
+        weatherReason: "Calibrated for comfortable wear in today's weather.",
         colorHarmony: `Custom harmony between ${topItem.colorName} and ${bottomItem.colorName}.`,
-        wearFrequency: "Personalized recommendation added to your daily stylist rotation.",
-        sensoryComfort: "Selected specifically to meet your tactile and fit preferences.",
+        wearFrequency:
+          "Personalized recommendation added to your daily stylist rotation.",
+        sensoryComfort:
+          "Selected specifically to meet your tactile and fit preferences.",
       },
     }
 
@@ -113,19 +131,29 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl overflow-hidden text-left flex flex-col max-h-[92vh]"
-        style={{ background: "#111422" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-style-modal-title"
+        className="w-full max-w-[410px] rounded-3xl border border-border shadow-2xl overflow-hidden text-left flex flex-col max-h-[92vh]"
+        style={{ background: "var(--card)" }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 border-b border-white/10 flex items-center justify-between">
+        <div className="p-5 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
+              aria-hidden="true"
               className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-bold shadow-md"
               style={{
                 background: selectedAccent,
-                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(selectedAccent)
+                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(
+                  selectedAccent
+                )
                   ? "#0D0F18"
                   : "#ffffff",
               }}
@@ -133,7 +161,12 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               +
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Add Custom Style</h3>
+              <h2
+                id="add-style-modal-title"
+                className="text-base font-bold text-foreground"
+              >
+                Add Custom Style
+              </h2>
               <p className="text-xs text-muted-foreground">
                 Add a new recommendation button tailored to your routine
               </p>
@@ -142,77 +175,108 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition-colors text-sm"
+            aria-label="Close Add Custom Style dialog"
+            className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors text-sm cursor-pointer"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+        <form
+          onSubmit={handleSubmit}
+          className="p-5 space-y-4 overflow-y-auto flex-1 text-xs"
+        >
           {error && (
-            <div className="p-3 rounded-xl bg-red/10 border border-red/30 text-red text-xs font-semibold">
+            <div
+              role="alert"
+              className="p-3 rounded-xl bg-red/10 border border-red/30 text-red text-xs font-semibold"
+            >
               {error}
             </div>
           )}
 
           {/* Style Name */}
           <div>
-            <label className="block text-xs font-bold text-white mb-1">
+            <label
+              htmlFor="custom-style-name"
+              className="block text-xs font-bold text-foreground mb-1"
+            >
               Style Name <span className="text-pink">*</span>
             </label>
             <input
+              id="custom-style-name"
               type="text"
               value={label}
               onChange={(e) => {
                 setLabel(e.target.value)
                 setError("")
               }}
-              placeholder="e.g. Presentation Day, Rainy Day, Cozy Coffee, Studio Work"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors"
+              placeholder="e.g. Presentation Day, Rainy Day, Cozy Coffee"
+              className="w-full min-h-[40px] px-3.5 py-2 rounded-xl bg-muted border border-border text-foreground placeholder:text-muted-foreground text-xs focus:outline-none focus:border-pink transition-colors"
             />
           </div>
 
           {/* Vibe / Tagline */}
           <div>
-            <label className="block text-xs font-bold text-white mb-1">
+            <label
+              htmlFor="custom-style-tagline"
+              className="block text-xs font-bold text-foreground mb-1"
+            >
               Vibe / Tagline (Optional)
             </label>
             <input
+              id="custom-style-tagline"
               type="text"
               value={tagline}
               onChange={(e) => setTagline(e.target.value)}
               placeholder="e.g. Polished & structured · keynote ready"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors"
+              className="w-full min-h-[40px] px-3.5 py-2 rounded-xl bg-muted border border-border text-foreground placeholder:text-muted-foreground text-xs focus:outline-none focus:border-pink transition-colors"
             />
           </div>
 
           {/* Accent Color */}
           <div>
-            <label className="block text-xs font-bold text-white mb-1.5">
+            <span
+              id="custom-accent-label"
+              className="block text-xs font-bold text-foreground mb-1.5"
+            >
               Button Accent Color
-            </label>
-            <div className="grid grid-cols-4 gap-2">
+            </span>
+            <div
+              role="group"
+              aria-labelledby="custom-accent-label"
+              className="grid grid-cols-2 gap-1.5"
+            >
               {ACCENT_COLORS.map((col) => {
                 const isSelected = selectedAccent === col.value
                 return (
                   <button
                     key={col.value}
                     type="button"
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${col.label} accent color`}
                     onClick={() => setSelectedAccent(col.value)}
-                    className="flex items-center gap-2 p-2 rounded-xl border text-left transition-all"
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all cursor-pointer"
                     style={{
-                      background: isSelected ? col.bgRgba : "rgba(255,255,255,0.02)",
-                      borderColor: isSelected ? col.value : "rgba(255,255,255,0.08)",
+                      background: isSelected
+                        ? col.bgRgba
+                        : "var(--surface-subtle)",
+                      borderColor: isSelected ? col.value : "var(--border)",
                     }}
                   >
                     <span
-                      className="w-4 h-4 rounded-full shrink-0 shadow-sm"
+                      aria-hidden="true"
+                      className="w-4 h-4 rounded-full shrink-0 shadow-sm border border-border"
                       style={{ background: col.value }}
                     />
                     <span
-                      className="text-[11px] font-semibold truncate"
-                      style={{ color: isSelected ? "#ffffff" : "var(--muted-foreground)" }}
+                      className="text-[11px] font-semibold"
+                      style={{
+                        color: isSelected
+                          ? "var(--foreground)"
+                          : "var(--muted-foreground)",
+                      }}
                     >
                       {col.label}
                     </span>
@@ -223,32 +287,40 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
           </div>
 
           {/* Garments Selection */}
-          <div className="space-y-3 pt-1 border-t border-white/5">
+          <div className="space-y-3 pt-1 border-t border-border">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-white">
+              <span className="block text-xs font-bold text-foreground">
                 Select Outfit Pieces
-              </label>
+              </span>
               <button
                 type="button"
                 onClick={handleAutoPick}
-                className="text-[11px] font-semibold text-pink hover:brightness-110 flex items-center gap-1 transition-colors"
+                className="text-[11px] font-semibold text-pink hover:brightness-110 flex items-center gap-1 transition-colors cursor-pointer"
               >
-                ✨ Auto-pick pieces
+                <span aria-hidden="true">✨ </span>Auto-Pick
               </button>
             </div>
 
             {/* Top */}
             <div>
-              <span className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
+              <label
+                htmlFor="custom-style-top"
+                className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+              >
                 Top / Outerwear
-              </span>
+              </label>
               <select
+                id="custom-style-top"
                 value={selectedTopId}
                 onChange={(e) => setSelectedTopId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
+                className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
               >
                 {tops.map((item) => (
-                  <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
+                  <option
+                    key={item.id}
+                    value={item.id}
+                    className="bg-card text-foreground"
+                  >
                     {item.name} ({item.colorName})
                   </option>
                 ))}
@@ -257,16 +329,24 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
 
             {/* Bottom */}
             <div>
-              <span className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
+              <label
+                htmlFor="custom-style-bottom"
+                className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+              >
                 Bottom
-              </span>
+              </label>
               <select
+                id="custom-style-bottom"
                 value={selectedBottomId}
                 onChange={(e) => setSelectedBottomId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
+                className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
               >
                 {bottoms.map((item) => (
-                  <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
+                  <option
+                    key={item.id}
+                    value={item.id}
+                    className="bg-card text-foreground"
+                  >
                     {item.name} ({item.colorName})
                   </option>
                 ))}
@@ -275,16 +355,24 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
 
             {/* Shoes */}
             <div>
-              <span className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
+              <label
+                htmlFor="custom-style-shoe"
+                className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+              >
                 Footwear
-              </span>
+              </label>
               <select
+                id="custom-style-shoe"
                 value={selectedShoeId}
                 onChange={(e) => setSelectedShoeId(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-pink"
+                className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
               >
                 {shoes.map((item) => (
-                  <option key={item.id} value={item.id} className="bg-[#181B2B] text-white">
+                  <option
+                    key={item.id}
+                    value={item.id}
+                    className="bg-card text-foreground"
+                  >
                     {item.name} ({item.colorName})
                   </option>
                 ))}
@@ -293,39 +381,45 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
           </div>
 
           {/* Custom Stylist Rationale */}
-          <div className="pt-1 border-t border-white/5">
-            <label className="block text-xs font-bold text-white mb-1">
+          <div className="pt-1 border-t border-border">
+            <label
+              htmlFor="custom-style-rationale"
+              className="block text-xs font-bold text-foreground mb-1"
+            >
               Stylist Note / Rationale (Optional)
             </label>
             <textarea
+              id="custom-style-rationale"
               rows={2}
               value={customRationale}
               onChange={(e) => setCustomRationale(e.target.value)}
               placeholder="Why this outfit works for your needs..."
-              className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 text-xs focus:outline-none focus:border-pink transition-colors resize-none"
+              className="w-full px-3 py-2 rounded-xl bg-muted border border-border text-foreground placeholder:text-muted-foreground text-xs focus:outline-none focus:border-pink transition-colors resize-none"
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-2">
+          <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-white/70 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
+              className="min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all hover:opacity-90 active:scale-95"
+              className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all hover:opacity-90 active:scale-95 cursor-pointer"
               style={{
                 background: selectedAccent,
-                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(selectedAccent)
+                color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(
+                  selectedAccent
+                )
                   ? "#0D0F18"
                   : "#ffffff",
               }}
             >
-              Add Style Button
+              Save Style
             </button>
           </div>
         </form>

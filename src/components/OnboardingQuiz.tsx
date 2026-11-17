@@ -394,17 +394,17 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 text-white">
-      <div className="w-full max-w-2xl bg-[#151626] border border-[#2E3050] rounded-3xl p-5 sm:p-8 shadow-2xl relative flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 text-foreground">
+      <div className="w-full max-w-2xl bg-card border border-border rounded-3xl p-5 sm:p-8 shadow-2xl relative flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#2E3050]">
+        <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold italic tracking-tight" style={{ fontFamily: "Nunito, sans-serif" }}>
-              <span className="text-[#C4005F]">t</span>
-              <span className="text-[#72D4F0]">AI</span>
-              <span className="text-[#C4005F]">lor</span>
+              <span className="text-pink">t</span>
+              <span className="text-turquoise">AI</span>
+              <span className="text-pink">lor</span>
             </span>
-            <span className="text-[11px] font-semibold text-slate-400 px-2 py-0.5 rounded-full border border-slate-700 bg-slate-900/60">
+            <span className="text-[11px] font-semibold text-muted-foreground px-2 py-0.5 rounded-full border border-border bg-muted">
               Style Discovery
             </span>
           </div>
@@ -415,8 +415,8 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
               onClick={() => setResearchMode(!researchMode)}
               className={`text-xs px-2.5 py-1 rounded-xl border transition-colors ${
                 researchMode
-                  ? "bg-[#10303A] border-[#7BDCF0] text-[#7BDCF0]"
-                  : "bg-transparent border-[#2E3050] text-slate-400 hover:text-white"
+                  ? "bg-turquoise/15 border-turquoise text-turquoise font-semibold"
+                  : "bg-transparent border-border text-muted-foreground hover:text-foreground"
               }`}
             >
               Research View: {researchMode ? "On" : "Off"}
@@ -425,7 +425,7 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
               <button
                 type="button"
                 onClick={onCancel}
-                className="text-slate-400 hover:text-white text-sm p-1 ml-1"
+                className="text-muted-foreground hover:text-foreground text-sm p-1 ml-1"
                 aria-label="Close"
               >
                 ✕
@@ -438,8 +438,8 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
         {screen === "welcome" && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-white">Set up tAIlor your way</h2>
-              <p className="text-sm text-slate-400 mt-1">
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Set up tAIlor your way</h2>
+              <p className="text-sm text-muted-foreground mt-1">
                 Answer only what helps. Each answer adapts your stylist, color naming, or accessibility settings.
               </p>
             </div>
@@ -455,15 +455,15 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                     stepEntered.current = Date.now()
                     setScreen(p.id === "guest" ? "guest" : "q")
                   }}
-                  className="w-full text-left p-4 rounded-2xl border border-[#2E3050] bg-[#1D1F33]/60 hover:bg-[#1D1F33] hover:border-slate-500 transition-all group flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                  className="w-full text-left p-4 rounded-2xl border border-border bg-muted/60 hover:bg-muted hover:border-turquoise/50 transition-all group flex flex-col sm:flex-row sm:items-center justify-between gap-1"
                 >
                   <div>
-                    <span className="text-base font-bold text-white group-hover:text-[#72D4F0] transition-colors block">
+                    <span className="text-base font-bold text-foreground group-hover:text-turquoise transition-colors block">
                       {p.title}
                     </span>
-                    <span className="text-xs text-slate-400 block mt-0.5">{p.desc}</span>
+                    <span className="text-xs text-muted-foreground block mt-0.5">{p.desc}</span>
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-500 shrink-0 mt-1 sm:mt-0">
+                  <span className="text-[11px] font-semibold text-muted-foreground shrink-0 mt-1 sm:mt-0">
                     {p.time}
                   </span>
                 </button>
@@ -475,31 +475,31 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
         {/* Screen 2: Guest Disclaimer */}
         {screen === "guest" && (
           <div className="space-y-5">
-            <h2 className="text-2xl font-bold text-white">Continue as a guest</h2>
-            <ul className="text-xs text-slate-300 space-y-2 pl-4 list-disc">
+            <h2 className="text-2xl font-bold text-foreground">Continue as a guest</h2>
+            <ul className="text-xs text-muted-foreground space-y-2 pl-4 list-disc">
               <li>Nothing is saved after you close tAIlor: no wardrobe changes, outfit history, or custom tags.</li>
               <li>Photos are processed in-memory for outfit recommendations and are not permanently saved.</li>
             </ul>
 
-            <div className="p-3.5 rounded-2xl bg-[#1D1F33] border border-[#2E3050] text-xs text-slate-300">
-              <strong className="text-white">Research note:</strong> tAIlor is an HCI prototype. Outfit suggestions and virtual try-ons are AI-generated and meant as a styling companion.
+            <div className="p-3.5 rounded-2xl bg-muted border border-border text-xs text-muted-foreground">
+              <strong className="text-foreground">Research note:</strong> tAIlor is an HCI prototype. Outfit suggestions and virtual try-ons are AI-generated and meant as a styling companion.
             </div>
 
-            <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer pt-2">
+            <label className="flex items-center gap-2.5 text-xs text-muted-foreground cursor-pointer pt-2">
               <input
                 type="checkbox"
                 checked={guestAgreed}
                 onChange={(e) => setGuestAgreed(e.target.checked)}
-                className="w-4 h-4 rounded accent-[#C4005F]"
+                className="w-4 h-4 rounded accent-pink"
               />
               <span>I understand and agree to continue as a guest.</span>
             </label>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#2E3050]">
+            <div className="flex items-center justify-between pt-4 border-t border-border">
               <button
                 type="button"
                 onClick={() => setScreen("welcome")}
-                className="px-4 py-2 rounded-xl border border-[#2E3050] text-xs font-semibold text-slate-300 hover:bg-[#1D1F33]"
+                className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Back
               </button>
@@ -507,7 +507,7 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                 type="button"
                 disabled={!guestAgreed}
                 onClick={handleFinalSubmit}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C4005F] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 shadow-lg"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-pink text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 shadow-lg"
               >
                 Enter as Guest →
               </button>
@@ -520,19 +520,19 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
           <div className="space-y-5">
             {/* Tape measure progress indicator */}
             <div>
-              <div className="flex justify-between text-xs text-slate-400 mb-1.5 font-medium">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-medium">
                 <span>{currentQ.section}</span>
                 <span>Step {idx + 1} of {seq.length}</span>
               </div>
-              <div className="relative h-4 rounded-lg bg-[#1D1F33] border border-[#2E3050] overflow-hidden">
+              <div className="relative h-4 rounded-lg bg-muted border border-border overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#C4005F] to-[#72D4F0] transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-pink to-turquoise transition-all duration-300"
                   style={{ width: `${((idx + 1) / seq.length) * 100}%` }}
                 />
                 <div
                   className="absolute inset-0 pointer-events-none opacity-40"
                   style={{
-                    backgroundImage: "linear-gradient(to right, rgba(255,255,255,0.4) 1px, transparent 1px)",
+                    backgroundImage: "linear-gradient(to right, var(--border) 1px, transparent 1px)",
                     backgroundSize: "8px 100%",
                   }}
                 />
@@ -541,13 +541,13 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
 
             {/* Title & Desc */}
             <div>
-              <h3 className="text-xl font-bold text-white">{currentQ.title}</h3>
-              <p className="text-xs text-slate-400 mt-1">{currentQ.desc}</p>
+              <h3 className="text-xl font-bold text-foreground">{currentQ.title}</h3>
+              <p className="text-xs text-muted-foreground mt-1">{currentQ.desc}</p>
             </div>
 
             {/* Research View Sidebar (if toggled) */}
             {researchMode && currentQ.research && (
-              <div className="p-3 rounded-2xl bg-[#10303A] border-l-4 border-[#7BDCF0] text-xs text-[#7BDCF0] space-y-1">
+              <div className="p-3 rounded-2xl bg-turquoise/10 border-l-4 border-turquoise text-xs text-turquoise space-y-1">
                 <p>
                   <strong>Research Source:</strong>{" "}
                   {currentQ.research.src.map((s: string) => SRC[s]).join("; ")}
@@ -572,32 +572,32 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                     onClick={() => handleOptionToggle(currentQ.id, opt.v, currentQ.kind === "single", opt.exclusive)}
                     className={`block p-3.5 rounded-2xl border transition-all cursor-pointer ${
                       isSelected
-                        ? "bg-[#C4005F]/15 border-[#C4005F] shadow-sm"
-                        : "bg-[#1D1F33]/40 border-[#2E3050] hover:border-slate-500"
+                        ? "bg-pink/15 border-pink shadow-sm"
+                        : "bg-muted/50 border-border hover:border-turquoise/50"
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <div
                         className={`w-5 h-5 rounded-${currentQ.kind === "single" ? "full" : "md"} border flex items-center justify-center shrink-0 mt-0.5 ${
                           isSelected
-                            ? "bg-[#C4005F] border-[#C4005F] text-white"
-                            : "border-slate-600 bg-transparent"
+                            ? "bg-pink border-pink text-white"
+                            : "border-muted-foreground/40 bg-transparent"
                         }`}
                       >
                         {isSelected && <span className="text-xs font-black">✓</span>}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <span className="text-xs font-bold text-white block">{opt.label}</span>
-                        {opt.note && <span className="text-[11px] text-slate-400 mt-0.5 block">{opt.note}</span>}
+                        <span className="text-xs font-bold text-foreground block">{opt.label}</span>
+                        {opt.note && <span className="text-[11px] text-muted-foreground mt-0.5 block">{opt.note}</span>}
 
                         {/* Swatch chips for color palette */}
                         {opt.sw && (
                           <div className="flex flex-wrap gap-2.5 mt-2">
                             {opt.sw.map(([cname, hex]: [string, string]) => (
-                              <div key={cname} className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                              <div key={cname} className="flex items-center gap-1.5 text-[11px] text-foreground">
                                 <span
-                                  className="w-3.5 h-3.5 rounded-full border border-white/20 inline-block shadow-sm"
+                                  className="w-3.5 h-3.5 rounded-full border border-border inline-block shadow-sm"
                                   style={{ backgroundColor: hex }}
                                 />
                                 <span>{cname}</span>
@@ -619,18 +619,18 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                     placeholder="Please specify..."
                     value={custom[currentQ.id] || ""}
                     onChange={(e) => setCustom({ ...custom, [currentQ.id]: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1D1F33] border border-[#2E3050] text-xs text-white placeholder-slate-500 outline-none focus:border-[#72D4F0]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-muted border border-border text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-turquoise"
                   />
                 </div>
               )}
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex items-center justify-between pt-4 border-t border-[#2E3050]">
+            <div className="flex items-center justify-between pt-4 border-t border-border">
               <button
                 type="button"
                 onClick={handleBack}
-                className="px-4 py-2 rounded-xl border border-[#2E3050] text-xs font-semibold text-slate-300 hover:bg-[#1D1F33]"
+                className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Back
               </button>
@@ -638,7 +638,7 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                 type="button"
                 disabled={!isCurrentAnswered()}
                 onClick={handleNext}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C4005F] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 shadow-lg"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-pink text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 shadow-lg"
               >
                 {idx + 1 === seq.length ? "Finish & Review" : "Next →"}
               </button>
@@ -650,22 +650,22 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
         {screen === "results" && (
           <div className="space-y-5">
             <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#72D4F0]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
                 Your Configured Profile
               </span>
-              <h2 className="text-3xl font-extrabold tracking-tight text-white mt-1">
+              <h2 className="text-3xl font-extrabold tracking-tight text-foreground mt-1">
                 {answers.q_palette && answers.q_mood
                   ? `${answers.q_palette.charAt(0).toUpperCase() + answers.q_palette.slice(1)} Discovery`
                   : "Setup Complete"}
               </h2>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#1D1F33]/70 border border-[#2E3050] space-y-3 text-xs">
-              <h4 className="font-bold text-white text-sm">Stylist Adaptations</h4>
-              <ul className="space-y-1.5 list-disc pl-4 text-slate-300">
+            <div className="p-4 rounded-2xl bg-muted/60 border border-border space-y-3 text-xs">
+              <h4 className="font-bold text-foreground text-sm">Stylist Adaptations</h4>
+              <ul className="space-y-1.5 list-disc pl-4 text-muted-foreground">
                 {answers.q_palette && (
                   <li>
-                    Color recommendations prioritize <strong>{PALETTES[answers.q_palette]?.label}</strong> with CIELAB harmony constraints.
+                    Color recommendations prioritize <strong className="text-foreground">{PALETTES[answers.q_palette]?.label}</strong> with CIELAB harmony constraints.
                   </li>
                 )}
                 {answers.p_access?.includes("colorvision") && (
@@ -675,7 +675,7 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                   <li>Sensory filter active: prefers tagless cottons and soft modal fabrics.</li>
                 )}
                 {answers.q_explain && (
-                  <li>Explanation depth set to: <strong>{answers.q_explain}</strong>.</li>
+                  <li>Explanation depth set to: <strong className="text-foreground">{answers.q_explain}</strong>.</li>
                 )}
               </ul>
             </div>
@@ -684,7 +684,7 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
             {researchMode && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400">Exportable Profile JSON</span>
+                  <span className="text-[10px] font-bold text-muted-foreground">Exportable Profile JSON</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -692,18 +692,18 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                       setCopiedNotice("Copied to clipboard!")
                       setTimeout(() => setCopiedNotice(""), 2000)
                     }}
-                    className="text-[11px] text-[#72D4F0] hover:underline"
+                    className="text-[11px] text-turquoise hover:underline"
                   >
                     {copiedNotice || "Copy JSON"}
                   </button>
                 </div>
-                <pre className="p-3 rounded-xl bg-black/60 border border-slate-800 text-[10px] text-slate-300 max-h-36 overflow-auto">
+                <pre className="p-3 rounded-xl bg-muted border border-border text-[10px] text-foreground max-h-36 overflow-auto">
                   {JSON.stringify(deriveProfile(), null, 2)}
                 </pre>
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#2E3050]">
+            <div className="flex items-center justify-between pt-4 border-t border-border">
               <button
                 type="button"
                 onClick={() => {
@@ -711,14 +711,14 @@ export default function OnboardingQuiz({ onComplete, onCancel, initialPath }: On
                   setAnswers({})
                   setIdx(0)
                 }}
-                className="px-4 py-2 rounded-xl border border-[#2E3050] text-xs font-semibold text-slate-300 hover:bg-[#1D1F33]"
+                className="px-4 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Start Over
               </button>
               <button
                 type="button"
                 onClick={handleFinalSubmit}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-[#C4005F] text-white hover:brightness-110 shadow-lg"
+                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-pink text-white hover:brightness-110 shadow-lg"
               >
                 Apply & Enter tAIlor →
               </button>

@@ -18,22 +18,26 @@ try {
   // Production platforms provide environment variables directly.
 }
 const port = Number(process.env.PORT || 8787)
-const model = process.env.LLM_MODEL || "Qwen/Qwen2.5-VL-3B-Instruct"
+const textModel = process.env.LLM_TEXT_MODEL || "Qwen/Qwen2.5-3B-Instruct"
+const visionModel = process.env.LLM_VISION_MODEL || "Qwen/Qwen2.5-VL-3B-Instruct"
 const llmBaseUrl = (process.env.LLM_BASE_URL || "http://127.0.0.1:8000/v1").replace(/\/+$/, "")
-const inferenceUrl = `${llmBaseUrl}/chat/completions`
-const wardrobeScanUrl = `${llmBaseUrl.replace(/\/v1$/, "")}/v1/wardrobe/scan`
+const textBaseUrl = (process.env.LLM_TEXT_BASE_URL || llmBaseUrl).replace(/\/+$/, "")
+const visionBaseUrl = (process.env.LLM_VISION_BASE_URL || llmBaseUrl).replace(/\/+$/, "")
+const inferenceUrl = `${textBaseUrl}/chat/completions`
+const wardrobeScanUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/v1/wardrobe/scan`
 const debugStylist = process.env.STYLIST_DEBUG !== "false"
 // Mock by default when no remote tunnel is set so Try Live works without a GPU.
 // Set WARDROBE_SCAN_MOCK=false to force live Qwen2.5-VL (local GPU or Colab).
 const wardrobeScanMockEnv = (process.env.WARDROBE_SCAN_MOCK || "").toLowerCase()
+const effectiveVisionUrl = process.env.LLM_VISION_BASE_URL || process.env.LLM_BASE_URL || ""
 const wardrobeScanMock =
   wardrobeScanMockEnv === "true" || wardrobeScanMockEnv === "1"
     ? true
     : wardrobeScanMockEnv === "false" || wardrobeScanMockEnv === "0"
       ? false
-      : !process.env.LLM_BASE_URL ||
-        process.env.LLM_BASE_URL.includes("127.0.0.1") ||
-        process.env.LLM_BASE_URL.includes("localhost")
+      : !effectiveVisionUrl ||
+        effectiveVisionUrl.includes("127.0.0.1") ||
+        effectiveVisionUrl.includes("localhost")
 
 const MOCK_WARDROBE_SAMPLES = {
   "teal-trench": {
@@ -355,7 +359,7 @@ async function requestWardrobeScanFromColab(image, mimeType) {
   }
   return {
     item: normalizeWardrobeScanItem(result.item),
-    model: result.model || model,
+    model: result.model || visionModel,
     source: result.source || "qwen-vl",
     raw: result.raw,
   }
@@ -395,7 +399,7 @@ async function handleWardrobeScan(request, response) {
   }
 
   if (wardrobeScanMock || process.env.WARDROBE_SCAN_MOCK === "true") {
-    // Live GPU unavailable — still accept uploads with a deterministic demo result.
+    // This is an intentional demo mode, not a live inference fallback.
     const payload = {
       ...mockWardrobeScan("default"),
       note: "Mock result: set LLM_BASE_URL to a Colab tunnel and WARDROBE_SCAN_MOCK=false for live Qwen2.5-VL.",
@@ -410,17 +414,8 @@ async function handleWardrobeScan(request, response) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.log(`[wardrobe-scan:${requestId}] failed`, JSON.stringify({ message }))
-    // Fall back to mock so the scanner UI stays usable if the tunnel drops.
-    if (body.allowMockFallback !== false) {
-      sendJson(response, 200, {
-        ...mockWardrobeScan("default"),
-        source: "mock-fallback",
-        note: `Live scan failed (${message}). Showing demo entry — check Colab / LLM_BASE_URL.`,
-      })
-      return
-    }
     sendJson(response, 502, {
-      error: `${message} (LLM at ${llmBaseUrl})`,
+      error: `Live wardrobe scan failed using ${visionModel}. ${message} Check that the Colab vision model is loaded and the tunnel is reachable.`,
     })
   }
 }
@@ -435,7 +430,7 @@ async function requestModel(prompt) {
         : {}),
     },
     body: JSON.stringify({
-      model,
+      model: textModel,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 450,
       temperature: 0.3,
@@ -501,7 +496,7 @@ async function handleStylist(request, response) {
     wardrobeCount: wardrobeItems.length,
   })
 
-  if (event.length < 14) {
+  if (event.length < 10) {
     sendJson(response, 400, { error: "Please describe the event in more detail." })
     return
   }
@@ -686,7 +681,7 @@ async function handleStylist(request, response) {
     sendJson(response, 502, {
       error: error instanceof Error
         ? `${error.message}${cause}`
-        : `Could not connect to the local/Colab model server at ${llmBaseUrl}.${cause}`,
+        : `Could not connect to the local/Colab model server at ${textBaseUrl}.${cause}`,
     })
     return
   }
@@ -696,7 +691,7 @@ async function handleStylist(request, response) {
       .map((outfit) => outfit.label)
       .join(" and ")}.`,
     outfits: generated,
-    model,
+    model: textModel,
   })
 }
 
@@ -752,8 +747,11 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         status: "ok",
         mock: wardrobeScanMock,
-        model,
+        textModel,
+        visionModel,
         llmBaseUrl,
+        textBaseUrl,
+        visionBaseUrl,
         scanUrl: wardrobeScanUrl,
       })
       return

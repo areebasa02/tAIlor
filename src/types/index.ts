@@ -65,6 +65,8 @@ export interface UserProfile {
     sensorySensitive: boolean
     lowDecisionMode: boolean
     voiceNarration: boolean
+    largeText?: boolean
+    visionImpairment?: boolean
   }
   quizProfile?: QuizResult
 }
@@ -87,6 +89,15 @@ export interface WardrobeItem {
   cost?: string
   lastWorn?: string
   status?: "clean" | "dirty" | "washing"
+  formality?: "formal" | "business" | "smart-casual" | "casual"
+}
+
+export interface LaundryMachineProfile {
+  loaderType: "front" | "top_impeller" | "top_agitator"
+  waterTemp: "cold" | "cool" | "warm"
+  spinSpeed: "low" | "medium" | "high"
+  delicateMeshBag: boolean
+  notes: string
 }
 
 export interface OutfitItem {
@@ -154,4 +165,17 @@ export function getContrastTextColor(hexBg: string): string {
     return luminance > 0.62 ? "#0D0F18" : "#ffffff"
   }
   return "#ffffff"
+}
+
+export type FontScale = "xs" | "sm" | "md" | "lg" | "xl"
+export type AccessibleFont = "nunito" | "atkinson" | "lexend" | "opendyslexic" | "system"
+
+export interface FeedbackRecord {
+  id: string
+  type: "outfit" | "garment"
+  targetId: string
+  targetName: string
+  reasons: string[]
+  notes: string
+  timestamp: string
 }

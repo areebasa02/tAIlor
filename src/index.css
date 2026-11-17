@@ -1,5 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@400;500;600;700;800&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap');
 @import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
   --color-pink: var(--pink);
@@ -39,30 +41,39 @@
   --radius-xl: calc(var(--radius) + 8px);
 }
 
-:root {
-  --background: #0D0F18;
-  --foreground: #F0EEF8;
-  --card: #161924;
-  --card-foreground: #F0EEF8;
-  --muted: #1E2133;
-  --muted-foreground: #8B8FA8;
-  --border: rgba(255, 255, 255, 0.08);
+:root,
+html[data-theme="light"] {
+  color-scheme: light;
+  --app-font-family: 'Nunito', sans-serif;
+  --app-font-scale: 100%;
+  --background: #F4F5FA;
+  --outer-backdrop: #E6E4F0;
+  --desktop-glow: radial-gradient(circle at 82% 14%, rgba(206, 0, 90, 0.09), transparent 42%), radial-gradient(circle at 18% 82%, rgba(0, 120, 128, 0.11), transparent 46%), radial-gradient(circle at 50% 50%, rgba(255, 203, 68, 0.06), transparent 60%);
+  --foreground: #121526;
+  --card: #FFFFFF;
+  --card-foreground: #121526;
+  --muted: #E9ECF5;
+  --muted-foreground: #464B63;
+  --border: rgba(18, 21, 38, 0.18);
+  --surface-subtle: rgba(18, 21, 38, 0.04);
+  --nav-bg: rgba(255, 255, 255, 0.96);
+  --toast-bg: rgba(255, 255, 255, 0.98);
   --radius: 14px;
 
-  --pink: #ce005a;
-  --rose: #e2828f;
-  --gold: #ffcb44;
-  --red: #da400c;
-  --turquoise: #69d5e6;
-  --dark-teal: #007880;
-  --green: #40b066;
-  --light-green: #76e09a;
+  --pink: #c40055;
+  --rose: #a8243c;
+  --gold: #9a6400;
+  --red: #c93506;
+  --turquoise: #007688;
+  --dark-teal: #00666e;
+  --green: #1b7339;
+  --light-green: #186b35;
 
-  --primary: var(--pink);            /* #ce005a */
+  --primary: var(--pink);
   --primary-foreground: #ffffff;
-  --secondary: var(--dark-teal);     /* #007880 */
+  --secondary: var(--dark-teal);
   --secondary-foreground: #ffffff;
-  --accent: var(--turquoise);        /* #69d5e6 */
+  --accent: var(--turquoise);
   --accent-foreground: #0D0F18;
   --ring: var(--pink);
 
@@ -74,6 +85,84 @@
   --mint: var(--light-green);
 }
 
+.dark,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0D0F18;
+  --outer-backdrop: #07080E;
+  --desktop-glow: radial-gradient(circle at 82% 14%, rgba(206, 0, 90, 0.16), transparent 44%), radial-gradient(circle at 18% 82%, rgba(105, 213, 230, 0.12), transparent 46%), radial-gradient(circle at 50% 50%, rgba(0, 120, 128, 0.09), transparent 60%);
+  --foreground: #F0EEF8;
+  --card: #161924;
+  --card-foreground: #F0EEF8;
+  --muted: #1E2133;
+  --muted-foreground: #B6BBD4;
+  --border: rgba(255, 255, 255, 0.16);
+  --surface-subtle: rgba(255, 255, 255, 0.04);
+  --nav-bg: rgba(13, 15, 24, 0.96);
+  --toast-bg: rgba(22, 25, 36, 0.98);
+
+  --pink: #ce005a;
+  --rose: #e2828f;
+  --gold: #ffcb44;
+  --red: #da400c;
+  --turquoise: #69d5e6;
+  --dark-teal: #007880;
+  --green: #40b066;
+  --light-green: #76e09a;
+
+  --accent-foreground: #0D0F18;
+  --ring: #69d5e6;
+}
+
+/* Light-mode bright cyan fill for solid bg-turquoise controls + subtle translucent utilities */
+html[data-theme="light"] .bg-turquoise {
+  background-color: #48cae4;
+}
+
+html[data-theme="light"] .bg-white\/5,
+html[data-theme="light"] .hover\:bg-white\/5:hover {
+  background-color: rgba(18, 21, 38, 0.04);
+}
+
+html[data-theme="light"] .bg-white\/10,
+html[data-theme="light"] .hover\:bg-white\/10:hover {
+  background-color: rgba(18, 21, 38, 0.08);
+}
+
+html[data-theme="light"] .bg-white\/\[0\.02\] {
+  background-color: rgba(18, 21, 38, 0.025);
+}
+
+html[data-theme="light"] .bg-white\/\[0\.03\] {
+  background-color: rgba(18, 21, 38, 0.035);
+}
+
+html[data-theme="light"] .border-white\/5 {
+  border-color: rgba(18, 21, 38, 0.08);
+}
+
+html[data-theme="light"] .border-white\/10 {
+  border-color: rgba(18, 21, 38, 0.14);
+}
+
+html[data-theme="light"] .border-white\/20 {
+  border-color: rgba(18, 21, 38, 0.2);
+}
+
+html[data-theme="light"] .border-white\/25 {
+  border-color: rgba(18, 21, 38, 0.24);
+}
+
+/* Ensure dark-surface foreground accent text meets WCAG AA (>=4.5:1) while filled bg-* + text-white stay >=5:1 */
+.dark .text-pink,
+html[data-theme="dark"] .text-pink { color: #FF6BA8; }
+.dark .text-red,
+html[data-theme="dark"] .text-red { color: #FF8463; }
+.dark .text-dark-teal,
+html[data-theme="dark"] .text-dark-teal { color: #4DD0E1; }
+.dark .text-green,
+html[data-theme="dark"] .text-green { color: #56D383; }
+
 * {
   box-sizing: border-box;
 }
@@ -82,16 +171,20 @@ html, body, #root {
   height: 100%;
 }
 
+html {
+  font-size: var(--app-font-scale, 100%);
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Nunito', sans-serif;
+  font-family: var(--app-font-family, 'Nunito', sans-serif);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
 
-h1, h2, h3 {
-  font-family: 'Nunito', sans-serif;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--app-font-family, 'Nunito', sans-serif);
   font-weight: 800;
 }
 
@@ -107,6 +200,75 @@ h1, h2, h3 {
   transition-timing-function: ease;
 }
 
+button, a, select, input, textarea {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 button, a {
   cursor: pointer;
+}
+
+/* Prevent iOS Safari viewport auto-zoom when tapping form controls on phones */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* High-visibility keyboard focus indicator (WCAG 2.4.7 / 2.4.13) */
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Legacy accessibility toggle fallback (precedes 5-step scale so active scale always wins) */
+html.large-text {
+  --app-font-scale: 112.5%;
+}
+
+/* 5-step font scaling system (takes precedence in cascade over legacy toggle) */
+html.font-scale-xs, html.font-scale-1 { --app-font-scale: 87.5%; }
+html.font-scale-sm, html.font-scale-2 { --app-font-scale: 100%; }
+html.font-scale-md, html.font-scale-3 { --app-font-scale: 112.5%; }
+html.font-scale-lg, html.font-scale-4 { --app-font-scale: 125%; }
+html.font-scale-xl, html.font-scale-5 { --app-font-scale: 137.5%; }
+
+/* Switchable accessible font families */
+html.font-nunito { --app-font-family: 'Nunito', sans-serif; }
+html.font-atkinson { --app-font-family: 'Atkinson Hyperlegible', sans-serif; }
+html.font-lexend { --app-font-family: 'Lexend', sans-serif; }
+html.font-opendyslexic { --app-font-family: 'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif; }
+html.font-system { --app-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+html.high-contrast-ui {
+  --border: #121526;
+}
+
+html.dark.high-contrast-ui,
+html[data-theme="dark"].high-contrast-ui {
+  --border: #FFFFFF;
+}
+
+/* Hide horizontal scrollbars cleanly on pill carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Respect OS/user reduced-motion preference (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

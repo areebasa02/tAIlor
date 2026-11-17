@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react"
+import React, { createContext, useContext, useState, useEffect, useRef } from "react"
 import type {
   UserProfile,
   WardrobeItem,
@@ -10,9 +10,19 @@ import type {
   Direction,
   WeatherData,
   QuizResult,
+  FontScale,
+  AccessibleFont,
 } from "../types"
 import { getContrastTextColor } from "../types"
 import { THEME_COLORS } from "../types/theme"
+import {
+  PERSONA_WARDROBES,
+  PERSONA_RECENT_LOOKS,
+  ensureSeededTryOnItems,
+  getWardrobeForPersona,
+  getRecentLooksForPersona,
+} from "../data/personaData"
+import { fetchLiveWeather } from "../services/weatherService"
 
 export { getContrastTextColor }
 
@@ -23,7 +33,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "EB",
     email: "eliora.browning@example.com",
     avatarBg: THEME_COLORS.rose,
-    roleTitle: "Front-End & Proposal Research",
+    roleTitle: "Soft Fabrics & Comfort",
     preferredStyle: "Polished · colorful · comfortable",
     typicalSizes: "Tops 3XL · Bottoms 26/28 · Shoes 9",
     homeClimate: "Preferably cold (50-65°F)",
@@ -34,6 +44,8 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
       sensorySensitive: true,
       lowDecisionMode: true,
       voiceNarration: false,
+      largeText: false,
+      visionImpairment: false,
     },
   },
   ethan: {
@@ -42,7 +54,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "EC",
     email: "ethan.carter@example.com",
     avatarBg: THEME_COLORS.darkTeal,
-    roleTitle: "Networking & Professional · Flow 01 Persona",
+    roleTitle: "Networking & Events",
     preferredStyle: "Sharp business-casual · structured · clean lines",
     typicalSizes: "Tops L · Bottoms 32 · Shoes 10.5",
     homeClimate: "Breezy & urban (64°F)",
@@ -53,6 +65,8 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
       sensorySensitive: false,
       lowDecisionMode: false,
       voiceNarration: false,
+      largeText: false,
+      visionImpairment: false,
     },
   },
   jordan: {
@@ -61,7 +75,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "JM",
     email: "jordan.miller@example.com",
     avatarBg: THEME_COLORS.green,
-    roleTitle: "Outfit Discovery & Decision Fatigue · Flow 02 Persona",
+    roleTitle: "Simple Everyday Style",
     preferredStyle: "Minimalist · earth tones · relaxed fit",
     typicalSizes: "Tops M · Bottoms 30 · Shoes 10",
     homeClimate: "Mild & sunny (72°F)",
@@ -72,6 +86,8 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
       sensorySensitive: false,
       lowDecisionMode: true,
       voiceNarration: false,
+      largeText: false,
+      visionImpairment: false,
     },
   },
   josephine: {
@@ -80,7 +96,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "JD",
     email: "josephine.davis@example.com",
     avatarBg: THEME_COLORS.gold,
-    roleTitle: "Color Accessibility & Tactile · Flow 03 Persona",
+    roleTitle: "High Contrast & Audio",
     preferredStyle: "High-contrast · soft natural fibers · easy tags",
     typicalSizes: "Tops S · Bottoms 6 · Shoes 7.5",
     homeClimate: "Moderate (70°F)",
@@ -91,6 +107,8 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
       sensorySensitive: true,
       lowDecisionMode: false,
       voiceNarration: true,
+      largeText: true,
+      visionImpairment: true,
     },
   },
   areeba: {
@@ -99,7 +117,7 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
     initials: "AA",
     email: "areeba.ahmad@example.com",
     avatarBg: THEME_COLORS.red,
-    roleTitle: "Team Leader & Project Planner",
+    roleTitle: "Business Classic",
     preferredStyle: "Creative chic · dynamic layers · statement accents",
     typicalSizes: "Tops S · Bottoms 4 · Shoes 7",
     homeClimate: "Humid subtropical (75°F)",
@@ -110,6 +128,8 @@ export const PRESET_PERSONAS: Record<PersonaId, UserProfile> = {
       sensorySensitive: false,
       lowDecisionMode: false,
       voiceNarration: false,
+      largeText: false,
+      visionImpairment: false,
     },
   },
 }
@@ -1250,7 +1270,12 @@ export const PERSONA_OUTFITS: Record<PersonaId, Record<Direction, Outfit>> = {
   },
 }
 
+export type ThemeMode = "light" | "dark"
+
 export interface AppContextType {
+  theme: ThemeMode
+  setTheme: (theme: ThemeMode) => void
+  toggleTheme: () => void
   user: UserProfile
   isAuthenticated: boolean
   login: (user?: UserProfile) => void
@@ -1305,11 +1330,162 @@ export interface AppContextType {
   // User testing script state: stylist tab first-run network error
   stylistNetworkErrorTriggered: boolean
   setStylistNetworkErrorTriggered: (val: boolean) => void
+
+  // Accessible font scaling & font options
+  fontScale: FontScale
+  setFontScale: (scale: FontScale) => void
+  accessibleFont: AccessibleFont
+  setAccessibleFont: (font: AccessibleFont) => void
+
+  // Outfit favorites
+  favoriteOutfitIds: string[]
+  toggleFavoriteOutfit: (outfitId: string) => void
+
+  // Feedback notes
+  outfitFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
+  saveOutfitFeedback: (outfitId: string, notes: string, reasons?: string[]) => void
+  garmentFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
+  saveGarmentFeedback: (itemId: string, notes: string, reasons?: string[]) => void
 }
 
 const AppContext = createContext<AppContextType | null>(null)
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const stored = localStorage.getItem("tailor_theme")
+      if (stored === "dark" || stored === "light") return stored
+    } catch { }
+    return "light"
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme)
+    document.documentElement.classList.toggle("light", theme === "light")
+    document.documentElement.classList.toggle("dark", theme === "dark")
+    try {
+      localStorage.setItem("tailor_theme", theme)
+    } catch { }
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"))
+  }
+
+  // 5-step font scaling state (xs: 87.5%, sm: 100%, md: 112.5%, lg: 125%, xl: 137.5%)
+  const [fontScale, setFontScaleState] = useState<FontScale>(() => {
+    try {
+      const saved = localStorage.getItem("tailor_font_scale") as FontScale
+      if (["xs", "sm", "md", "lg", "xl"].includes(saved)) return saved
+    } catch { }
+    return "sm"
+  })
+
+  const setFontScale = (scale: FontScale) => {
+    setFontScaleState(scale)
+    setCurrentUser((prev) => ({
+      ...prev,
+      accessibility: {
+        ...prev.accessibility,
+        largeText: scale === "md" || scale === "lg" || scale === "xl",
+      },
+    }))
+  }
+
+  useEffect(() => {
+    const root = document.documentElement
+    const scaleClasses = [
+      "font-scale-xs",
+      "font-scale-sm",
+      "font-scale-md",
+      "font-scale-lg",
+      "font-scale-xl",
+      "font-scale-1",
+      "font-scale-2",
+      "font-scale-3",
+      "font-scale-4",
+      "font-scale-5",
+    ]
+    root.classList.remove(...scaleClasses)
+    root.classList.add(`font-scale-${fontScale}`)
+    try {
+      localStorage.setItem("tailor_font_scale", fontScale)
+    } catch { }
+  }, [fontScale])
+
+  // Accessible font family state
+  const [accessibleFont, setAccessibleFont] = useState<AccessibleFont>(() => {
+    try {
+      const saved = localStorage.getItem("tailor_font_family") as AccessibleFont
+      if (["nunito", "atkinson", "lexend", "opendyslexic", "system"].includes(saved)) return saved
+    } catch { }
+    return "nunito"
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    const fontClasses = [
+      "font-nunito",
+      "font-atkinson",
+      "font-lexend",
+      "font-opendyslexic",
+      "font-system",
+    ]
+    root.classList.remove(...fontClasses)
+    root.classList.add(`font-${accessibleFont}`)
+    try {
+      localStorage.setItem("tailor_font_family", accessibleFont)
+    } catch { }
+  }, [accessibleFont])
+
+  // Favorite outfits state
+  const [favoriteOutfitIds, setFavoriteOutfitIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("tailor_favorite_outfits")
+      if (saved) return JSON.parse(saved)
+    } catch { }
+    return []
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("tailor_favorite_outfits", JSON.stringify(favoriteOutfitIds))
+    } catch { }
+  }, [favoriteOutfitIds])
+
+  // Outfit & Garment feedback notes state
+  const [outfitFeedbackNotes, setOutfitFeedbackNotes] = useState<
+    Record<string, { notes: string; reasons?: string[]; timestamp: string }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem("tailor_outfit_feedback")
+      if (saved) return JSON.parse(saved)
+    } catch { }
+    return {}
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("tailor_outfit_feedback", JSON.stringify(outfitFeedbackNotes))
+    } catch { }
+  }, [outfitFeedbackNotes])
+
+  const [garmentFeedbackNotes, setGarmentFeedbackNotes] = useState<
+    Record<string, { notes: string; reasons?: string[]; timestamp: string }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem("tailor_garment_feedback")
+      if (saved) return JSON.parse(saved)
+    } catch { }
+    return {}
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("tailor_garment_feedback", JSON.stringify(garmentFeedbackNotes))
+    } catch { }
+  }, [garmentFeedbackNotes])
+
   // Authentication state - starts unauthenticated so the site always opens to the login page
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
@@ -1331,31 +1507,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
 
   const [wardrobe, setWardrobe] = useState<WardrobeItem[]>(() => {
+    const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
     try {
-      const stored = localStorage.getItem("tailor_wardrobe")
+      const stored = localStorage.getItem(`tailor_wardrobe_${pid}`)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed)) {
-          const seededItems = INITIAL_ITEMS.filter((item) => item.id >= 13)
-          const missingSeededItems = seededItems.filter(
-            (seededItem) => !parsed.some((item) => item?.id === seededItem.id),
-          )
-          if (missingSeededItems.length > 0) {
-            return [...parsed, ...missingSeededItems]
-          }
-          return parsed
+          return ensureSeededTryOnItems(parsed)
         }
       }
     } catch { }
-    return INITIAL_ITEMS
+    return getWardrobeForPersona(pid)
   })
 
   const [recentLooks, setRecentLooks] = useState<RecentLook[]>(() => {
+    const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
     try {
-      const stored = localStorage.getItem("tailor_recent_looks")
+      const stored = localStorage.getItem(`tailor_recent_looks_${pid}`)
       if (stored) return JSON.parse(stored)
     } catch { }
-    return INITIAL_RECENT_LOOKS
+    return getRecentLooksForPersona(pid)
   })
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
@@ -1376,41 +1547,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [outfitHistory, setOutfitHistory] = useState<Outfit[]>([])
   const [wornToday, setWornToday] = useState(false)
 
-  // Weather & Climate State managed in AppContext
+  // Weather & Climate State managed in AppContext (Open-Meteo live data)
   const [weather, setWeather] = useState<WeatherData>(() => {
     return PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora
   })
+  const hasGpsWeatherRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    if (hasGpsWeatherRef.current) return
+
+    void fetchLiveWeather({
+      requestGeolocation: false,
+      fallback: PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora,
+    }).then((result) => {
+      if (!cancelled && !hasGpsWeatherRef.current) {
+        setWeather(result.weather)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser.id])
 
   const currentOutfit = outfits[selectedDirection] || Object.values(outfits)[0]
 
-  const refreshWeather = () => {
-    const variations: Record<PersonaId, WeatherData[]> = {
-      eliora: [
-        { city: "Hammond, LA", temp: "58°F", condition: "Breezy & Cool · 58°F", advice: "Crisp autumn air. Layering your favorite soft knit or jacket keeps you warm and sensory-comfortable.", icon: "⛅" },
-        { city: "Hammond, LA", temp: "54°F", condition: "Chilly & Overcast · 54°F", advice: "Cool breeze coming in. Long sleeves and comfortable lined trousers recommended.", icon: "☁️" },
-        { city: "Hammond, LA", temp: "62°F", condition: "Mild & Clear · 62°F", advice: "Crisp sun with gentle cool breeze. Perfect for relaxed layers.", icon: "🌤️" },
-      ],
-      ethan: [
-        { city: "Hammond, LA", temp: "64°F", condition: "Clear & Breezy · 64°F", advice: "Crisp urban breeze. Structured blazer or jacket recommended for evening networking.", icon: "🏙️" },
-        { city: "Hammond, LA", temp: "67°F", condition: "Sunny & Sharp · 67°F", advice: "Mild afternoon weather. Oxford shirt and chinos provide optimal ventilation.", icon: "☀️" },
-      ],
-      jordan: [
-        { city: "Hammond, LA", temp: "72°F", condition: "Sunny & Mild · 72°F", advice: "Warm sunny afternoon. Breathable cotton layers prevent morning-to-afternoon decision fatigue.", icon: "☀️" },
-        { city: "Hammond, LA", temp: "69°F", condition: "Partly Cloudy · 69°F", advice: "Gentle cloud cover. Low-decision classic tee and jeans are comfortable all day.", icon: "⛅" },
-      ],
-      josephine: [
-        { city: "Hammond, LA", temp: "70°F", condition: "Pleasant & Clear · 70°F", advice: "Soft natural fibers and breathable textures keep you comfortable throughout the day.", icon: "🌤️" },
-        { city: "Hammond, LA", temp: "68°F", condition: "Mild & Calm · 68°F", advice: "Gentle natural air. Soft tagless fabrics provide zero skin irritation.", icon: "⛅" },
-      ],
-      areeba: [
-        { city: "Hammond, LA", temp: "75°F", condition: "Humid Subtropical · 75°F", advice: "Warm subtropical air. Light dynamic layers with statement accessories shine today.", icon: "✨" },
-        { city: "Hammond, LA", temp: "78°F", condition: "Sunny & Warm · 78°F", advice: "Balmy sunshine. Statement trench can be draped or carried for effortless style.", icon: "☀️" },
-      ],
+  const refreshWeather = async () => {
+    const result = await fetchLiveWeather({
+      requestGeolocation: true,
+      fallback: weather,
+    })
+    if (result.source === "gps") {
+      hasGpsWeatherRef.current = true
     }
-    const list = variations[currentUser.id] || variations.eliora
-    const next = list[Math.floor(Math.random() * list.length)]
-    setWeather(next)
-    showToast("Weather Refreshed", `Updated forecast for ${next.city}: ${next.temp}`, "info")
+    setWeather(result.weather)
+    showToast(
+      result.source === "gps"
+        ? "Live Local Weather"
+        : result.source === "hammond"
+          ? "Live Hammond Weather"
+          : "Weather Cache Active",
+      `${result.weather.city}: ${result.weather.condition}`,
+      result.source === "fallback" ? "warning" : "info",
+    )
   }
 
   const regenerateOutfit = (reasonConstraint?: string) => {
@@ -1540,7 +1720,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast("Style Removed", `"${removedLabel}" removed.`, "info")
   }
 
-  // Sync user
+  // Sync user & global accessibility classes
   useEffect(() => {
     try {
       localStorage.setItem("tailor_user", JSON.stringify(currentUser))
@@ -1548,27 +1728,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser])
 
   useEffect(() => {
-    try {
-      localStorage.setItem("tailor_wardrobe", JSON.stringify(wardrobe))
-    } catch { }
-  }, [wardrobe])
+    const root = document.documentElement
+    root.classList.toggle("large-text", Boolean(currentUser.accessibility.largeText))
+    root.classList.toggle("high-contrast-ui", Boolean(currentUser.accessibility.highContrastColors))
+  }, [currentUser.accessibility.largeText, currentUser.accessibility.highContrastColors])
 
   useEffect(() => {
     try {
-      localStorage.setItem("tailor_recent_looks", JSON.stringify(recentLooks))
+      const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
+      localStorage.setItem(`tailor_wardrobe_${pid}`, JSON.stringify(wardrobe))
     } catch { }
-  }, [recentLooks])
+  }, [wardrobe, currentUser.id])
+
+  useEffect(() => {
+    try {
+      const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
+      localStorage.setItem(`tailor_recent_looks_${pid}`, JSON.stringify(recentLooks))
+    } catch { }
+  }, [recentLooks, currentUser.id])
 
   const showToast = (
     title: string,
     message: string,
     type: "info" | "success" | "warning" = "info",
   ) => {
-    const id = Date.now().toString()
-    setNotifications((prev) => [
-      ...prev,
-      { id, title, message, type, timestamp: "Just now" },
-    ])
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    setNotifications((prev) => {
+      const duplicate = prev.some((n) => n.title === title && n.message === message)
+      if (duplicate) return prev
+      return [...prev, { id, title, message, type, timestamp: "Just now" }]
+    })
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id))
     }, 4500)
@@ -1578,12 +1767,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNotifications((prev) => prev.filter((n) => n.id !== id))
   }
 
+  const loadPersonaData = (pid: PersonaId) => {
+    try {
+      const storedW = localStorage.getItem(`tailor_wardrobe_${pid}`)
+      const parsed = storedW ? JSON.parse(storedW) : null
+      setWardrobe(
+        Array.isArray(parsed)
+          ? ensureSeededTryOnItems(parsed)
+          : getWardrobeForPersona(pid),
+      )
+    } catch {
+      setWardrobe(getWardrobeForPersona(pid))
+    }
+    try {
+      const storedR = localStorage.getItem(`tailor_recent_looks_${pid}`)
+      setRecentLooks(storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid))
+    } catch {
+      setRecentLooks(getRecentLooksForPersona(pid))
+    }
+  }
+
   const login = (customUser?: UserProfile) => {
     const userToSet = customUser || currentUser
     setCurrentUser(userToSet)
     setIsAuthenticated(true)
     setStylistNetworkErrorTriggered(false)
     const pid = (userToSet.id in PERSONA_OUTFITS ? userToSet.id : "eliora") as PersonaId
+    loadPersonaData(pid)
     const loadedOutfits = getOutfitsForUser(pid)
     setOutfits(loadedOutfits)
     const defaultDir =
@@ -1591,7 +1801,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSelectedDirection(
       defaultDir in loadedOutfits ? defaultDir : Object.keys(loadedOutfits)[0],
     )
-    setWeather(PERSONA_WEATHER[pid] || PERSONA_WEATHER.eliora)
+    if (!hasGpsWeatherRef.current) {
+      setWeather(PERSONA_WEATHER[pid] || PERSONA_WEATHER.eliora)
+    }
+    if (userToSet.accessibility.largeText) {
+      setFontScaleState("md")
+    }
     setWornToday(false)
     setOutfitHistory([])
     showToast(
@@ -1616,6 +1831,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (selected) {
       setCurrentUser(selected)
       setStylistNetworkErrorTriggered(false)
+      loadPersonaData(personaId)
       const loadedOutfits = getOutfitsForUser(personaId)
       setOutfits(loadedOutfits)
       const defaultDir =
@@ -1625,7 +1841,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? defaultDir
           : Object.keys(loadedOutfits)[0],
       )
-      setWeather(PERSONA_WEATHER[personaId] || PERSONA_WEATHER.eliora)
+      if (!hasGpsWeatherRef.current) {
+        setWeather(PERSONA_WEATHER[personaId] || PERSONA_WEATHER.eliora)
+      }
+      if (selected.accessibility.largeText) {
+        setFontScaleState("md")
+      }
       setWornToday(false)
       setOutfitHistory([])
       showToast(
@@ -1647,9 +1868,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         [key]: val,
       },
     }))
+    if (key === "largeText") {
+      setFontScaleState(val ? "md" : "sm")
+    }
+    const labels: Record<keyof UserProfile["accessibility"], string> = {
+      highContrastColors: "High-Contrast Color Names",
+      lowDecisionMode: "Simple / Low-Decision Mode",
+      sensorySensitive: "Sensory-Safe Fabric Filter",
+      voiceNarration: "Voice Read-Aloud",
+      largeText: "Large Easy-Read Text",
+      visionImpairment: "Vision Impairment Assistance",
+    }
     showToast(
-      "Preference Updated",
-      `${key} set to ${val ? "ON" : "OFF"}`,
+      "Accessibility Updated",
+      `${labels[key]} turned ${val ? "ON" : "OFF"}`,
       "info",
     )
   }
@@ -1799,9 +2031,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
+  const toggleFavoriteOutfit = (outfitId: string) => {
+    setFavoriteOutfitIds((prev) => {
+      const exists = prev.includes(outfitId)
+      const next = exists ? prev.filter((id) => id !== outfitId) : [...prev, outfitId]
+      showToast(
+        exists ? "Removed from Favorites" : "Outfit Favorited ❤️",
+        exists ? "Look removed from saved favorites." : "Look saved to your favorites.",
+        "info",
+      )
+      return next
+    })
+  }
+
+  const saveOutfitFeedback = (outfitId: string, notes: string, reasons?: string[]) => {
+    const timestamp = new Date().toISOString()
+    setOutfitFeedbackNotes((prev) => ({
+      ...prev,
+      [outfitId]: { notes, reasons, timestamp },
+    }))
+    showToast(
+      "Feedback Recorded",
+      "Your outfit notes have been saved to your styling preferences.",
+      "success",
+    )
+  }
+
+  const saveGarmentFeedback = (itemId: string, notes: string, reasons?: string[]) => {
+    const timestamp = new Date().toISOString()
+    setGarmentFeedbackNotes((prev) => ({
+      ...prev,
+      [itemId]: { notes, reasons, timestamp },
+    }))
+    showToast(
+      "Feedback Recorded",
+      "Your garment notes have been saved.",
+      "success",
+    )
+  }
+
   return (
     <AppContext.Provider
       value={{
+        theme,
+        setTheme,
+        toggleTheme,
         user: currentUser,
         isAuthenticated,
         login,
@@ -1839,6 +2113,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshWeather,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,
+        fontScale,
+        setFontScale,
+        accessibleFont,
+        setAccessibleFont,
+        favoriteOutfitIds,
+        toggleFavoriteOutfit,
+        outfitFeedbackNotes,
+        saveOutfitFeedback,
+        garmentFeedbackNotes,
+        saveGarmentFeedback,
       }}
     >
       {children}

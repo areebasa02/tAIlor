@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { THEME_COLORS, STATUS_COLORS } from "../types/theme"
+import { THEME_COLORS } from "../types/theme"
 
 // ─── Exported Types ───────────────────────────────────────────────────────────
 export type VoiceState = "idle" | "listening" | "processing" | "captured" | "error"
@@ -8,6 +8,13 @@ export type UploadState = "empty" | "uploading" | "analyzing" | "success" | "err
 
 // ─── Exported Reusable AI Components ──────────────────────────────────────────
 
+const STATUS_CLASS_MAP = {
+  loading: "bg-turquoise/15 border-turquoise/40 text-turquoise",
+  success: "bg-green/15 border-green/40 text-green",
+  uncertain: "bg-gold/15 border-gold/40 text-gold",
+  error: "bg-red/15 border-red/40 text-red",
+} as const
+
 export function AIStatusPill({
   state,
   label,
@@ -15,17 +22,13 @@ export function AIStatusPill({
   state: "loading" | "success" | "uncertain" | "error"
   label: string
 }) {
-  const color = STATUS_COLORS[state]
   return (
     <div
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border"
-      style={{
-        background: `${color}18`,
-        borderColor: `${color}40`,
-        color,
-      }}
+      role="status"
+      aria-live="polite"
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${STATUS_CLASS_MAP[state]}`}
     >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+      <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-current" />
       <span>{label}</span>
     </div>
   )
@@ -34,14 +37,11 @@ export function AIStatusPill({
 export function UncertaintyBanner({ message }: { message: string }) {
   return (
     <div
-      className="rounded-xl px-3 py-2 text-[10px] leading-snug border"
-      style={{
-        background: `${STATUS_COLORS.uncertain}15`,
-        borderColor: `${STATUS_COLORS.uncertain}40`,
-        color: STATUS_COLORS.uncertain,
-      }}
+      role="status"
+      className="rounded-xl px-3 py-2 text-[11px] leading-snug border bg-gold/15 border-gold/40 text-gold font-semibold"
     >
-      ⚠ {message}
+      <span aria-hidden="true">⚠ </span>
+      {message}
     </div>
   )
 }
@@ -70,18 +70,19 @@ export function AnimatedStepProgress({
   }, [steps.length, intervalMs, onComplete])
 
   return (
-    <div className="space-y-2.5">
+    <div role="status" aria-live="polite" className="space-y-2.5">
       {steps.map((s, i) => {
         const done = i < current
         const isCurrent = i === current
         return (
           <div key={s} className="flex items-center gap-2.5">
             <div
+              aria-hidden="true"
               className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                 done
                   ? "bg-green text-white"
                   : isCurrent
-                    ? "bg-turquoise text-[#0D0F18]"
+                    ? "bg-turquoise text-accent-foreground"
                     : "bg-muted text-muted-foreground"
               }`}
             >
@@ -90,16 +91,16 @@ export function AnimatedStepProgress({
             <p
               className={`text-xs ${
                 done
-                  ? "text-green font-medium"
+                  ? "text-green font-semibold"
                   : isCurrent
-                    ? "text-white font-semibold"
+                    ? "text-foreground font-semibold"
                     : "text-muted-foreground"
               }`}
             >
               {s}
             </p>
             {isCurrent && (
-              <span className="w-2 h-2 rounded-full bg-turquoise animate-ping ml-auto" />
+              <span aria-hidden="true" className="w-2 h-2 rounded-full bg-turquoise animate-ping ml-auto" />
             )}
           </div>
         )
@@ -118,12 +119,18 @@ export function AIErrorBanner({
   actions: { label: string; primary?: boolean; onClick: () => void }[]
 }) {
   return (
-    <div className="rounded-2xl p-4 bg-red/10 border border-red/30 space-y-2.5">
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="rounded-2xl p-4 bg-red/10 border border-red/35 space-y-2.5"
+    >
       <div className="flex items-start gap-2.5">
-        <span className="text-red text-base leading-none mt-0.5">⚠</span>
+        <span aria-hidden="true" className="text-red text-base leading-none mt-0.5">
+          ⚠
+        </span>
         <div>
-          <h4 className="text-xs font-bold text-red">{title}</h4>
-          <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{message}</p>
+          <h3 className="text-xs font-bold text-red">{title}</h3>
+          <p className="text-[11px] text-foreground mt-0.5 leading-relaxed">{message}</p>
         </div>
       </div>
       <div className="flex gap-2 pt-1">
@@ -132,10 +139,10 @@ export function AIErrorBanner({
             key={i}
             type="button"
             onClick={act.onClick}
-            className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex-1 min-h-[40px] py-2 px-3 rounded-xl text-xs font-semibold transition-all border ${
               act.primary
-                ? "bg-red text-white hover:brightness-110 shadow-sm"
-                : "bg-muted text-muted-foreground hover:text-white"
+                ? "bg-red text-white border-red hover:brightness-110 shadow-sm"
+                : "bg-muted text-foreground border-border hover:brightness-95"
             }`}
           >
             {act.label}
@@ -172,34 +179,60 @@ export function ImageUploadWidget({
   onCorrect: () => void
 }) {
   if (state === "empty") {
+    if (onFileSelected) {
+      return (
+        <label className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-6 hover:border-turquoise/50 transition-colors cursor-pointer text-muted-foreground">
+          <span aria-hidden="true" className="text-3xl">📷</span>
+          <span className="text-xs font-semibold text-foreground">{emptyLabel}</span>
+          <span className="text-[10px]">JPEG, PNG · max 10 MB</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ""
+              if (file) onFileSelected(file)
+              else onRetake()
+            }}
+          />
+        </label>
+      )
+    }
+
     return (
-      <label className="rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-8 hover:border-turquoise/50 transition-colors cursor-pointer text-muted-foreground">
-        <span className="text-3xl">📷</span>
-        <p className="text-xs font-semibold text-white">{emptyLabel}</p>
-        <p className="text-[10px]">JPEG, PNG · max 10 MB</p>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            event.target.value = ""
-            if (file) onFileSelected?.(file)
-            else onRetake()
-          }}
-        />
-      </label>
+      <button
+        type="button"
+        onClick={onRetake}
+        aria-label={`${emptyLabel} (JPEG or PNG up to 10 MB)`}
+        className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 py-5 hover:border-turquoise/50 transition-colors text-muted-foreground cursor-pointer"
+      >
+        <span aria-hidden="true" className="text-3xl">📷</span>
+        <span className="text-xs font-semibold text-foreground">{emptyLabel}</span>
+        <span className="text-[10px]">JPEG, PNG · max 10 MB</span>
+      </button>
     )
   }
 
   if (state === "uploading") {
     return (
-      <div className="space-y-2 p-4 rounded-2xl bg-card border border-border">
+      <div
+        role="status"
+        aria-live="polite"
+        className="space-y-2 p-4 rounded-2xl bg-card border border-border"
+      >
         <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
           <span>Uploading item photo…</span>
-          <span className="text-turquoise">{progress}%</span>
+          <span className="text-turquoise font-bold">{progress}%</span>
         </div>
-        <div className="h-1.5 rounded-full overflow-hidden bg-muted">
+        <div
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Uploading item photo"
+          className="h-1.5 rounded-full overflow-hidden bg-muted"
+        >
           <div
             className="h-full rounded-full bg-turquoise transition-all duration-200"
             style={{ width: `${progress}%` }}
@@ -211,9 +244,13 @@ export function ImageUploadWidget({
 
   if (state === "analyzing") {
     return (
-      <div className="space-y-2.5 p-4 rounded-2xl bg-card border border-border">
+      <div
+        role="status"
+        aria-live="polite"
+        className="space-y-2.5 p-4 rounded-2xl bg-card border border-border"
+      >
         <div className="flex items-center gap-2 text-turquoise text-xs font-semibold">
-          <span className="w-2 h-2 rounded-full bg-turquoise animate-ping" />
+          <span aria-hidden="true" className="w-2 h-2 rounded-full bg-turquoise animate-ping" />
           <span>{analyzingLabel}</span>
         </div>
         <div className="space-y-1">
@@ -249,14 +286,20 @@ export function ImageUploadWidget({
 
   if (state === "success" && result) {
     return (
-      <div className="space-y-3 p-4 rounded-2xl bg-card border border-border">
+      <div
+        role="status"
+        aria-live="polite"
+        className="space-y-3 p-4 rounded-2xl bg-card border border-border"
+      >
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl shadow-md border border-white/20 shrink-0"
+            role="img"
+            aria-label={`Identified ${result.name} color swatch`}
+            className="w-10 h-10 rounded-xl shadow-md border border-border shrink-0"
             style={{ background: result.hex }}
           />
           <div className="flex-1 min-w-0">
-            <h4 className="text-xs font-bold text-white truncate">{result.name}</h4>
+            <h3 className="text-xs font-bold text-foreground truncate">{result.name}</h3>
             <p className="text-[10px] text-muted-foreground">
               {result.category} · {result.hex}
               {result.material ? ` · ${result.material}` : ""}
@@ -267,22 +310,24 @@ export function ImageUploadWidget({
               </p>
             )}
           </div>
-          <span className="text-green text-xs font-bold">✓ Identified</span>
+          <span className="text-green text-xs font-bold shrink-0">
+            <span aria-hidden="true">✓ </span>Identified
+          </span>
         </div>
         <div className="flex gap-2 pt-1">
           <button
             type="button"
             onClick={onSave}
-            className="flex-1 py-2 rounded-xl text-xs font-bold bg-green text-white hover:brightness-110 transition-all shadow-sm"
+            className="flex-1 min-h-[40px] py-2 rounded-xl text-xs font-bold bg-green text-white hover:brightness-110 transition-all shadow-sm"
           >
-            Confirm & Save
+            Confirm &amp; Save
           </button>
           <button
             type="button"
             onClick={onCorrect}
-            className="px-3 py-2 rounded-xl text-xs font-semibold bg-muted text-muted-foreground hover:text-white transition-colors"
+            className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold bg-muted text-foreground border border-border hover:brightness-95 transition-colors"
           >
-            Correct Color
+            Correct
           </button>
         </div>
       </div>
@@ -300,8 +345,8 @@ export function PulseOrb({
   color?: string
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-2">
-      <div className="relative w-14 h-14">
+    <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 py-2">
+      <div aria-hidden="true" className="relative w-14 h-14">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
@@ -326,93 +371,482 @@ export function PulseOrb({
   )
 }
 
+export function WhyItWorksDisclosure({
+  rationale,
+  onDeepDive,
+}: {
+  rationale: string
+  onDeepDive?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="rounded-xl border-2 border-border bg-muted/60 overflow-hidden text-xs min-[380px]:text-[13px] transition-all">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="w-full px-3 py-2.5 font-extrabold text-pink flex items-center justify-between text-left hover:bg-muted transition-colors cursor-pointer min-h-[44px]"
+      >
+        <span className="flex items-center gap-2">
+          <span aria-hidden="true">💡</span>
+          <span>Why it works</span>
+        </span>
+        <span
+          aria-hidden="true"
+          className={`text-muted-foreground font-black text-xs transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        >
+          ▼
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2.5 pt-1 text-foreground/90 font-medium border-t border-border/40 leading-snug space-y-2 animate-in fade-in duration-150">
+          <p>{rationale}</p>
+          {onDeepDive && (
+            <button
+              type="button"
+              onClick={onDeepDive}
+              className="text-[11px] font-extrabold text-turquoise hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>Full breakdown</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function OutfitFeedbackModal({
+  isOpen,
+  onClose,
+  outfitLabel,
+  onSaveFeedback,
+  onRegenerateWithFeedback,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  outfitLabel: string
+  onSaveFeedback: (notes: string, reasons: string[]) => void
+  onRegenerateWithFeedback?: (notes: string, reasons: string[]) => void
+}) {
+  const [selectedReasons, setSelectedReasons] = useState<string[]>([])
+  const [customNotes, setCustomNotes] = useState("")
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedReasons([])
+      setCustomNotes("")
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  const chipOptions = [
+    "Too formal",
+    "Too casual",
+    "Weather mismatch",
+    "Colors clash",
+    "Uncomfortable fit",
+    "Sensory discomfort",
+  ]
+
+  const toggleReason = (reason: string) => {
+    setSelectedReasons((prev) =>
+      prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+    )
+  }
+
+  const handleSaveOnly = () => {
+    onSaveFeedback(customNotes, selectedReasons)
+    onClose()
+  }
+
+  const handleSaveAndRegenerate = () => {
+    onSaveFeedback(customNotes, selectedReasons)
+    if (onRegenerateWithFeedback) {
+      onRegenerateWithFeedback(customNotes, selectedReasons)
+    }
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="outfit-feedback-title"
+        className="rounded-3xl p-4 sm:p-5 max-w-sm w-full max-h-[90dvh] overflow-y-auto space-y-3.5 shadow-2xl border-2"
+        style={{ background: "var(--card)", borderColor: "var(--border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-border">
+          <div>
+            <h2 id="outfit-feedback-title" className="text-base font-black text-foreground">
+              Outfit Feedback
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Why doesn&apos;t &ldquo;{outfitLabel}&rdquo; work?
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close feedback modal"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted text-sm font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-foreground">Quick reasons:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {chipOptions.map((reason) => {
+              const active = selectedReasons.includes(reason)
+              return (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => toggleReason(reason)}
+                  aria-pressed={active}
+                  className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                    active
+                      ? "bg-pink text-white border-pink shadow-xs"
+                      : "bg-muted text-foreground border-border hover:border-pink/50"
+                  }`}
+                >
+                  {reason}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="outfit-feedback-notes" className="text-xs font-bold text-foreground block">
+            Specific notes for AI stylist:
+          </label>
+          <textarea
+            id="outfit-feedback-notes"
+            rows={3}
+            value={customNotes}
+            onChange={(e) => setCustomNotes(e.target.value)}
+            placeholder="Notes on why this outfit doesn't work for your needs..."
+            className="w-full rounded-xl p-2.5 text-xs text-foreground bg-muted border-2 border-border focus:border-pink outline-none resize-none"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 pt-1">
+          {onRegenerateWithFeedback && (
+            <button
+              type="button"
+              onClick={handleSaveAndRegenerate}
+              className="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-extrabold bg-pink text-white border-2 border-[#0D0F18]/20 hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+            >
+              Save &amp; Update Look →
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSaveOnly}
+            className="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-bold bg-muted text-foreground border-2 border-border hover:border-turquoise active:scale-95 transition-all cursor-pointer"
+          >
+            Save Notes
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function GarmentFeedbackModal({
+  isOpen,
+  onClose,
+  garmentDesc,
+  garmentType,
+  garmentColor,
+  onSaveFeedback,
+  onSwapWithFeedback,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  garmentDesc: string
+  garmentType: string
+  garmentColor?: string
+  onSaveFeedback: (notes: string, reasons: string[]) => void
+  onSwapWithFeedback?: (notes: string, reasons: string[]) => void
+}) {
+  const [selectedReasons, setSelectedReasons] = useState<string[]>([])
+  const [customNotes, setCustomNotes] = useState("")
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedReasons([])
+      setCustomNotes("")
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  const chipOptions = [
+    "Itchy / Uncomfortable",
+    "Fit issue (tight/loose)",
+    "Too warm / cool",
+    "Dislike cut / style",
+    "Needs wash",
+    "Doesn't match other pieces",
+  ]
+
+  const toggleReason = (reason: string) => {
+    setSelectedReasons((prev) =>
+      prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+    )
+  }
+
+  const handleSaveOnly = () => {
+    onSaveFeedback(customNotes, selectedReasons)
+    onClose()
+  }
+
+  const handleSaveAndSwap = () => {
+    onSaveFeedback(customNotes, selectedReasons)
+    if (onSwapWithFeedback) {
+      onSwapWithFeedback(customNotes, selectedReasons)
+    }
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="garment-feedback-title"
+        className="rounded-3xl p-4 sm:p-5 max-w-sm w-full max-h-[90dvh] overflow-y-auto space-y-3.5 shadow-2xl border-2"
+        style={{ background: "var(--card)", borderColor: "var(--border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-2 border-b border-border">
+          <div>
+            <h2 id="garment-feedback-title" className="text-base font-black text-foreground">
+              Garment Feedback
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Why doesn&apos;t this item work?
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close feedback modal"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted text-sm font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Piece preview */}
+        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-muted border border-border">
+          {garmentColor && (
+            <span
+              aria-hidden="true"
+              className="w-4 h-4 rounded-full border border-foreground/30 shrink-0"
+              style={{ backgroundColor: garmentColor }}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] font-black uppercase text-muted-foreground block">
+              {garmentType}
+            </span>
+            <p className="text-xs font-bold text-foreground truncate">{garmentDesc}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-foreground">Why does it not work?</p>
+          <div className="flex flex-wrap gap-1.5">
+            {chipOptions.map((reason) => {
+              const active = selectedReasons.includes(reason)
+              return (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => toggleReason(reason)}
+                  aria-pressed={active}
+                  className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                    active
+                      ? "bg-turquoise text-accent-foreground border-turquoise shadow-xs"
+                      : "bg-muted text-foreground border-border hover:border-turquoise/50"
+                  }`}
+                >
+                  {reason}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="garment-feedback-notes" className="text-xs font-bold text-foreground block">
+            Item notes / preferences:
+          </label>
+          <textarea
+            id="garment-feedback-notes"
+            rows={3}
+            value={customNotes}
+            onChange={(e) => setCustomNotes(e.target.value)}
+            placeholder="Notes on why this item doesn't work for you..."
+            className="w-full rounded-xl p-2.5 text-xs text-foreground bg-muted border-2 border-border focus:border-turquoise outline-none resize-none"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 pt-1">
+          {onSwapWithFeedback && (
+            <button
+              type="button"
+              onClick={handleSaveAndSwap}
+              className="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-extrabold bg-turquoise text-accent-foreground border-2 border-[#0D0F18]/20 hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+            >
+              Save &amp; Swap Piece ↺
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSaveOnly}
+            className="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-bold bg-muted text-foreground border-2 border-border hover:border-turquoise active:scale-95 transition-all cursor-pointer"
+          >
+            Save Notes
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function UserControlBar({
-  mode,
-  approveLabel = "Approve",
+  mode = "default",
+  approveLabel = "Wear This Now",
   onApprove,
-  onEdit,
+  onEdit: _onEdit,
   onReject,
   onRegenerate,
-  onUndo,
-  onWhy,
-  showWhy = false,
+  onUndo: _onUndo,
+  onWhy: _onWhy,
+  showWhy: _showWhy = false,
+  onFavorite,
+  isFavorite = false,
 }: {
-  mode: ControlMode
+  mode?: ControlMode
   approveLabel?: string
   onApprove: () => void
-  onEdit: () => void
+  onEdit?: () => void
   onReject: () => void
   onRegenerate: () => void
-  onUndo: () => void
+  onUndo?: () => void
   onWhy?: () => void
   showWhy?: boolean
+  onFavorite?: () => void
+  isFavorite?: boolean
 }) {
   return (
     <div className="space-y-2 pt-1">
+      {/* Enlarged Wear This Now primary action */}
       <button
         type="button"
         onClick={onApprove}
-        className="w-full py-2.5 rounded-xl text-xs font-bold bg-pink text-white hover:brightness-110 transition-all shadow-md shadow-pink/20"
+        className="w-full min-h-[54px] py-3.5 px-5 rounded-2xl text-base min-[380px]:text-lg font-black tracking-wide bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-pink/30 flex items-center justify-center gap-2 cursor-pointer"
       >
         {approveLabel}
       </button>
 
-      <div className="grid grid-cols-4 gap-1.5">
-        <button
-          type="button"
-          onClick={onEdit}
-          className={`py-2 rounded-xl text-[10px] font-semibold flex flex-col items-center gap-0.5 border transition-all ${
-            mode === "editing"
-              ? "bg-turquoise text-[#0D0F18] border-turquoise font-bold"
-              : "bg-muted text-muted-foreground border-border hover:text-white"
-          }`}
+      {mode === "editing" && (
+        <div
+          role="status"
+          className="rounded-xl px-3 py-2 text-xs font-bold bg-turquoise/15 border-2 border-turquoise text-foreground flex items-center gap-2"
         >
-          <span>✏</span>Edit
-        </button>
+          <span aria-hidden="true">👆</span>
+          <span>Tap Swap next to any piece above to pick a different item.</span>
+        </div>
+      )}
+
+      {/* Exactly 3 side-by-side buttons in a single row */}
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Outfit actions">
+        {/* 1. Dislike */}
         <button
           type="button"
           onClick={onReject}
-          className={`py-2 rounded-xl text-[10px] font-semibold flex flex-col items-center gap-0.5 border transition-all ${
+          aria-pressed={mode === "rejected"}
+          aria-label="Dislike outfit"
+          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer ${
             mode === "rejected"
-              ? "bg-red text-white border-red font-bold"
-              : "bg-muted text-muted-foreground border-border hover:text-white"
+              ? "bg-red text-white border-red shadow-xs"
+              : "bg-card text-foreground border-border shadow-2xs hover:border-red hover:text-red active:scale-95"
           }`}
         >
-          <span>✕</span>Reject
+          <span aria-hidden="true" className={mode === "rejected" ? "" : "text-red font-black"}>✕</span>
+          <span>Dislike</span>
         </button>
+
+        {/* 2. New Look */}
         <button
           type="button"
           onClick={onRegenerate}
-          className={`py-2 rounded-xl text-[10px] font-semibold flex flex-col items-center gap-0.5 border transition-all ${
+          aria-pressed={mode === "regenerating"}
+          aria-label="Generate new look"
+          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer ${
             mode === "regenerating"
-              ? "bg-turquoise text-[#0D0F18] border-turquoise font-bold"
-              : "bg-muted text-muted-foreground border-border hover:text-white"
+              ? "bg-turquoise text-accent-foreground border-[#0D0F18]/30 shadow-xs"
+              : "bg-card text-foreground border-border shadow-2xs hover:border-pink active:scale-95"
           }`}
         >
-          <span>↺</span>Redo
+          <span aria-hidden="true" className={mode === "regenerating" ? "" : "text-pink font-black"}>↺</span>
+          <span>New Look</span>
         </button>
+
+        {/* 3. ❤️ Favorite */}
         <button
           type="button"
-          onClick={onUndo}
-          className={`py-2 rounded-xl text-[10px] font-semibold flex flex-col items-center gap-0.5 border transition-all ${
-            mode === "undone"
-              ? "bg-green text-white border-green font-bold"
-              : "bg-muted text-muted-foreground border-border hover:text-white"
+          onClick={onFavorite}
+          aria-pressed={isFavorite}
+          aria-label={isFavorite ? "Remove outfit from favorites" : "Add outfit to favorites"}
+          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer active:scale-95 ${
+            isFavorite
+              ? "bg-pink/15 text-pink border-pink shadow-xs"
+              : "bg-card text-foreground border-border shadow-2xs hover:border-pink"
           }`}
         >
-          <span>↩</span>Undo
+          <span aria-hidden="true">❤️</span>
+          <span>Favorite</span>
         </button>
       </div>
-
-      {showWhy && onWhy && (
-        <button
-          type="button"
-          onClick={onWhy}
-          className="w-full py-1.5 rounded-xl text-[10px] font-semibold bg-muted text-muted-foreground hover:text-white transition-colors"
-        >
-          Why this outfit?
-        </button>
-      )}
     </div>
   )
 }

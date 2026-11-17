@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""tAIlor Colab helper — Qwen2.5-VL wardrobe scanner.
+"""tAIlor Colab helper — dual-model Qwen backend.
 
 Paste cells from tailorbackend.ipynb in Colab, or run the equivalent steps
 below after uploading colab_server.py.
@@ -11,13 +11,18 @@ No Hugging Face token is required for Qwen/Qwen2.5-VL-3B-Instruct.
 # !nvidia-smi
 
 # ### Step 2: Install dependencies
-# !pip install -q "torch" "transformers>=4.49.0" "accelerate" "fastapi" "uvicorn" "pillow"
+# !pip install -q "torch" "transformers>=4.49.0" "accelerate" "bitsandbytes" "fastapi" "uvicorn" "pillow"
 
 # ### Step 3: Start the VL server
 import os
 
-os.environ["LLM_MODEL"] = "Qwen/Qwen2.5-VL-3B-Instruct"
-# !nohup python colab_server.py > /content/stylist-server.log 2>&1 &
+os.environ["LLM_LOAD_MODE"] = "both"  # or "text" / "vision" to split across two Colabs
+os.environ["LLM_TEXT_MODEL"] = "Qwen/Qwen2.5-3B-Instruct"
+os.environ["LLM_VISION_MODEL"] = "Qwen/Qwen2.5-VL-3B-Instruct"
+os.environ["LLM_QUANTIZE"] = "true"
+os.environ["LLM_QUANT_BITS"] = "8"  # 8-bit keeps Qwen2.5-3B coherent on T4 (~11 GB total)
+os.environ["LLM_TEXT_DEVICE"] = "cuda"
+# !nohup python -u colab_server.py > /content/stylist-server.log 2>&1 &
 
 # ### Step 4: Monitor server health until status is "ok"
 # import time, requests

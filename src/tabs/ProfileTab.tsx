@@ -1,6 +1,5 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
-import type { PersonaId } from "../types"
 import { getContrastTextColor } from "../types"
 import OnboardingQuiz from "../components/OnboardingQuiz"
 
@@ -12,11 +11,20 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
     applyQuizResult,
     logout,
     wardrobe,
-    recentLooks,
-    showToast,
+    theme,
+    toggleTheme,
   } = useApp()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [quizOpen, setQuizOpen] = useState(false)
+
+  useEffect(() => {
+    if (!confirmLogout) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirmLogout(false)
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [confirmLogout])
 
   const cleanItems = wardrobe.filter((i) => i.status !== "dirty").length
   const dirtyItems = wardrobe.filter((i) => i.status === "dirty").length
@@ -24,37 +32,35 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const rarelyWorn = wardrobe.filter((i) => i.worn < 5).length
 
   return (
-    <div className="pt-2 pb-6 space-y-5">
-      {/* Back button */}
-      <div className="flex items-center justify-between">
+    <div className="pt-1 pb-4 space-y-3">
+      {/* Back & Sign Out */}
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={onBack}
-          className="text-xs font-bold hover:underline flex items-center gap-1 text-turquoise transition-colors"
+          className="text-xs font-extrabold px-3 min-h-[38px] rounded-xl border-2 border-border bg-muted text-foreground hover:border-turquoise flex items-center gap-1 transition-colors cursor-pointer"
         >
-          ← Back to Today
+          ← Today
         </button>
 
         <button
           type="button"
           onClick={() => setConfirmLogout(true)}
-          className="text-xs font-bold px-3 py-1.5 rounded-xl border border-red/30 text-red hover:bg-red/10 transition-colors"
+          className="text-xs font-extrabold px-3 min-h-[38px] rounded-xl border-2 border-red text-red hover:bg-red/10 transition-colors cursor-pointer"
         >
           Sign Out
         </button>
       </div>
 
-      {/* Responsive Grid: 1 Column on Mobile, 2 Columns on Desktop & Presentation Screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column on Desktop: User Hero, Persona Switcher & Closet Analytics */}
-        <div className="lg:col-span-5 space-y-4">
+      {/* Single-Column Mobile Shell Stack */}
+      <div className="space-y-3">
+        {/* User Hero, Demo Profiles & Closet Analytics */}
+        <div className="space-y-3">
           {/* User Hero */}
-          <div
-            className="flex flex-col p-4 rounded-3xl border shadow-sm bg-card border-border"
-          >
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col p-3.5 rounded-2xl border-2 shadow-sm bg-card border-border">
+            <div className="flex items-center gap-3">
               <div
-                className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-lg shrink-0 border border-white/20"
+                className="w-12 h-12 rounded-full flex items-center justify-center text-base font-black shadow-md shrink-0 border-2 border-border"
                 style={{
                   background: user.avatarBg,
                   color: getContrastTextColor(user.avatarBg),
@@ -63,56 +69,60 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                 {user.initials}
               </div>
               <div className="min-w-0 flex-1">
-                <h2
-                  className="text-xl font-bold text-white truncate"
+                <h1
+                  className="text-xl font-black text-foreground truncate leading-tight"
                   style={{ fontFamily: "Nunito, sans-serif" }}
                 >
                   {user.name}
-                </h2>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-turquoise">
+                </h1>
+                <p className="text-xs font-semibold text-muted-foreground truncate">
+                  {user.email}
+                </p>
+                <span className="inline-block mt-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-turquoise/15 text-foreground border-2 border-turquoise/50">
                   {user.roleTitle}
                 </span>
               </div>
             </div>
 
-            {/* Retake Style Quiz Button */}
             <button
               type="button"
               onClick={() => setQuizOpen(true)}
-              className="w-full py-2.5 px-3 rounded-2xl border border-turquoise/30 text-turquoise text-xs font-bold hover:bg-turquoise/10 transition-colors flex items-center justify-center gap-2 mt-3"
+              className="w-full min-h-[42px] py-2 px-3 rounded-xl border-2 border-turquoise text-foreground bg-turquoise/10 text-xs font-extrabold hover:bg-turquoise/20 transition-colors flex items-center justify-center gap-2 mt-3 cursor-pointer"
             >
-              <span>✦</span> Retake Onboarding Style Quiz
+              <span aria-hidden="true">✦</span> Retake Quiz
             </button>
           </div>
 
-          {/* Persona Switcher - Crucial for Presentation / HCI Testing */}
-          <div className="rounded-3xl p-4 space-y-3 border shadow-sm bg-card border-border">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
-                ⚡ Switch Active HCI Persona
+          {/* Demo Profile Switcher */}
+          <div className="rounded-2xl p-3.5 space-y-2.5 border-2 shadow-sm bg-card border-border">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                <span aria-hidden="true">⚡ </span>Demo Profiles
               </span>
-              <span className="text-[9px] text-muted-foreground">
-                Team & User Study
+              <span className="text-xs font-bold text-muted-foreground shrink-0">
+                Try different needs
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 min-[350px]:grid-cols-2 gap-2">
               {Object.values(PRESET_PERSONAS).map((p) => {
                 const active = user.id === p.id
                 return (
                   <button
                     key={p.id}
                     type="button"
+                    aria-pressed={active}
+                    aria-label={`Switch to profile ${p.name}, ${p.roleTitle}`}
                     onClick={() => switchUser(p.id)}
-                    className={`p-2 rounded-2xl border text-left flex items-center gap-2 transition-all hover:scale-[1.02] ${
+                    className={`p-2.5 min-h-[54px] rounded-2xl border-2 text-left flex items-center gap-2.5 transition-all hover:scale-[1.01] cursor-pointer ${
                       active
                         ? "bg-pink/15 border-pink shadow-md shadow-pink/20"
-                        : "bg-muted border-border hover:border-turquoise/40"
+                        : "bg-muted border-border hover:border-turquoise"
                     }`}
                   >
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border border-white/20"
+                      aria-hidden="true"
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 border-2 border-border"
                       style={{
                         background: p.avatarBg,
                         color: getContrastTextColor(p.avatarBg),
@@ -121,11 +131,19 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                       {p.initials}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-bold text-white truncate leading-tight">
+                      <p className="text-xs font-black text-foreground truncate leading-tight">
                         {p.name.split(" ")[0]}
                       </p>
-                      <p className="text-[8px] text-muted-foreground truncate">
-                        {p.id === "eliora" ? "Senior IT" : p.id}
+                      <p className="text-[11px] font-semibold text-muted-foreground leading-tight mt-0.5 line-clamp-2">
+                        {(
+                          {
+                            eliora: "Soft & Comfort",
+                            areeba: "Business Classic",
+                            ethan: "Events & Social",
+                            jordan: "Simple & Calm",
+                            josephine: "High Contrast & Audio",
+                          } as Record<string, string>
+                        )[p.id] ?? p.roleTitle}
                       </p>
                     </div>
                   </button>
@@ -134,79 +152,264 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
-          {/* Wardrobe & Sustainability Analytics */}
-          <div className="rounded-3xl p-4 space-y-3 border shadow-sm bg-card border-border">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
-              Closet & Wear Analytics
+          {/* Wardrobe Summary */}
+          <div
+            role="region"
+            aria-labelledby="closet-analytics-heading"
+            className="rounded-2xl p-3.5 space-y-2.5 border-2 shadow-sm bg-card border-border"
+          >
+            <span
+              id="closet-analytics-heading"
+              className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
+            >
+              Closet Overview
             </span>
 
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-white">{wardrobe.length}</p>
-                <p className="text-[9px] text-muted-foreground">Total Pieces</p>
+            <div className="grid grid-cols-2 min-[380px]:grid-cols-4 gap-2 text-center">
+              <div className="p-2.5 rounded-2xl bg-muted border-2 border-border">
+                <p className="text-lg font-black text-foreground">
+                  {wardrobe.length}
+                </p>
+                <p className="text-[11px] font-bold text-muted-foreground leading-tight">
+                  Total
+                </p>
               </div>
-              <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-green">{cleanItems}</p>
-                <p className="text-[9px] text-muted-foreground">Clean & Ready</p>
+              <div className="p-2.5 rounded-2xl bg-muted border-2 border-border">
+                <p className="text-lg font-black text-green">{cleanItems}</p>
+                <p className="text-[11px] font-bold text-muted-foreground leading-tight">
+                  Clean
+                </p>
               </div>
-              <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-rose">{dirtyItems}</p>
-                <p className="text-[9px] text-muted-foreground">In Laundry</p>
+              <div className="p-2.5 rounded-2xl bg-muted border-2 border-border">
+                <p className="text-lg font-black text-rose">{dirtyItems}</p>
+                <p className="text-[11px] font-bold text-muted-foreground leading-tight">
+                  Laundry
+                </p>
               </div>
-              <div className="p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-                <p className="text-lg font-bold text-gold">{favItems}</p>
-                <p className="text-[9px] text-muted-foreground">Favorites ♥</p>
+              <div className="p-2.5 rounded-2xl bg-muted border-2 border-border">
+                <p className="text-lg font-black text-gold">{favItems}</p>
+                <p className="text-[11px] font-bold text-muted-foreground leading-tight">
+                  Favorites ♥
+                </p>
               </div>
             </div>
 
-            <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between text-xs">
+            <div className="p-3 rounded-2xl bg-muted border-2 border-border flex items-center justify-between gap-2 text-xs">
               <div>
-                <p className="font-semibold text-white">Rediscovery Opportunity</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {rarelyWorn} pieces worn less than 5 times. AI prioritizes these
-                  in rediscovery recommendations.
+                <p className="font-extrabold text-foreground">
+                  Wear More of Your Closet
+                </p>
+                <p className="text-xs font-medium text-muted-foreground leading-snug mt-0.5">
+                  {rarelyWorn} pieces worn under 5 times — AI suggests them
+                  first.
                 </p>
               </div>
-              <span className="text-xl">✨</span>
+              <span aria-hidden="true" className="text-xl shrink-0">
+                ✨
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Right Column on Desktop: Accessibility Settings & Profile Details */}
-        <div className="lg:col-span-7 space-y-4">
-          {/* Accessibility & Sensory Toggles */}
-          <div className="rounded-3xl p-4 sm:p-5 space-y-3 border shadow-sm bg-card border-border">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise block">
-              Accessibility & Neurodivergent Settings
+        {/* Accessibility Settings & Profile Details */}
+        <div className="space-y-3">
+          {/* Accessibility & Comfort Toggles */}
+          <div className="rounded-2xl p-3.5 space-y-3 border-2 shadow-sm bg-card border-border">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-foreground block">
+              Vision &amp; Comfort Settings
             </span>
 
+            {/* Dark / Light Mode Toggle */}
+            <div className="flex items-center justify-between pb-2.5 border-b-2 border-border">
+              <div className="pr-2">
+                <p
+                  id="a11y-dark-mode-label"
+                  className="text-xs font-extrabold text-foreground"
+                >
+                  Dark Mode
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Use dark colors instead of bright white.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={theme === "dark"}
+                aria-labelledby="a11y-dark-mode-label"
+                onClick={toggleTheme}
+                className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
+                  theme === "dark"
+                    ? "bg-turquoise border-turquoise"
+                    : "bg-muted border-foreground/40"
+                }`}
+              >
+                <div
+                  aria-hidden="true"
+                  className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                    theme === "dark" ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
             <div className="space-y-3">
+              {/* Larger Text Toggle */}
               <div className="flex items-center justify-between">
                 <div className="pr-2">
-                  <p className="text-xs font-bold text-white">
-                    High-Contrast Color Labels
+                  <p
+                    id="a11y-large-text-label"
+                    className="text-xs font-extrabold text-foreground"
+                  >
+                    Larger Text
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Displays exact hue names and hex codes for visual impairments &
-                    color blindness.
+                  <p className="text-xs text-muted-foreground">
+                    Make text and buttons bigger everywhere.
                   </p>
                 </div>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={Boolean(user.accessibility.largeText)}
+                  aria-labelledby="a11y-large-text-label"
                   onClick={() =>
                     updateAccessibility(
-                      "highContrastColors",
-                      !user.accessibility.highContrastColors,
+                      "largeText",
+                      !user.accessibility.largeText
                     )
                   }
-                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
-                    user.accessibility.highContrastColors
-                      ? "bg-turquoise"
-                      : "bg-muted"
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
+                    user.accessibility.largeText
+                      ? "bg-turquoise border-turquoise"
+                      : "bg-muted border-foreground/40"
                   }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      user.accessibility.largeText
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Vision Impairment Assistance Toggle */}
+              <div className="flex items-center justify-between pt-2.5 border-t-2 border-border">
+                <div className="pr-2">
+                  <p
+                    id="a11y-vision-label"
+                    className="text-xs font-extrabold text-foreground"
+                  >
+                    Vision Impairment Assistance
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Show audio Listen buttons and speech assistance for low
+                    vision.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(user.accessibility.visionImpairment)}
+                  aria-labelledby="a11y-vision-label"
+                  onClick={() =>
+                    updateAccessibility(
+                      "visionImpairment",
+                      !user.accessibility.visionImpairment
+                    )
+                  }
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
+                    user.accessibility.visionImpairment
+                      ? "bg-turquoise border-turquoise"
+                      : "bg-muted border-foreground/40"
+                  }`}
+                >
+                  <div
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      user.accessibility.visionImpairment
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Voice Read-Aloud Toggle */}
+              <div className="flex items-center justify-between pt-2.5 border-t-2 border-border">
+                <div className="pr-2">
+                  <p
+                    id="a11y-voice-label"
+                    className="text-xs font-extrabold text-foreground"
+                  >
+                    Voice Read-Aloud
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Show Listen buttons to hear outfits spoken aloud.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={user.accessibility.voiceNarration}
+                  aria-labelledby="a11y-voice-label"
+                  onClick={() =>
+                    updateAccessibility(
+                      "voiceNarration",
+                      !user.accessibility.voiceNarration
+                    )
+                  }
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
+                    user.accessibility.voiceNarration
+                      ? "bg-pink border-pink"
+                      : "bg-muted border-foreground/40"
+                  }`}
+                >
+                  <div
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      user.accessibility.voiceNarration
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* High-Contrast Color Names */}
+              <div className="flex items-center justify-between pt-2.5 border-t-2 border-border">
+                <div className="pr-2">
+                  <p className="text-xs font-extrabold text-foreground">
+                    <span id="a11y-high-contrast-label">
+                      High-Contrast Color Names
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Show color labels and thick outlines for clarity.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={user.accessibility.highContrastColors}
+                  aria-labelledby="a11y-high-contrast-label"
+                  onClick={() =>
+                    updateAccessibility(
+                      "highContrastColors",
+                      !user.accessibility.highContrastColors
+                    )
+                  }
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
+                    user.accessibility.highContrastColors
+                      ? "bg-turquoise border-turquoise"
+                      : "bg-muted border-foreground/40"
+                  }`}
+                >
+                  <div
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
                       user.accessibility.highContrastColors
                         ? "translate-x-5"
                         : "translate-x-0"
@@ -215,30 +418,39 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-white/5">
+              {/* Simple Focus Mode */}
+              <div className="flex items-center justify-between pt-2.5 border-t-2 border-border">
                 <div className="pr-2">
-                  <p className="text-xs font-bold text-white">Low Decision Mode</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Reduces morning decision fatigue by highlighting the primary AI look
-                    while preserving full customization.
+                  <p
+                    id="a11y-low-decision-label"
+                    className="text-xs font-extrabold text-foreground"
+                  >
+                    Simple Focus Mode
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Highlight your #1 outfit first with fewer steps.
                   </p>
                 </div>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={user.accessibility.lowDecisionMode}
+                  aria-labelledby="a11y-low-decision-label"
                   onClick={() =>
                     updateAccessibility(
                       "lowDecisionMode",
-                      !user.accessibility.lowDecisionMode,
+                      !user.accessibility.lowDecisionMode
                     )
                   }
-                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
                     user.accessibility.lowDecisionMode
-                      ? "bg-pink"
-                      : "bg-muted"
+                      ? "bg-pink border-pink"
+                      : "bg-muted border-foreground/40"
                   }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
                       user.accessibility.lowDecisionMode
                         ? "translate-x-5"
                         : "translate-x-0"
@@ -247,32 +459,40 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                 </button>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-white/5">
+              {/* Soft Fabric Filter */}
+              <div className="flex items-center justify-between pt-2.5 border-t-2 border-border">
                 <div className="pr-2">
-                  <p className="text-xs font-bold text-white">
-                    Sensory Fabric Filter
+                  <p
+                    id="a11y-sensory-label"
+                    className="text-xs font-extrabold text-foreground"
+                  >
+                    Soft Fabric Filter
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Flags tagless, seamless, and breathable natural fibers; warns on
-                    itchy wool.
+                  <p className="text-xs text-muted-foreground">
+                    Highlight breathable cotton &amp; silk; flag structured or
+                    scratchy fabrics.
                   </p>
                 </div>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={user.accessibility.sensorySensitive}
+                  aria-labelledby="a11y-sensory-label"
                   onClick={() =>
                     updateAccessibility(
                       "sensorySensitive",
-                      !user.accessibility.sensorySensitive,
+                      !user.accessibility.sensorySensitive
                     )
                   }
-                  className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${
+                  className={`w-12 h-7 rounded-full p-0.5 border-2 transition-colors shrink-0 cursor-pointer ${
                     user.accessibility.sensorySensitive
-                      ? "bg-green"
-                      : "bg-muted"
+                      ? "bg-green border-green"
+                      : "bg-muted border-foreground/40"
                   }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
                       user.accessibility.sensorySensitive
                         ? "translate-x-5"
                         : "translate-x-0"
@@ -284,7 +504,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* Profile Details List */}
-          <div className="rounded-3xl overflow-hidden border shadow-sm bg-card border-border">
+          <div className="rounded-2xl overflow-hidden border-2 shadow-sm bg-card border-border">
             {[
               ["Preferred style", user.preferredStyle],
               ["Typical sizes", user.typicalSizes],
@@ -293,25 +513,26 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             ].map(([label, value], index) => (
               <div
                 key={label}
-                className="px-4 py-3"
-                style={{ borderTop: index ? "1px solid var(--border)" : undefined }}
+                className="px-3.5 py-2.5"
+                style={{
+                  borderTop: index ? "2px solid var(--border)" : undefined,
+                }}
               >
-                <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                <p className="text-[11px] uppercase font-extrabold tracking-wider text-muted-foreground">
                   {label}
                 </p>
-                <p className="text-xs font-medium text-white mt-0.5">{value}</p>
+                <p className="text-xs font-bold text-foreground mt-0.5">
+                  {value}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* AI Personalization Notice */}
-          <div className="rounded-3xl p-4 border leading-relaxed bg-turquoise/5 border-turquoise/20 text-muted-foreground">
-            <p className="text-xs font-bold text-turquoise">
-              About tAIlor AI Personalization
-            </p>
-            <p className="text-[11px] mt-1 leading-relaxed">
-              tAIlor continually adapts to your approvals, item swaps, and wear
-              frequency. Your styling rules remain private to your local profile.
+          {/* Privacy Notice */}
+          <div className="rounded-2xl p-3.5 border-2 leading-relaxed bg-turquoise/10 border-turquoise/45 text-foreground">
+            <p className="text-xs font-black">Private to Your Device</p>
+            <p className="text-xs mt-1 leading-snug text-muted-foreground">
+              tAIlor adapts to your saves and swaps locally on your profile.
             </p>
           </div>
         </div>
@@ -319,20 +540,31 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
 
       {/* Confirm Logout Dialog */}
       {confirmLogout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border bg-card border-border">
-            <h3 className="text-base font-bold text-white">
-              Sign Out of tAIlor?
-            </h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setConfirmLogout(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-modal-title"
+            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border-2 bg-card border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="logout-modal-title"
+              className="text-base font-black text-foreground"
+            >
+              Sign Out?
+            </h2>
             <p className="text-xs text-muted-foreground">
-              You will return to the login screen. Your wardrobe data and recent
-              wear logs will be preserved for your next session.
+              Your wardrobe and outfits stay saved for next time.
             </p>
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmLogout(false)}
-                className="py-2.5 rounded-xl text-xs font-semibold text-muted-foreground hover:text-white bg-muted transition-colors"
+                className="min-h-[42px] py-2.5 rounded-xl text-xs font-extrabold text-foreground border-2 border-border bg-muted transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -342,9 +574,9 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                   setConfirmLogout(false)
                   logout()
                 }}
-                className="py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 shadow-md shadow-pink/20 transition-all"
+                className="min-h-[42px] py-2.5 rounded-xl text-xs font-black text-white bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-md shadow-pink/20 transition-all cursor-pointer"
               >
-                Confirm Sign Out
+                Sign Out
               </button>
             </div>
           </div>

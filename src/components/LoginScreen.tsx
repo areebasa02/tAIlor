@@ -1,11 +1,11 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
-import type { PersonaId, UserProfile, QuizResult } from "../types"
+import type { PersonaId, UserProfile } from "../types"
 import { THEME_COLORS } from "../types/theme"
 import OnboardingQuiz from "./OnboardingQuiz"
 
 export default function LoginScreen() {
-  const { login } = useApp()
+  const { login, theme, toggleTheme } = useApp()
   const [mode, setMode] = useState<"signin" | "signup">("signin")
   const [email, setEmail] = useState("eliora.browning@example.com")
   const [password, setPassword] = useState("••••••••••••")
@@ -24,12 +24,24 @@ export default function LoginScreen() {
   const [quizOpen, setQuizOpen] = useState(false)
   const [quizPath, setQuizPath] = useState<"privacy" | "short" | "long" | "guest">("short")
 
+  useEffect(() => {
+    if (!forgotModalOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setForgotModalOpen(false)
+        setResetSent(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [forgotModalOpen])
+
   const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setTimeout(() => {
       const match = Object.values(PRESET_PERSONAS).find(
-        (p) => p.email.toLowerCase() === email.toLowerCase(),
+        (p) => p.email.toLowerCase() === email.toLowerCase()
       )
       if (match) {
         login(match)
@@ -39,7 +51,7 @@ export default function LoginScreen() {
           name: email.split("@")[0] || "Wardrobe User",
           initials:
             (email[0] || "U").toUpperCase() + (email[1] || "S").toUpperCase(),
-          email: email,
+          email,
           avatarBg: THEME_COLORS.pink,
           roleTitle: "Custom Wardrobe Member",
           preferredStyle: "Comfortable & Versatile",
@@ -51,6 +63,8 @@ export default function LoginScreen() {
             sensorySensitive: sensoryMode,
             lowDecisionMode: lowDecision,
             voiceNarration: false,
+            largeText: false,
+            visionImpairment: false,
           },
         }
         login(customUser)
@@ -79,7 +93,7 @@ export default function LoginScreen() {
         email: email || "user@tailor.app",
         avatarBg: THEME_COLORS.darkTeal,
         roleTitle: "New Member · Smart Closet",
-        preferredStyle: preferredStyle,
+        preferredStyle,
         typicalSizes: "Tops M · Bottoms 8 · Shoes 8",
         homeClimate: "Mild & changeable",
         stylistNotes: "Personal AI stylist is initializing your profile.",
@@ -88,6 +102,8 @@ export default function LoginScreen() {
           sensorySensitive: sensoryMode,
           lowDecisionMode: lowDecision,
           voiceNarration: false,
+          largeText: false,
+          visionImpairment: false,
         },
       }
       login(newUser)
@@ -107,201 +123,163 @@ export default function LoginScreen() {
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col justify-center px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 lg:py-12"
-      style={{ background: "var(--background)" }}
+      className="min-h-dvh w-full flex justify-center transition-colors"
+      style={{ background: "var(--outer-backdrop)" }}
     >
-      <div className="w-full max-w-7xl 2xl:max-w-[1700px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 2xl:gap-24 items-center">
-          {/* Left Column on Desktop / Top on Mobile: Hero & Project Pitch */}
-          <div className="lg:col-span-5 flex flex-col space-y-5 text-center lg:text-left">
-            <div>
-              <div className="inline-flex items-center gap-1 justify-center lg:justify-start">
-                <span
-                  className="text-4xl sm:text-5xl italic leading-none text-pink"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
-                >
-                  t
-                </span>
-                <span
-                  className="text-4xl sm:text-5xl font-black leading-none text-turquoise"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
-                >
-                  AI
-                </span>
-                <span
-                  className="text-4xl sm:text-5xl italic leading-none text-pink"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
-                >
-                  lor
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm mt-2 font-bold tracking-wide text-turquoise">
-                Accessible AI-Powered Wardrobe Assistant
-              </p>
-              <p className="text-xs sm:text-sm mt-2 text-muted-foreground leading-relaxed max-w-md mx-auto lg:mx-0">
-                Getting dressed shouldn't be a daily debacle. tAIlor combines
-                color theory, climate context, and object permanence tracking to
-                eliminate decision fatigue.
-              </p>
-            </div>
+      {/* Skip to sign in link (WCAG 2.4.1 Bypass Blocks) */}
+      <a
+        href="#login-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:rounded-xl focus:bg-foreground focus:text-background focus:text-xs focus:font-extrabold focus:shadow-xl"
+      >
+        Skip to sign in
+      </a>
 
-            {/* Target Users Pills */}
-            <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white">
-                ♿ Differently-abled & Neurodivergent
-              </span>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-turquoise/10 border border-turquoise/20 text-turquoise">
-                🧠 Decision Fatigue Optimization
-              </span>
-            </div>
-
-            {/* Feature Highlights Grid */}
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              {[
-                {
-                  icon: "✦",
-                  title: "Context Generator",
-                  desc: "Weather & vibe-aligned styling",
-                },
-                {
-                  icon: "🎨",
-                  title: "Color Theory",
-                  desc: "High-contrast accessible palettes",
-                },
-                {
-                  icon: "🪞",
-                  title: "Virtual Fitting",
-                  desc: "cat-VTON preview before dressing",
-                },
-                {
-                  icon: "🧺",
-                  title: "Laundry Tracker",
-                  desc: "Protects delicate fabrics & routine",
-                },
-              ].map((f) => (
-                <div
-                  key={f.title}
-                  className="p-3 rounded-2xl flex items-start gap-2.5 text-left transition-colors"
-                  style={{
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  <span className="text-base leading-none mt-0.5 text-pink">
-                    {f.icon}
-                  </span>
-                  <div>
-                    <p className="text-[11px] font-bold text-white leading-tight">
-                      {f.title}
-                    </p>
-                    <p className="text-[9px] text-muted-foreground leading-snug mt-0.5">
-                      {f.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-[11px] text-muted-foreground pt-1">
-              Project tAIlor · The Spice Girls · Southeastern Louisiana
-              University CMPS 4200 HCI
-            </p>
-          </div>
-
-          {/* Right Column on Desktop / Center on Mobile: Auth Card */}
-          <div className="lg:col-span-7 w-full max-w-lg mx-auto lg:max-w-none">
+      <div
+        className="w-full max-w-[540px] min-h-dvh flex flex-col justify-between pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] min-[380px]:pl-[max(0.875rem,env(safe-area-inset-left))] min-[380px]:pr-[max(0.875rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] border-0 min-[560px]:border-x border-border sm:shadow-2xl overflow-y-auto"
+        style={{ background: "var(--background)" }}
+      >
+        <div className="space-y-2.5">
+          {/* Top Bar with Brand Wordmark + Theme Toggle */}
+          <header className="flex items-center justify-between">
             <div
-              className="rounded-3xl p-5 sm:p-7 space-y-5 shadow-2xl relative border"
+              role="img"
+              aria-label="tAIlor"
+              className="inline-flex items-center gap-0.5"
+            >
+              <span
+                aria-hidden="true"
+                className="text-3xl italic font-bold leading-none text-pink"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                t
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-3xl font-black leading-none text-turquoise"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                AI
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-3xl italic font-bold leading-none text-pink"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                lor
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-pressed={theme === "dark"}
+              className="min-h-[40px] px-3.5 rounded-full flex items-center gap-1.5 text-xs font-bold border-2 border-border bg-card text-foreground shadow-sm hover:border-turquoise/60 transition-all cursor-pointer"
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            >
+              <span aria-hidden="true">{theme === "light" ? "🌙" : "☀️"}</span>
+              <span>{theme === "light" ? "Dark" : "Light"}</span>
+            </button>
+          </header>
+
+          <main id="login-main" tabIndex={-1} className="space-y-2.5 focus:outline-none">
+            {/* Pitch */}
+            <div>
+              <h1 className="text-base font-black tracking-wide text-turquoise leading-snug">
+                Smart, Easy-Read Wardrobe Assistant
+              </h1>
+              <p className="text-[13px] min-[380px]:text-sm mt-1 text-muted-foreground font-semibold leading-snug">
+                Simple daily outfits built for comfort, clarity, and your closet.
+              </p>
+            </div>
+
+            {/* Auth Card */}
+            <div
+              className="rounded-2xl p-3.5 space-y-3 shadow-xl relative border-2"
               style={{
                 background: "var(--card)",
-                borderColor: "rgba(255,255,255,0.1)",
+                borderColor: "var(--border)",
               }}
             >
               {/* Sign In vs Sign Up Tabs */}
               <div
-                className="grid grid-cols-2 p-1 rounded-2xl"
+                role="tablist"
+                aria-label="Account authentication mode"
+                className="grid grid-cols-2 p-1 rounded-2xl border-2 border-border"
                 style={{ background: "var(--muted)" }}
               >
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={mode === "signin"}
                   onClick={() => setMode("signin")}
-                  className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`min-h-[40px] py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
                     mode === "signin"
                       ? "bg-pink text-white shadow-md shadow-pink/30"
-                      : "text-muted-foreground hover:text-white"
+                      : "text-foreground/80 hover:text-foreground"
                   }`}
                 >
                   Sign In
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={mode === "signup"}
                   onClick={() => setMode("signup")}
-                  className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`min-h-[40px] py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
                     mode === "signup"
                       ? "bg-pink text-white shadow-md shadow-pink/30"
-                      : "text-muted-foreground hover:text-white"
+                      : "text-foreground/80 hover:text-foreground"
                   }`}
                 >
                   Create Account
                 </button>
               </div>
 
-              {/* 1-Click HCI Persona Login Badges (FIRST NAMES ONLY) */}
-              <div className="rounded-2xl p-3.5 space-y-2.5 border bg-turquoise/5 border-turquoise/20">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
-                    ⚡ 1-Click Persona Login
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    First Name Demo Profiles
-                  </span>
-                </div>
+              {/* 1-Click Quick Sign In */}
+              <div className="rounded-2xl p-3 space-y-2 border-2 bg-turquoise/10 border-turquoise/45">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-turquoise block">
+                  ⚡ Quick Sign In
+                </span>
 
-                {/* Persona Buttons */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+                <div className="flex flex-wrap gap-2">
                   {[
+                    {
+                      id: "areeba" as PersonaId,
+                      label: "Areeba",
+                      bg: THEME_COLORS.red,
+                      initial: "A",
+                    },
                     {
                       id: "eliora" as PersonaId,
                       label: "Eliora",
-                      sub: "Front-End & Research",
                       bg: THEME_COLORS.pink,
-                      initials: "EB",
+                      initial: "E",
                     },
                     {
                       id: "ethan" as PersonaId,
                       label: "Ethan",
-                      sub: "Flow 01: Events",
                       bg: THEME_COLORS.darkTeal,
-                      initials: "EC",
+                      initial: "E",
                     },
                     {
                       id: "jordan" as PersonaId,
                       label: "Jordan",
-                      sub: "Flow 02: Fatigue",
                       bg: THEME_COLORS.green,
-                      initials: "JM",
+                      initial: "J",
                     },
                     {
                       id: "josephine" as PersonaId,
                       label: "Josephine",
-                      sub: "Flow 03: Contrast",
                       bg: THEME_COLORS.gold,
-                      initials: "JD",
+                      initial: "J",
                       textDark: true,
-                    },
-                    {
-                      id: "areeba" as PersonaId,
-                      label: "Areeba",
-                      sub: "Team Lead",
-                      bg: THEME_COLORS.red,
-                      initials: "AA",
                     },
                   ].map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => handlePersonaSelect(p.id)}
-                      className="flex items-center gap-2 p-2 rounded-xl text-left border transition-all hover:scale-[1.02] active:scale-[0.98] hover:border-turquoise/50"
+                      className="flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-xl text-left border-2 transition-all hover:scale-[1.02] active:scale-[0.98] hover:border-turquoise flex-1 min-w-[115px] cursor-pointer"
                       style={{
                         background: "var(--card)",
                         borderColor: "var(--border)",
@@ -309,22 +287,18 @@ export default function LoginScreen() {
                       title={`Sign in as ${p.label}`}
                     >
                       <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm"
+                        aria-hidden="true"
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0 shadow-sm border border-black/15"
                         style={{
                           background: p.bg,
                           color: p.textDark ? "#0D0F18" : "#fff",
                         }}
                       >
-                        {p.initials}
+                        {p.initial}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-bold text-white truncate leading-tight">
-                          {p.label}
-                        </p>
-                        <p className="text-[9px] text-muted-foreground truncate leading-none mt-0.5">
-                          {p.sub}
-                        </p>
-                      </div>
+                      <span className="text-xs font-extrabold text-foreground truncate leading-tight">
+                        {p.label}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -332,18 +306,22 @@ export default function LoginScreen() {
 
               {/* Form Area */}
               {mode === "signin" ? (
-                <form onSubmit={handleSignIn} className="space-y-4">
+                <form onSubmit={handleSignIn} className="space-y-3.5">
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider block mb-1.5 text-muted-foreground">
-                      Email Address
+                    <label
+                      htmlFor="login-email"
+                      className="text-xs font-extrabold uppercase tracking-wider block mb-1 text-foreground"
+                    >
+                      Email
                     </label>
                     <input
+                      id="login-email"
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@example.com"
-                      className="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none transition-colors border"
+                      className="w-full min-h-[44px] rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none transition-colors border-2 focus:border-pink"
                       style={{
                         background: "var(--muted)",
                         color: "var(--foreground)",
@@ -353,26 +331,30 @@ export default function LoginScreen() {
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider block text-muted-foreground">
+                    <div className="flex items-center justify-between mb-1">
+                      <label
+                        htmlFor="login-password"
+                        className="text-xs font-extrabold uppercase tracking-wider block text-foreground"
+                      >
                         Password
                       </label>
                       <button
                         type="button"
                         onClick={() => setForgotModalOpen(true)}
-                        className="text-[10px] font-semibold text-turquoise hover:underline"
+                        className="text-xs font-extrabold text-turquoise hover:underline cursor-pointer"
                       >
-                        Forgot password?
+                        Forgot?
                       </button>
                     </div>
                     <div className="relative">
                       <input
+                        id="login-password"
                         type={showPassword ? "text" : "password"}
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter password"
-                        className="w-full rounded-xl pl-3.5 pr-10 py-2.5 text-sm outline-none transition-colors border"
+                        className="w-full min-h-[44px] rounded-xl pl-3.5 pr-11 py-2.5 text-sm font-medium outline-none transition-colors border-2 focus:border-pink"
                         style={{
                           background: "var(--muted)",
                           color: "var(--foreground)",
@@ -382,23 +364,22 @@ export default function LoginScreen() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-white"
-                        aria-label={
-                          showPassword ? "Hide password" : "Show password"
-                        }
+                        aria-pressed={showPassword}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-sm text-foreground hover:bg-card cursor-pointer"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
                       >
-                        {showPassword ? "👁" : "👁‍🗨"}
+                        <span aria-hidden="true">{showPassword ? "👁" : "👁‍🗨"}</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-foreground">
+                  <div className="flex items-center justify-between pt-0.5">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs font-semibold text-foreground min-h-[44px]">
                       <input
                         type="checkbox"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded accent-pink"
+                        className="w-5 h-5 rounded accent-pink"
                       />
                       <span>Remember this device</span>
                     </label>
@@ -407,7 +388,7 @@ export default function LoginScreen() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-[0.99] shadow-lg bg-pink text-white"
+                    className="w-full min-h-[48px] py-3 rounded-xl text-[15px] font-black flex items-center justify-center gap-2 border-2 border-[#0D0F18]/20 dark:border-white/25 transition-all hover:brightness-110 active:scale-[0.99] shadow-lg bg-pink text-white cursor-pointer"
                   >
                     {isLoading ? (
                       <>
@@ -415,23 +396,27 @@ export default function LoginScreen() {
                         <span>Signing In…</span>
                       </>
                     ) : (
-                      <span>Sign In to Wardrobe →</span>
+                      <span>Sign In →</span>
                     )}
                   </button>
                 </form>
               ) : (
-                <form onSubmit={handleSignUp} className="space-y-3.5">
+                <form onSubmit={handleSignUp} className="space-y-3">
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground">
+                    <label
+                      htmlFor="signup-name"
+                      className="text-[11px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground"
+                    >
                       Your First Name
                     </label>
                     <input
+                      id="signup-name"
                       type="text"
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Jordan"
-                      className="w-full rounded-xl px-3.5 py-2 text-sm outline-none border"
+                      className="w-full min-h-[44px] rounded-xl px-3.5 py-2 text-sm outline-none border-2 focus:border-turquoise"
                       style={{
                         background: "var(--muted)",
                         color: "var(--foreground)",
@@ -441,16 +426,20 @@ export default function LoginScreen() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground">
+                    <label
+                      htmlFor="signup-email"
+                      className="text-[11px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground"
+                    >
                       Email Address
                     </label>
                     <input
+                      id="signup-email"
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-xl px-3.5 py-2 text-sm outline-none border"
+                      className="w-full min-h-[44px] rounded-xl px-3.5 py-2 text-sm outline-none border-2 focus:border-turquoise"
                       style={{
                         background: "var(--muted)",
                         color: "var(--foreground)",
@@ -460,60 +449,64 @@ export default function LoginScreen() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground">
+                    <label
+                      htmlFor="signup-style"
+                      className="text-[11px] font-bold uppercase tracking-wider block mb-1 text-muted-foreground"
+                    >
                       Preferred Style Direction
                     </label>
                     <select
+                      id="signup-style"
                       value={preferredStyle}
                       onChange={(e) => setPreferredStyle(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2 text-sm outline-none border"
+                      className="w-full min-h-[44px] rounded-xl px-3.5 py-2 text-sm outline-none border-2 focus:border-turquoise"
                       style={{
                         background: "var(--muted)",
                         color: "var(--foreground)",
                         borderColor: "var(--border)",
                       }}
                     >
-                      <option>Polished & comfortable</option>
+                      <option>Polished &amp; comfortable</option>
                       <option>Sharp business-casual</option>
-                      <option>Minimalist & earth tones</option>
-                      <option>Bold creative & colorful</option>
-                      <option>Sporty & casual</option>
+                      <option>Minimalist &amp; earth tones</option>
+                      <option>Bold creative &amp; colorful</option>
+                      <option>Sporty &amp; casual</option>
                     </select>
                   </div>
 
                   {/* Accessibility Onboarding Preferences */}
-                  <div className="space-y-1.5 pt-1 border-t border-white/10">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
-                      Accessibility & Decision Preferences
+                  <div className="space-y-1.5 pt-1 border-t border-border">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-turquoise">
+                      Accessibility &amp; Decision Preferences
                     </p>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground">
+                    <label className="flex items-center gap-2.5 cursor-pointer text-xs text-muted-foreground min-h-[36px]">
                       <input
                         type="checkbox"
                         checked={highContrast}
                         onChange={(e) => setHighContrast(e.target.checked)}
-                        className="rounded accent-turquoise"
+                        className="w-4 h-4 rounded accent-turquoise"
                       />
                       <span>
                         High-contrast color labels (for visual impairments)
                       </span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground">
+                    <label className="flex items-center gap-2.5 cursor-pointer text-xs text-muted-foreground min-h-[36px]">
                       <input
                         type="checkbox"
                         checked={lowDecision}
                         onChange={(e) => setLowDecision(e.target.checked)}
-                        className="rounded accent-turquoise"
+                        className="w-4 h-4 rounded accent-turquoise"
                       />
                       <span>
                         Low Decision Mode (single best pick to reduce fatigue)
                       </span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground">
+                    <label className="flex items-center gap-2.5 cursor-pointer text-xs text-muted-foreground min-h-[36px]">
                       <input
                         type="checkbox"
                         checked={sensoryMode}
                         onChange={(e) => setSensoryMode(e.target.checked)}
-                        className="rounded accent-turquoise"
+                        className="w-4 h-4 rounded accent-turquoise"
                       />
                       <span>
                         Sensory sensitive (tagless, seamless, soft fabrics)
@@ -524,31 +517,31 @@ export default function LoginScreen() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-[0.99] shadow-lg bg-turquoise text-[#0D0F18]"
+                    className="w-full min-h-[48px] py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 border-2 border-[#0D0F18]/20 transition-all hover:brightness-110 active:scale-[0.99] shadow-lg bg-turquoise text-[#0D0F18] cursor-pointer"
                   >
                     {isLoading ? (
                       <>
-                        <span className="w-4 h-4 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                        <span className="w-4 h-4 rounded-full border-2 border-[#0D0F18] border-t-transparent animate-spin" />
                         <span>Creating Profile…</span>
                       </>
                     ) : (
-                      <span>Complete Setup & Enter →</span>
+                      <span>Create Account →</span>
                     )}
                   </button>
                 </form>
               )}
 
               {/* Style Quiz & Guest Access */}
-              <div className="pt-2 flex flex-col items-center gap-2">
+              <div className="pt-1 flex flex-col items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setQuizPath("short")
                     setQuizOpen(true)
                   }}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold border border-turquoise/40 text-turquoise hover:bg-turquoise/10 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-bold border-2 border-turquoise/40 text-turquoise hover:bg-turquoise/10 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span>✨</span> Take 3-Min Onboarding Style Quiz
+                  <span aria-hidden="true">✨</span> Style Quiz
                 </button>
                 <button
                   type="button"
@@ -556,49 +549,69 @@ export default function LoginScreen() {
                     setQuizPath("guest")
                     setQuizOpen(true)
                   }}
-                  className="text-xs font-semibold py-1 text-muted-foreground hover:text-white hover:underline transition-colors"
+                  className="min-h-[36px] text-xs font-semibold py-1 text-muted-foreground hover:text-foreground hover:underline transition-colors cursor-pointer"
                 >
-                  Continue as Guest (Instant Access)
+                  Continue as Guest
                 </button>
               </div>
             </div>
-          </div>
+          </main>
         </div>
+
+        <footer className="text-[10px] text-center text-muted-foreground pt-4">
+          Project tAIlor · The Spice Girls · Southeastern Louisiana University CMPS 4200 HCI
+        </footer>
       </div>
 
       {/* Forgot Password Modal */}
       {forgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => {
+            setForgotModalOpen(false)
+            setResetSent(false)
+          }}
+        >
           <div
-            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forgot-modal-title"
+            className="rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border-2"
             style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">Reset Password</h3>
+              <h2 id="forgot-modal-title" className="text-base font-bold text-foreground">
+                Reset Password
+              </h2>
               <button
                 type="button"
+                aria-label="Close Reset Password dialog"
                 onClick={() => {
                   setForgotModalOpen(false)
                   setResetSent(false)
                 }}
-                className="text-xs p-1 text-muted-foreground hover:text-white"
+                className="text-xs p-1.5 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
             {!resetSent ? (
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Enter your email address to receive an instant recovery login
-                  link.
+                  Enter your email address to receive an instant recovery login link.
                 </p>
+                <label htmlFor="forgot-reset-email" className="sr-only">
+                  Recovery Email Address
+                </label>
                 <input
+                  id="forgot-reset-email"
                   type="email"
                   value={resetEmail || email}
                   onChange={(e) => setResetEmail(e.target.value)}
                   placeholder="your.email@example.com"
-                  className="w-full rounded-xl px-3.5 py-2 text-sm outline-none border"
+                  className="w-full min-h-[44px] rounded-xl px-3.5 py-2 text-sm outline-none border-2"
                   style={{
                     background: "var(--muted)",
                     color: "var(--foreground)",
@@ -608,14 +621,14 @@ export default function LoginScreen() {
                 <button
                   type="button"
                   onClick={() => setResetSent(true)}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 transition-all shadow-md"
+                  className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-bold text-white bg-pink hover:brightness-110 transition-all shadow-md cursor-pointer"
                 >
-                  Send Recovery Link
+                  Send Link
                 </button>
               </div>
             ) : (
-              <div className="space-y-3 text-center py-2">
-                <span className="text-3xl">✉️</span>
+              <div role="status" aria-live="polite" className="space-y-3 text-center py-2">
+                <span aria-hidden="true" className="text-3xl">✉️</span>
                 <p className="text-xs font-semibold text-green">
                   Password reset link sent!
                 </p>
@@ -628,13 +641,13 @@ export default function LoginScreen() {
                     setForgotModalOpen(false)
                     setResetSent(false)
                   }}
-                  className="w-full py-2 rounded-xl text-xs font-semibold"
+                  className="w-full min-h-[44px] py-2 rounded-xl text-xs font-semibold cursor-pointer"
                   style={{
                     background: "var(--muted)",
                     color: "var(--foreground)",
                   }}
                 >
-                  Back to Sign In
+                  Back
                 </button>
               </div>
             )}
