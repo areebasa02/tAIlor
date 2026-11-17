@@ -9,9 +9,10 @@ import {
 } from "../components/AIComponents"
 import { AddStyleModal } from "../components/AddStyleModal"
 import { useApp } from "../context/AppContext"
+import { getSampleGarmentImage } from "../data/personaData"
 import {
+  getOutfitItemSelectionTags,
   getReadableColorLabel,
-  getSensoryInfo,
   speakText,
   stopSpeaking,
 } from "../services/accessibilityHelpers"
@@ -349,13 +350,37 @@ export default function HomeTab() {
             }}
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 space-y-0.5">
-                <span className="text-xs font-black uppercase tracking-wider block text-pink leading-none">
-                  {currentOutfit.label}
-                </span>
-                <p className="text-sm min-[380px]:text-[15px] font-bold text-foreground leading-snug">
-                  {currentOutfit.tagline}
-                </p>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm min-[380px]:text-[15px] font-black text-foreground leading-snug">
+                    {currentOutfit.tagline}
+                  </p>
+                  <div
+                    role="img"
+                    aria-label={`Outfit palette: ${currentOutfit.items
+                      .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                      .join(", ")}`}
+                    title={`Palette: ${currentOutfit.items
+                      .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                      .join(" · ")}`}
+                    className="inline-flex items-center p-1 rounded-full bg-muted border border-border shrink-0"
+                  >
+                    <div className="flex items-center -space-x-1">
+                      {currentOutfit.items.map((item, cIdx) => (
+                        <span
+                          key={`${item.desc}-${cIdx}`}
+                          className="w-4 h-4 rounded-full border border-card shadow-2xs"
+                          style={{ backgroundColor: item.color }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {currentOutfit.rationale && (
+                  <p className="text-xs font-medium text-muted-foreground leading-snug line-clamp-2">
+                    {currentOutfit.rationale}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
@@ -403,9 +428,16 @@ export default function HomeTab() {
                   item.desc,
                   wardrobe
                 )
-                const sensory = getSensoryInfo(item.desc)
                 const matchedItem = wardrobe.find(
                   (w) => w.name.toLowerCase() === item.desc.toLowerCase()
+                )
+                const itemImg =
+                  matchedItem?.imageData ||
+                  getSampleGarmentImage(item.desc, item.type)
+                const selectionTags = getOutfitItemSelectionTags(
+                  item,
+                  matchedItem,
+                  weather.temp
                 )
 
                 return (
@@ -414,52 +446,40 @@ export default function HomeTab() {
                     className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-card border-2 border-border shadow-2xs transition-all"
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <span
-                        aria-hidden="true"
-                        className="w-2.5 self-stretch rounded-full shrink-0 border-2 border-foreground/25"
-                        style={{ backgroundColor: item.color }}
-                      />
-                      {matchedItem?.imageData ? (
+                      {itemImg ? (
                         <img
-                          src={matchedItem.imageData}
+                          src={itemImg}
                           alt={item.desc}
-                          className="w-10 h-10 rounded-xl object-contain bg-muted border border-border shrink-0"
+                          className="w-11 h-11 rounded-xl object-contain bg-[#F6F5F9] p-0.5 border border-border shrink-0"
                         />
                       ) : (
                         <div
                           aria-hidden="true"
-                          className="w-10 h-10 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
+                          className="w-11 h-11 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
                           style={{ background: `${item.color}1E` }}
                         >
                           {getPieceEmoji(item.type)}
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                            {item.type}
-                          </p>
+                        <p className="text-[15px] font-extrabold text-foreground leading-snug">
+                          {item.desc}
+                        </p>
+                        <div className="flex items-center gap-1 flex-wrap mt-1">
+                          {selectionTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border leading-tight"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                           {user.accessibility.highContrastColors && (
-                            <span className="bg-foreground text-background font-extrabold px-2 py-0.5 rounded-md text-[11px] leading-tight">
+                            <span className="bg-foreground text-background font-extrabold px-2 py-0.5 rounded-md text-[10px] leading-tight">
                               {readableColor}
                             </span>
                           )}
-                          {user.accessibility.sensorySensitive && (
-                            <span
-                              className={`text-[11px] font-extrabold px-1.5 py-0.5 rounded-md border-2 leading-tight ${
-                                sensory.isSoft
-                                  ? "bg-green/15 text-green border-green/50"
-                                  : "bg-gold/25 text-foreground border-gold"
-                              }`}
-                              title={sensory.summary}
-                            >
-                              {sensory.isSoft ? "✓ Soft" : "ℹ Structured"}
-                            </span>
-                          )}
                         </div>
-                        <p className="text-[15px] font-extrabold text-foreground leading-snug mt-0.5">
-                          {item.desc}
-                        </p>
                       </div>
                     </div>
 

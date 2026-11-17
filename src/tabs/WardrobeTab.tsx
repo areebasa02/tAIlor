@@ -9,6 +9,7 @@ import {
   type WardrobeScanItem,
 } from "../lib/wardrobeScan"
 import {
+  getClosetItemTags,
   getSensoryInfo,
   speakText,
   stopSpeaking,
@@ -97,6 +98,7 @@ export default function WardrobeTab() {
     color: string
     colorName: string
     category: Category
+    imageData: string
   }[] = [
     {
       id: "teal-trench",
@@ -104,6 +106,7 @@ export default function WardrobeTab() {
       color: THEME_COLORS.darkTeal,
       colorName: "Deep Teal",
       category: "Outerwear",
+      imageData: "/wardrobe/teal-trench-coat.png",
     },
     {
       id: "magenta-blouse",
@@ -111,6 +114,7 @@ export default function WardrobeTab() {
       color: THEME_COLORS.pink,
       colorName: "Vivid Magenta",
       category: "Tops",
+      imageData: "/wardrobe/magenta-silk-blouse.png",
     },
     {
       id: "gold-cardigan",
@@ -118,6 +122,7 @@ export default function WardrobeTab() {
       color: THEME_COLORS.gold,
       colorName: "Warm Gold",
       category: "Tops",
+      imageData: "/wardrobe/gold-knit-cardigan.png",
     },
   ]
 
@@ -185,7 +190,10 @@ export default function WardrobeTab() {
         setPendingImageData(`data:${mimeType};base64,${image}`)
         setUploadProgress(55)
       } else {
-        setPendingImageData(undefined)
+        const sampleImg = QUICK_SAMPLES.find(
+          (s) => s.id === options.mockSample,
+        )?.imageData
+        setPendingImageData(sampleImg)
         setUploadProgress(45)
       }
 
@@ -760,10 +768,10 @@ export default function WardrobeTab() {
                     onClick={() => void runScan({ mockSample: sample.id })}
                     className="p-2 rounded-xl border border-border bg-muted text-left transition-transform active:scale-95 hover:border-turquoise/40 cursor-pointer"
                   >
-                    <div
-                      aria-hidden="true"
-                      className="w-4 h-4 rounded-full mb-1 border border-border"
-                      style={{ background: sample.color }}
+                    <img
+                      src={sample.imageData}
+                      alt={sample.name}
+                      className="w-full h-12 object-contain rounded-lg bg-card border border-border mb-1.5"
                     />
                     <p className="text-xs font-semibold text-foreground leading-snug">
                       {sample.name}
@@ -1151,16 +1159,18 @@ export default function WardrobeTab() {
             >
               {/* Garment Visual Header (Photo thumbnail if present, else color swatch + emoji) */}
               <div
-                className="h-24 relative flex items-center justify-center p-2 border-b-2 border-border overflow-hidden"
+                className={`h-24 relative flex items-center justify-center border-b-2 border-border overflow-hidden ${
+                  item.imageData ? "p-1" : "p-2"
+                }`}
                 style={{
-                  background: item.imageData ? "var(--muted)" : item.color,
+                  background: item.imageData ? "#F6F5F9" : item.color,
                 }}
               >
                 {item.imageData ? (
                   <img
                     src={item.imageData}
                     alt={item.name}
-                    className="h-full w-full object-contain rounded-lg group-hover:scale-105 transition-transform"
+                    className="h-full w-full object-contain group-hover:scale-105 transition-transform"
                   />
                 ) : (
                   <span
@@ -1202,40 +1212,26 @@ export default function WardrobeTab() {
               </div>
 
               {/* Info Area */}
-              <div className="p-2.5 flex-1 flex flex-col justify-between">
-                <div>
-                  <p className="text-[14px] min-[380px]:text-[15px] font-extrabold text-foreground line-clamp-2 leading-snug">
-                    {item.name}
-                  </p>
-                  <div className="flex items-center justify-between gap-1 text-[11px] min-[380px]:text-xs text-muted-foreground mt-1">
-                    <span className="font-semibold">{item.category}</span>
-                    <span className="font-extrabold text-foreground shrink-0">
-                      {item.worn}× worn
+              <div className="p-2.5 flex-1 flex flex-col justify-between gap-1.5">
+                <p className="text-[14px] min-[380px]:text-[15px] font-extrabold text-foreground line-clamp-2 leading-snug">
+                  {item.name}
+                </p>
+
+                <div className="flex flex-wrap gap-1">
+                  {getClosetItemTags(item).map((tag, tagIdx) => (
+                    <span
+                      key={`${item.id}-tag-${tagIdx}`}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border leading-tight"
+                    >
+                      {tag}
                     </span>
-                  </div>
+                  ))}
+                  {user.accessibility.highContrastColors && (
+                    <span className="px-2 py-0.5 rounded-md bg-foreground text-background font-bold text-[10px] font-mono border border-border leading-tight">
+                      {item.color}
+                    </span>
+                  )}
                 </div>
-
-                {user.accessibility.highContrastColors ? (
-                  <div className="mt-1.5 px-2 py-0.5 rounded-lg bg-foreground text-background font-bold text-[11px] font-mono border-2 border-border leading-snug break-words">
-                    {item.colorName} ({item.color})
-                  </div>
-                ) : (
-                  <p className="text-xs font-semibold text-muted-foreground truncate mt-1">
-                    {item.colorName}
-                  </p>
-                )}
-
-                {user.accessibility.sensorySensitive && (
-                  <span
-                    className={`mt-1.5 inline-block w-fit text-[11px] font-extrabold px-2 py-0.5 rounded-md border-2 leading-tight ${
-                      sensory.isSoft
-                        ? "bg-green/15 text-green border-green/50"
-                        : "bg-gold/25 text-foreground border-gold"
-                    }`}
-                  >
-                    {sensory.isSoft ? "✓ Soft" : "ℹ Structured"}
-                  </span>
-                )}
               </div>
             </div>
           )

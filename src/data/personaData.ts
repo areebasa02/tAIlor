@@ -15,6 +15,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.rose,
       colorName: "Dusty Pastel Pink",
+      imageData: "/wardrobe/pastel-pink-tailored-blouse.png",
       worn: 6,
       favorite: true,
       material: "100% Smooth Viscose (Tagless)",
@@ -29,6 +30,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#6A1A32",
       colorName: "Deep Burgundy",
+      imageData: "/wardrobe/burgundy-soft-scoop-tee.png",
       worn: 18,
       favorite: true,
       material: "Modal Cotton Blend (Seamless)",
@@ -43,6 +45,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.lightGreen,
       colorName: "Soft Mint",
+      imageData: "/wardrobe/mint-ribbed-mock-neck.png",
       worn: 3,
       favorite: false,
       material: "Organic Ribbed Cotton",
@@ -57,6 +60,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F8F8FA",
       colorName: "Crisp White",
+      imageData: "/wardrobe/crisp-white-cotton-tee.png",
       worn: 24,
       favorite: false,
       material: "100% Combed Cotton (Tagless)",
@@ -71,6 +75,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.pink,
       colorName: "Vivid Magenta",
+      imageData: "/wardrobe/magenta-button-down.png",
       worn: 11,
       favorite: true,
       material: "100% Breathable Rayon",
@@ -85,6 +90,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#C4B5FD",
       colorName: "Soft Lavender",
+      imageData: "/wardrobe/lavender-cable-knit-sweater.png",
       worn: 4,
       favorite: false,
       material: "Ultra-soft Brushed Cotton Knit",
@@ -99,6 +105,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#1A1A2E",
       colorName: "Midnight Black",
+      imageData: "/wardrobe/black-wide-leg-trousers.png",
       worn: 22,
       favorite: true,
       material: "Drapey Crepe (Soft Waistband)",
@@ -113,6 +120,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#4A6FA5",
       colorName: "Medium Indigo",
+      imageData: "/wardrobe/slim-medium-jeans.png",
       worn: 35,
       favorite: true,
       material: "98% Cotton, 2% Elastane",
@@ -127,6 +135,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#C8965A",
       colorName: "Warm Camel",
+      imageData: "/wardrobe/camel-wide-trousers.png",
       worn: 14,
       favorite: false,
       material: "Lined Soft Twill",
@@ -141,6 +150,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#3A3D4D",
       colorName: "Charcoal Grey",
+      imageData: "/wardrobe/pleated-charcoal-midi-skirt.png",
       worn: 2,
       favorite: false,
       material: "Satin-Lined Chiffon",
@@ -155,6 +165,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#E8E8E8",
       colorName: "Cloud White",
+      imageData: "/wardrobe/chunky-platform-sneakers.png",
       worn: 19,
       favorite: true,
       material: "Canvas & Memory Foam EVA",
@@ -169,6 +180,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#181820",
       colorName: "Onyx Black",
+      imageData: "/wardrobe/black-lug-sole-mary-janes.png",
       worn: 7,
       favorite: true,
       material: "Soft Matte Vegan Leather",
@@ -183,6 +195,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#F2F2F2",
       colorName: "Crisp White",
+      imageData: "/wardrobe/white-leather-sneakers.png",
       worn: 41,
       favorite: false,
       material: "Full Grain Leather",
@@ -197,6 +210,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#B8825A",
       colorName: "Cognac Brown",
+      imageData: "/wardrobe/tan-leather-loafers.png",
       worn: 9,
       favorite: false,
       material: "Cushioned Leather",
@@ -211,6 +225,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: THEME_COLORS.darkTeal,
       colorName: "Deep Teal",
+      imageData: "/wardrobe/teal-trench-coat.png",
       worn: 8,
       favorite: true,
       material: "Water-resistant Cotton Gabardine",
@@ -225,6 +240,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: "#CBD5E1",
       colorName: "Sterling Silver",
+      imageData: "/wardrobe/silver-moon-pendant-and-choker.png",
       worn: 27,
       favorite: true,
       material: "Soft Velvet & Hypoallergenic Silver",
@@ -241,6 +257,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F4F5F7",
       colorName: "Crisp White",
+      imageData: "/wardrobe/crisp-white-oxford-shirt.png",
       worn: 22,
       favorite: true,
       material: "100% Egyptian Cotton Oxford",
@@ -255,6 +272,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#7EB6E8",
       colorName: "Sky Blue",
+      imageData: "/wardrobe/sky-blue-pinpoint-dress-shirt.png",
       worn: 14,
       favorite: true,
       material: "Wrinkle-Free Cotton Twill",
@@ -269,6 +287,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#3B4252",
       colorName: "Slate Charcoal",
+      imageData: "/wardrobe/charcoal-merino-crewneck.png",
       worn: 9,
       favorite: false,
       material: "Fine Gauge Merino Wool",
@@ -283,6 +302,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#2B4B8C",
       colorName: "Deep Navy",
+      imageData: "/wardrobe/navy-pima-crew-tee.png",
       worn: 31,
       favorite: false,
       material: "100% Pima Cotton",
@@ -297,6 +317,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F5EFD8",
       colorName: "Warm Cream",
+      imageData: "/wardrobe/cream-linen-button-down.png",
       worn: 4,
       favorite: false,
       material: "Breathable Linen-Cotton",
@@ -311,6 +332,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#22345E",
       colorName: "Midnight Navy",
+      imageData: "/wardrobe/navy-tailored-chinos.png",
       worn: 27,
       favorite: true,
       material: "Stretch Cotton Twill",
@@ -325,6 +347,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#C8965A",
       colorName: "Warm Camel",
+      imageData: "/wardrobe/camel-wide-trousers.png",
       worn: 11,
       favorite: true,
       material: "Brushed Wool-Blend Twill",
@@ -339,6 +362,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#2E323D",
       colorName: "Deep Charcoal",
+      imageData: "/wardrobe/charcoal-wool-dress-trousers.png",
       worn: 6,
       favorite: false,
       material: "Tropical Weight Worsted Wool",
@@ -353,6 +377,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#2A426E",
       colorName: "Dark Indigo",
+      imageData: "/wardrobe/slim-dark-indigo-jeans.png",
       worn: 29,
       favorite: false,
       material: "Selvedge Stretch Denim",
@@ -367,6 +392,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#15161D",
       colorName: "Polished Black",
+      imageData: "/wardrobe/black-leather-dress-oxfords.png",
       worn: 12,
       favorite: true,
       material: "Full Grain Calfskin Leather",
@@ -381,6 +407,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#B8825A",
       colorName: "Cognac Tan",
+      imageData: "/wardrobe/tan-leather-loafers.png",
       worn: 19,
       favorite: true,
       material: "Supple Suede-Lined Leather",
@@ -395,6 +422,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#F2F2F2",
       colorName: "Crisp White",
+      imageData: "/wardrobe/white-leather-sneakers.png",
       worn: 36,
       favorite: false,
       material: "Minimalist Court Leather",
@@ -409,6 +437,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#1B2A4A",
       colorName: "Executive Navy",
+      imageData: "/wardrobe/navy-structured-knit-blazer.png",
       worn: 8,
       favorite: true,
       material: "Lined Piqué Knit Blazer",
@@ -423,6 +452,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: THEME_COLORS.darkTeal,
       colorName: "Deep Teal",
+      imageData: "/wardrobe/teal-trench-coat.png",
       worn: 5,
       favorite: false,
       material: "Water-Repellent Gabardine",
@@ -437,6 +467,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#4B5563",
       colorName: "Slate Grey",
+      imageData: "/wardrobe/slate-bomber-jacket.png",
       worn: 13,
       favorite: false,
       material: "Matte Technical Twill",
@@ -451,6 +482,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: "#94A3B8",
       colorName: "Brushed Steel",
+      imageData: "/wardrobe/silver-chronograph-watch.png",
       worn: 44,
       favorite: true,
       material: "Stainless Steel & Sapphire",
@@ -467,6 +499,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#2B4B8C",
       colorName: "Deep Navy",
+      imageData: "/wardrobe/navy-relaxed-crew-tee.png",
       worn: 38,
       favorite: true,
       material: "100% Soft Pima Cotton",
@@ -481,6 +514,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F8F9FA",
       colorName: "Crisp White",
+      imageData: "/wardrobe/crisp-white-cotton-tee.png",
       worn: 32,
       favorite: true,
       material: "Heavyweight Organic Cotton",
@@ -495,6 +529,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#6E8B74",
       colorName: "Earthy Sage",
+      imageData: "/wardrobe/sage-green-waffle-henley.png",
       worn: 4,
       favorite: false,
       material: "Thermal Waffle Knit Cotton",
@@ -509,6 +544,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.lightGreen,
       colorName: "Soft Mint",
+      imageData: "/wardrobe/mint-ribbed-mock-neck.png",
       worn: 2,
       favorite: false,
       material: "Soft Combed Cotton Knit",
@@ -523,6 +559,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#E3DAC9",
       colorName: "Warm Oatmeal",
+      imageData: "/wardrobe/oatmeal-linen-overshirt.png",
       worn: 7,
       favorite: true,
       material: "Washed Flax Linen",
@@ -537,6 +574,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F5EFD8",
       colorName: "Warm Cream",
+      imageData: "/wardrobe/cream-linen-blouse.png",
       worn: 5,
       favorite: false,
       material: "100% Natural Linen",
@@ -551,6 +589,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#4A6FA5",
       colorName: "Medium Indigo",
+      imageData: "/wardrobe/slim-medium-jeans.png",
       worn: 46,
       favorite: true,
       material: "Broken-in Stretch Denim",
@@ -565,6 +604,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#556B2F",
       colorName: "Forest Olive",
+      imageData: "/wardrobe/olive-relaxed-chinos.png",
       worn: 12,
       favorite: true,
       material: "Brushed Cotton Twill",
@@ -579,6 +619,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#1A1A2E",
       colorName: "Midnight Black",
+      imageData: "/wardrobe/black-wide-leg-trousers.png",
       worn: 10,
       favorite: false,
       material: "Relaxed Ponte Knit",
@@ -593,6 +634,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#C8965A",
       colorName: "Warm Camel",
+      imageData: "/wardrobe/camel-wide-trousers.png",
       worn: 8,
       favorite: false,
       material: "Soft Twill Blend",
@@ -607,6 +649,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#F2F2F2",
       colorName: "Crisp White",
+      imageData: "/wardrobe/white-leather-sneakers.png",
       worn: 54,
       favorite: true,
       material: "Memory Foam Leather",
@@ -621,6 +664,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#171820",
       colorName: "Matte Black",
+      imageData: "/wardrobe/black-slip-on-leather-loafers.png",
       worn: 6,
       favorite: false,
       material: "Flexible Cushioned Leather",
@@ -635,6 +679,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#B8825A",
       colorName: "Sandstone Tan",
+      imageData: "/wardrobe/tan-suede-desert-boots.png",
       worn: 11,
       favorite: true,
       material: "Water-Repellent Suede",
@@ -649,6 +694,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#8C6239",
       colorName: "Warm Chestnut",
+      imageData: "/wardrobe/earth-tone-quilted-jacket.png",
       worn: 9,
       favorite: true,
       material: "Lightweight Recycled Nylon",
@@ -663,6 +709,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#9CA3AF",
       colorName: "Heather Grey",
+      imageData: "/wardrobe/heather-grey-zip-hoodie.png",
       worn: 26,
       favorite: false,
       material: "French Terry Cotton",
@@ -677,6 +724,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: "#D6C7B2",
       colorName: "Natural Canvas",
+      imageData: "/wardrobe/canvas-crossbody-tote.png",
       worn: 21,
       favorite: true,
       material: "Heavy Organic Duck Canvas",
@@ -693,6 +741,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#FFFFFF",
       colorName: "Stark White (High Contrast)",
+      imageData: "/wardrobe/crisp-white-cotton-tee.png",
       worn: 28,
       favorite: true,
       material: "100% Tagless Organic Cotton",
@@ -707,6 +756,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#6A1A32",
       colorName: "Deep Burgundy",
+      imageData: "/wardrobe/burgundy-soft-scoop-tee.png",
       worn: 16,
       favorite: true,
       material: "Seamless Bamboo-Modal",
@@ -721,6 +771,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#2B4B8C",
       colorName: "Cobalt Navy",
+      imageData: "/wardrobe/navy-relaxed-crew-tee.png",
       worn: 21,
       favorite: false,
       material: "Tagless Supima Cotton",
@@ -735,6 +786,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.lightGreen,
       colorName: "Soft Mint (Ribbed Texture)",
+      imageData: "/wardrobe/mint-ribbed-mock-neck.png",
       worn: 3,
       favorite: true,
       material: "Distinct Ribbed Cotton Knit",
@@ -749,6 +801,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#1E40AF",
       colorName: "Vivid Cobalt Blue",
+      imageData: "/wardrobe/cobalt-silk-modal-blouse.png",
       worn: 7,
       favorite: true,
       material: "Smooth Silk-Modal (Magnetic Snaps)",
@@ -763,6 +816,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#11131C",
       colorName: "Onyx Black (15:1 Contrast)",
+      imageData: "/wardrobe/black-wide-leg-trousers.png",
       worn: 30,
       favorite: true,
       material: "Soft Elastic-Waist Crepe",
@@ -777,6 +831,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#C8965A",
       colorName: "Warm Camel",
+      imageData: "/wardrobe/camel-wide-trousers.png",
       worn: 12,
       favorite: false,
       material: "Brushed Soft Twill",
@@ -791,6 +846,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#F3EFE0",
       colorName: "Bright Ivory",
+      imageData: "/wardrobe/ivory-relaxed-linen-pants.png",
       worn: 4,
       favorite: false,
       material: "Soft-Washed Flax Linen",
@@ -805,6 +861,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#2E436E",
       colorName: "Deep Indigo",
+      imageData: "/wardrobe/dark-indigo-pull-on-denim.png",
       worn: 19,
       favorite: true,
       material: "Zero-Button Stretch Knit Denim",
@@ -819,6 +876,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#F5F5F5",
       colorName: "High-Visibility White",
+      imageData: "/wardrobe/white-leather-sneakers.png",
       worn: 42,
       favorite: true,
       material: "Velcro-Ease Cushioned Leather",
@@ -833,6 +891,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#15161F",
       colorName: "Jet Black",
+      imageData: "/wardrobe/black-cushioned-ballet-loafers.png",
       worn: 15,
       favorite: true,
       material: "Memory Foam Soft Leather",
@@ -847,6 +906,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#B8825A",
       colorName: "Warm Tan",
+      imageData: "/wardrobe/tan-memory-foam-loafers.png",
       worn: 9,
       favorite: false,
       material: "Slip-on Soft Suede",
@@ -861,6 +921,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#E5C158",
       colorName: "High-Contrast Gold",
+      imageData: "/wardrobe/soft-bamboo-knit-cardigan.png",
       worn: 11,
       favorite: true,
       material: "Seamless Bamboo Viscose (Large Buttons)",
@@ -875,6 +936,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#1A1C26",
       colorName: "Midnight Black",
+      imageData: "/wardrobe/high-contrast-black-trench-coat.png",
       worn: 6,
       favorite: false,
       material: "Smooth Cotton Gabardine",
@@ -889,6 +951,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: "#8B5A2B",
       colorName: "Cognac Braid",
+      imageData: "/wardrobe/tactile-braided-leather-belt.png",
       worn: 17,
       favorite: false,
       material: "Easy-Clasp Braided Leather",
@@ -903,6 +966,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: THEME_COLORS.gold,
       colorName: "Warm Gold",
+      imageData: "/wardrobe/brushed-gold-cuff-bracelet.png",
       worn: 22,
       favorite: true,
       material: "Slip-On Smooth Brass",
@@ -919,6 +983,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#F5EFD8",
       colorName: "Warm Off-White",
+      imageData: "/wardrobe/cream-linen-blouse.png",
       worn: 9,
       favorite: true,
       material: "100% European Flax Linen",
@@ -933,6 +998,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.pink,
       colorName: "Vivid Magenta",
+      imageData: "/wardrobe/magenta-button-down.png",
       worn: 12,
       favorite: true,
       material: "100% Breathable Rayon",
@@ -947,6 +1013,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#0F766E",
       colorName: "Rich Emerald Teal",
+      imageData: "/wardrobe/emerald-satin-wrap-top.png",
       worn: 3,
       favorite: true,
       material: "Fluid Silk-Touch Satin",
@@ -961,6 +1028,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: THEME_COLORS.lightGreen,
       colorName: "Soft Mint",
+      imageData: "/wardrobe/mint-ribbed-mock-neck.png",
       worn: 4,
       favorite: false,
       material: "Organic Cotton Knit",
@@ -975,6 +1043,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#6A1A32",
       colorName: "Deep Burgundy",
+      imageData: "/wardrobe/burgundy-soft-scoop-tee.png",
       worn: 15,
       favorite: true,
       material: "Soft Tagless Cotton Modal",
@@ -989,6 +1058,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Tops",
       color: "#FAF9F5",
       colorName: "Vintage Cream",
+      imageData: "/wardrobe/snoopy-graphic-studio-tee.png",
       worn: 21,
       favorite: true,
       material: "100% Combed Ring-Spun Cotton",
@@ -1003,6 +1073,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#C8965A",
       colorName: "Warm Camel",
+      imageData: "/wardrobe/camel-wide-trousers.png",
       worn: 18,
       favorite: true,
       material: "Wool Blend Twill (Soft Lined)",
@@ -1017,6 +1088,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#1A1A2E",
       colorName: "Midnight Black",
+      imageData: "/wardrobe/black-wide-leg-trousers.png",
       worn: 22,
       favorite: true,
       material: "Drapey Crepe Poly-Viscose",
@@ -1031,6 +1103,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#4A6FA5",
       colorName: "Medium Indigo",
+      imageData: "/wardrobe/slim-medium-jeans.png",
       worn: 34,
       favorite: false,
       material: "98% Cotton, 2% Elastane",
@@ -1045,6 +1118,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Bottoms",
       color: "#22345E",
       colorName: "Deep Navy",
+      imageData: "/wardrobe/tailored-navy-trousers.png",
       worn: 7,
       favorite: false,
       material: "Structured Stretch Gabardine",
@@ -1059,6 +1133,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#B8825A",
       colorName: "Cognac Brown",
+      imageData: "/wardrobe/tan-leather-loafers.png",
       worn: 15,
       favorite: true,
       material: "Vegetable-tanned Leather",
@@ -1073,6 +1148,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#161822",
       colorName: "Onyx Black",
+      imageData: "/wardrobe/black-pointed-toe-ankle-boots.png",
       worn: 11,
       favorite: true,
       material: "Smooth Black Calfskin",
@@ -1087,6 +1163,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Shoes",
       color: "#F2F2F2",
       colorName: "Crisp White",
+      imageData: "/wardrobe/white-leather-sneakers.png",
       worn: 48,
       favorite: false,
       material: "Full Grain Leather",
@@ -1101,6 +1178,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: THEME_COLORS.darkTeal,
       colorName: "Deep Teal",
+      imageData: "/wardrobe/teal-trench-coat.png",
       worn: 9,
       favorite: true,
       material: "Water-resistant Gabardine",
@@ -1115,6 +1193,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Outerwear",
       color: "#EFE8D5",
       colorName: "Ivory Cream",
+      imageData: "/wardrobe/tailored-cream-blazer.png",
       worn: 5,
       favorite: true,
       material: "Breathable Linen-Cotton Blazer",
@@ -1129,6 +1208,7 @@ export const PERSONA_WARDROBES: Record<PersonaId, WardrobeItem[]> = {
       category: "Accessories",
       color: THEME_COLORS.gold,
       colorName: "Warm 18K Gold",
+      imageData: "/wardrobe/gold-hoop-earrings-and-snoopy-pin.png",
       worn: 50,
       favorite: true,
       material: "Hypoallergenic Gold Vermeil",
@@ -1340,8 +1420,7 @@ export const SEEDED_TRYON_ITEMS: WardrobeItem[] = [
     category: "Bottoms",
     color: "#315A91",
     colorName: "Classic Blue Denim",
-    imageData:
-      "https://img.hollisterco.com/is/image/anf/KIC_355-7109-00144-278_prod1?policy=product-extra-large",
+    imageData: "/wardrobe/blue-jeans.png",
     worn: 0,
     favorite: false,
     material: "Denim",
@@ -1358,8 +1437,7 @@ export const SEEDED_TRYON_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: "#A9D7F2",
     colorName: "Light Blue",
-    imageData:
-      "https://i5.walmartimages.com/seo/Mens-Slim-Fit-Short-Sleeve-Button-Up-Shirt-S-2XL_63ed11ab-2b3b-43be-89b2-a760c5a1d625_1.0c063b3325864afc82bd1ee88a4b08aa.jpeg",
+    imageData: "/wardrobe/light-blue-button-up-shirt.png",
     worn: 0,
     favorite: false,
     material: "Cotton blend",
@@ -1372,11 +1450,101 @@ export const SEEDED_TRYON_ITEMS: WardrobeItem[] = [
   },
 ]
 
-export function ensureSeededTryOnItems(items: WardrobeItem[]): WardrobeItem[] {
-  const missing = SEEDED_TRYON_ITEMS.filter(
-    (seeded) => !items.some((item) => item?.id === seeded.id),
+export const SAMPLE_GARMENT_IMAGES: Record<string, string> = (() => {
+  const map: Record<string, string> = {
+    "navy crew tee": "/wardrobe/navy-crew-tee.png",
+    "gold hoop earrings": "/wardrobe/gold-hoop-earrings.png",
+    "magenta silk blouse": "/wardrobe/magenta-silk-blouse.png",
+    "gold knit cardigan": "/wardrobe/gold-knit-cardigan.png",
+    "teal gabardine trench": "/wardrobe/teal-gabardine-trench.png",
+    "detected cotton tee": "/wardrobe/detected-cotton-tee.png",
+    // Common short aliases used in Recent Looks or Colors
+    "magenta blouse": "/wardrobe/magenta-button-down.png",
+    "camel trousers": "/wardrobe/camel-wide-trousers.png",
+    "navy tee": "/wardrobe/navy-crew-tee.png",
+    "mint mock-neck": "/wardrobe/mint-ribbed-mock-neck.png",
+    "black wide-legs": "/wardrobe/black-wide-leg-trousers.png",
+    "white sneakers": "/wardrobe/white-leather-sneakers.png",
+    "tan loafers": "/wardrobe/tan-leather-loafers.png",
+  }
+  const allItems = [
+    ...Object.values(PERSONA_WARDROBES).flat(),
+    ...SEEDED_TRYON_ITEMS,
+  ]
+  for (const item of allItems) {
+    if (item.imageData) {
+      map[item.name.trim().toLowerCase()] = item.imageData
+    }
+  }
+  return map
+})()
+
+export function getSampleGarmentImage(
+  nameOrId: string | number,
+  category?: string,
+): string | undefined {
+  if (typeof nameOrId === "number") {
+    const allItems = [
+      ...Object.values(PERSONA_WARDROBES).flat(),
+      ...SEEDED_TRYON_ITEMS,
+    ]
+    const found = allItems.find((i) => i.id === nameOrId)
+    if (found?.imageData) return found.imageData
+    return undefined
+  }
+  const normalized = nameOrId.trim().toLowerCase()
+  if (!normalized) return undefined
+  if (SAMPLE_GARMENT_IMAGES[normalized]) {
+    return SAMPLE_GARMENT_IMAGES[normalized]
+  }
+  const fuzzy = Object.entries(SAMPLE_GARMENT_IMAGES).find(
+    ([key]) => key.includes(normalized) || normalized.includes(key),
   )
-  return missing.length > 0 ? [...items, ...missing] : items
+  if (fuzzy) return fuzzy[1]
+  if (category) {
+    const catLower = category.trim().toLowerCase()
+    const allItems = [
+      ...Object.values(PERSONA_WARDROBES).flat(),
+      ...SEEDED_TRYON_ITEMS,
+    ]
+    const byCat = allItems.find(
+      (i) =>
+        i.category.toLowerCase() === catLower &&
+        i.imageData &&
+        normalized.split(/\s+/).some((w) => w.length > 3 && i.name.toLowerCase().includes(w)),
+    )
+    if (byCat?.imageData) return byCat.imageData
+  }
+  return undefined
+}
+
+export function ensureSeededTryOnItems(items: WardrobeItem[]): WardrobeItem[] {
+  const allKnown = [
+    ...Object.values(PERSONA_WARDROBES).flat(),
+    ...SEEDED_TRYON_ITEMS,
+  ]
+  const hydrated = items.map((item) => {
+    if (!item) return item
+    const known =
+      allKnown.find((k) => k.id === item.id) ||
+      allKnown.find(
+        (k) => k.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
+      )
+    const fallbackImg =
+      known?.imageData || getSampleGarmentImage(item.name, item.category)
+    const isStaleRemoteSeed =
+      (item.id === 13 || item.id === 14) &&
+      typeof item.imageData === "string" &&
+      item.imageData.startsWith("http")
+    if ((!item.imageData || isStaleRemoteSeed) && fallbackImg) {
+      return { ...item, imageData: fallbackImg }
+    }
+    return item
+  })
+  const missing = SEEDED_TRYON_ITEMS.filter(
+    (seeded) => !hydrated.some((item) => item?.id === seeded.id),
+  )
+  return missing.length > 0 ? [...hydrated, ...missing] : hydrated
 }
 
 export function getWardrobeForPersona(personaId: PersonaId): WardrobeItem[] {

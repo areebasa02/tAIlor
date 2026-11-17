@@ -10,7 +10,9 @@ import {
   type VoiceState,
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
+import { getSampleGarmentImage } from "../data/personaData"
 import {
+  getOutfitItemSelectionTags,
   getReadableColorLabel,
   getSensoryInfo,
   speakText,
@@ -185,6 +187,7 @@ export default function GeneratorTab() {
   const {
     user,
     wardrobe,
+    weather,
     logOutfitWorn,
     showToast,
     favoriteOutfitIds,
@@ -272,16 +275,24 @@ export default function GeneratorTab() {
       : eventDesc.trim()
 
     try {
+      const cleanWardrobe = wardrobe.filter(
+        (w) => w.status !== "dirty" && w.status !== "washing"
+      )
+      const availableWardrobe = cleanWardrobe.length >= 3 ? cleanWardrobe : wardrobe
       const response = await fetch("/api/stylist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event: promptPayload,
           dresscode: dresscode || "Smart-casual",
-          wardrobe: wardrobe.map(({ name, category, color }) => ({
+          weather: weather.condition,
+          sensorySensitive: user.accessibility.sensorySensitive,
+          stylistNotes: user.stylistNotes,
+          wardrobe: availableWardrobe.map(({ name, category, color, material }) => ({
             name,
             category,
             color,
+            material,
           })),
         }),
       })
@@ -792,13 +803,35 @@ export default function GeneratorTab() {
                   )}
 
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h2 className="text-base font-black text-foreground">
-                        {outfit.label}
-                      </h2>
-                      <span className="text-xs font-extrabold text-green">
-                        {outfit.dresscodeMatch}
-                      </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-black text-foreground">
+                          {outfit.label}
+                        </h2>
+                        <div
+                          role="img"
+                          aria-label={`Outfit palette: ${outfit.items
+                            .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                            .join(", ")}`}
+                          title={`Palette: ${outfit.items
+                            .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                            .join(" · ")}`}
+                          className="inline-flex items-center p-1 rounded-full bg-muted border border-border shrink-0"
+                        >
+                          <div className="flex items-center -space-x-1">
+                            {outfit.items.map((item, cIdx) => (
+                              <span
+                                key={`${outfit.id}-${item.desc}-${cIdx}`}
+                                className="w-3.5 h-3.5 rounded-full border border-card"
+                                style={{ backgroundColor: item.color }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs font-semibold text-muted-foreground leading-snug line-clamp-2">
+                        {outfit.rationale}
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -873,10 +906,16 @@ export default function GeneratorTab() {
                         item.desc,
                         wardrobe
                       )
-                      const sensory = getSensoryInfo(item.desc)
                       const matchedItem = wardrobe.find(
                         (w) =>
                           w.name.toLowerCase() === item.desc.toLowerCase()
+                      )
+                      const itemImg =
+                        matchedItem?.imageData ||
+                        getSampleGarmentImage(item.desc, item.type)
+                      const selectionTags = getOutfitItemSelectionTags(
+                        item,
+                        matchedItem
                       )
                       return (
                         <div
@@ -884,51 +923,40 @@ export default function GeneratorTab() {
                           className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-muted border-2 border-border"
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <span
-                              aria-hidden="true"
-                              className="w-2.5 self-stretch rounded-full shrink-0 border-2 border-foreground/25"
-                              style={{ backgroundColor: item.color }}
-                            />
-                            {matchedItem?.imageData ? (
+                            {itemImg ? (
                               <img
-                                src={matchedItem.imageData}
+                                src={itemImg}
                                 alt={item.desc}
-                                className="w-10 h-10 rounded-xl object-contain bg-card border border-border shrink-0"
+                                className="w-11 h-11 rounded-xl object-contain bg-[#F6F5F9] p-0.5 border border-border shrink-0"
                               />
                             ) : (
                               <div
                                 aria-hidden="true"
-                                className="w-10 h-10 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
+                                className="w-11 h-11 rounded-xl flex items-center justify-center border border-border text-lg shrink-0"
                                 style={{ background: `${item.color}1E` }}
                               >
                                 {getPieceEmoji(item.type, item.emoji)}
                               </div>
                             )}
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="text-[11px] uppercase font-extrabold text-muted-foreground">
-                                  {item.type}
-                                </p>
+                              <p className="text-[15px] font-extrabold text-foreground leading-snug">
+                                {item.desc}
+                              </p>
+                              <div className="flex items-center gap-1 flex-wrap mt-1">
+                                {selectionTags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-card text-muted-foreground border border-border leading-tight"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
                                 {user.accessibility.highContrastColors && (
-                                  <span className="bg-foreground text-background font-extrabold px-2 py-0.5 rounded-md text-[11px] leading-tight">
+                                  <span className="bg-foreground text-background font-extrabold px-2 py-0.5 rounded-md text-[10px] leading-tight">
                                     {readableColor}
                                   </span>
                                 )}
-                                {user.accessibility.sensorySensitive && (
-                                  <span
-                                    className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md border-2 leading-tight ${
-                                      sensory.isSoft
-                                        ? "bg-green/15 text-green border-green/50"
-                                        : "bg-gold/25 text-foreground border-gold"
-                                    }`}
-                                  >
-                                    {sensory.label}
-                                  </span>
-                                )}
                               </div>
-                              <p className="text-[15px] font-extrabold text-foreground leading-snug mt-0.5">
-                                {item.desc}
-                              </p>
                             </div>
                           </div>
 

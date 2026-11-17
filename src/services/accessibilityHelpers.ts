@@ -182,3 +182,98 @@ export function getSensoryInfo(
     summary: "Tailored silhouette; pair with a soft base layer",
   }
 }
+
+/**
+ * Derive 2–3 concise selection tags explaining why a garment was picked for an outfit.
+ * Replaces generic category ("Bottom") and binary comfort ("Soft") labels.
+ */
+export function getOutfitItemSelectionTags(
+  item: { type: string; desc: string; color: string; reason?: string },
+  matchedItem?: WardrobeItem,
+  weatherTemp?: string,
+): string[] {
+  const tags: string[] = []
+  const pushTag = (t?: string) => {
+    if (!t) return
+    const clean = t.trim()
+    if (!clean) return
+    if (!tags.some((existing) => existing.toLowerCase() === clean.toLowerCase())) {
+      tags.push(clean)
+    }
+  }
+
+  const combined = `${item.desc} ${item.reason || ""} ${matchedItem?.material || ""}`.toLowerCase()
+
+  // 1. Fabric / silhouette highlight
+  if (matchedItem?.material) {
+    const firstPart = matchedItem.material.split(",")[0].split("(")[0].trim()
+    if (firstPart && firstPart.length <= 22) {
+      pushTag(firstPart)
+    }
+  }
+  if (tags.length === 0) {
+    if (combined.includes("denim") || combined.includes("jean")) pushTag("Stretch denim")
+    else if (combined.includes("linen")) pushTag("Airy linen")
+    else if (combined.includes("knit") || combined.includes("ribbed")) pushTag("Textured knit")
+    else if (combined.includes("leather")) pushTag("Polished leather")
+    else if (combined.includes("cotton")) pushTag("Breathable cotton")
+    else if (combined.includes("satin") || combined.includes("silk")) pushTag("Lustrous drape")
+    else if (combined.includes("memory foam") || combined.includes("cushioned")) pushTag("Cushioned sole")
+  }
+
+  // 2. Selection-reason cue
+  if (combined.includes("water-resistant") || combined.includes("wind") || combined.includes("insulated") || combined.includes("shield")) {
+    pushTag("Weather shield")
+  } else if (combined.includes("unworn") || (matchedItem && matchedItem.worn < 5)) {
+    pushTag("Fresh rotation")
+  } else if (combined.includes("breathable") || combined.includes("airy")) {
+    pushTag("Breathable")
+  } else if (combined.includes("stretch") || combined.includes("flexible") || combined.includes("all-day")) {
+    pushTag("All-day ease")
+  } else if (combined.includes("polished") || combined.includes("tailored") || combined.includes("executive") || combined.includes("sharp")) {
+    pushTag("Tailored line")
+  } else if (combined.includes("cozy") || combined.includes("soft") || combined.includes("tagless")) {
+    pushTag("Gentle feel")
+  } else if (combined.includes("balanced") || combined.includes("monotony") || combined.includes("contrast") || combined.includes("palette") || combined.includes("pastel")) {
+    pushTag("Palette anchor")
+  }
+
+  // 3. Weather / wear frequency / formality fallback so every item has 2-3 useful tags
+  if (weatherTemp && tags.length < 3) {
+    const tempMatch = weatherTemp.match(/-?\d+\s*°[FC]?/i)
+    if (tempMatch) {
+      pushTag(`${tempMatch[0].replace(/\s+/g, "")} fit`)
+    }
+  }
+  if (matchedItem?.formality && tags.length < 3) {
+    const f = matchedItem.formality.replace("-", " ")
+    pushTag(f.charAt(0).toUpperCase() + f.slice(1))
+  }
+  if (matchedItem && tags.length < 3) {
+    pushTag(matchedItem.worn >= 12 ? "Most worn staple" : `${matchedItem.worn}× worn`)
+  }
+  if (tags.length < 2 && item.reason) {
+    const words = item.reason.replace(/[.!,;:—-]+/g, " ").trim().split(/\s+/).slice(0, 2).join(" ")
+    pushTag(words)
+  }
+
+  return tags.slice(0, 3)
+}
+
+/**
+ * Derive concise display tags for Closet item cards without category or "Soft" badges.
+ */
+export function getClosetItemTags(item: WardrobeItem): string[] {
+  const tags: string[] = []
+  if (item.colorName) {
+    tags.push(item.colorName)
+  }
+  if (item.material) {
+    const mat = item.material.split(",")[0].split("(")[0].trim()
+    if (mat && mat.length <= 22) {
+      tags.push(mat)
+    }
+  }
+  tags.push(`${item.worn}× worn`)
+  return tags.slice(0, 3)
+}

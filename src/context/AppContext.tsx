@@ -23,6 +23,7 @@ import {
   ensureSeededTryOnItems,
   getWardrobeForPersona,
   getRecentLooksForPersona,
+  getSampleGarmentImage,
 } from "../data/personaData"
 import { fetchLiveWeather } from "../services/weatherService"
 
@@ -143,6 +144,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: THEME_COLORS.pink,
     colorName: "Vivid Magenta",
+    imageData: "/wardrobe/magenta-button-down.png",
     worn: 12,
     favorite: true,
     material: "100% Breathable Rayon",
@@ -158,6 +160,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: "#2B4B8C",
     colorName: "Deep Navy",
+    imageData: "/wardrobe/navy-crew-tee.png",
     worn: 34,
     favorite: false,
     material: "Pima Cotton Jersey (Tagless)",
@@ -173,6 +176,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: THEME_COLORS.lightGreen,
     colorName: "Soft Mint",
+    imageData: "/wardrobe/mint-ribbed-mock-neck.png",
     worn: 4,
     favorite: false,
     material: "Organic Cotton Knit",
@@ -188,6 +192,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: "#F5EFD8",
     colorName: "Warm Off-White",
+    imageData: "/wardrobe/cream-linen-blouse.png",
     worn: 8,
     favorite: true,
     material: "100% European Flax Linen",
@@ -203,6 +208,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Bottoms",
     color: "#4A6FA5",
     colorName: "Medium Indigo Denim",
+    imageData: "/wardrobe/slim-medium-jeans.png",
     worn: 45,
     favorite: true,
     material: "98% Cotton, 2% Elastane",
@@ -218,6 +224,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Bottoms",
     color: "#C8965A",
     colorName: "Warm Camel",
+    imageData: "/wardrobe/camel-wide-trousers.png",
     worn: 18,
     favorite: false,
     material: "Wool Blend Twill (Soft Lined)",
@@ -233,6 +240,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Bottoms",
     color: "#1A1A2E",
     colorName: "Midnight Black",
+    imageData: "/wardrobe/black-wide-leg-trousers.png",
     worn: 22,
     favorite: true,
     material: "Drapey Crepe Poly-Viscose",
@@ -248,6 +256,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Shoes",
     color: "#F2F2F2",
     colorName: "Crisp White",
+    imageData: "/wardrobe/white-leather-sneakers.png",
     worn: 60,
     favorite: true,
     material: "Full Grain Leather & Memory Foam",
@@ -263,6 +272,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Shoes",
     color: "#B8825A",
     colorName: "Cognac Brown",
+    imageData: "/wardrobe/tan-leather-loafers.png",
     worn: 15,
     favorite: false,
     material: "Vegetable-tanned leather",
@@ -278,6 +288,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Shoes",
     color: "#E8E8E8",
     colorName: "Cloud Grey / White",
+    imageData: "/wardrobe/chunky-platform-sneakers.png",
     worn: 7,
     favorite: false,
     material: "Canvas & Lightweight EVA Sole",
@@ -293,6 +304,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Outerwear",
     color: THEME_COLORS.darkTeal,
     colorName: "Deep Teal",
+    imageData: "/wardrobe/teal-trench-coat.png",
     worn: 9,
     favorite: true,
     material: "Water-resistant Cotton Gabardine",
@@ -308,6 +320,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Accessories",
     color: THEME_COLORS.gold,
     colorName: "Warm 18K Gold",
+    imageData: "/wardrobe/gold-hoop-earrings.png",
     worn: 50,
     favorite: true,
     material: "Hypoallergenic Gold Vermeil",
@@ -323,8 +336,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Bottoms",
     color: "#315A91",
     colorName: "Classic Blue Denim",
-    imageData:
-      "https://img.hollisterco.com/is/image/anf/KIC_355-7109-00144-278_prod1?policy=product-extra-large",
+    imageData: "/wardrobe/blue-jeans.png",
     worn: 0,
     favorite: false,
     material: "Denim",
@@ -340,8 +352,7 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     category: "Tops",
     color: "#A9D7F2",
     colorName: "Light Blue",
-    imageData:
-      "https://i5.walmartimages.com/seo/Mens-Slim-Fit-Short-Sleeve-Button-Up-Shirt-S-2XL_63ed11ab-2b3b-43be-89b2-a760c5a1d625_1.0c063b3325864afc82bd1ee88a4b08aa.jpeg",
+    imageData: "/wardrobe/light-blue-button-up-shirt.png",
     worn: 0,
     favorite: false,
     material: "Cotton blend",
@@ -1359,37 +1370,164 @@ export interface AppContextType {
   saveGarmentFeedback: (itemId: string, notes: string, reasons?: string[]) => void
 }
 
-function buildDefaultFavoriteOutfits(wardrobeItems: WardrobeItem[]): FavoriteOutfit[] {
+function hydrateFavoriteOutfits(
+  favs: FavoriteOutfit[],
+  wardrobeItems: WardrobeItem[],
+): FavoriteOutfit[] {
+  return favs.map((fav) => ({
+    ...fav,
+    items: fav.items.map((item) => {
+      const matched =
+        wardrobeItems.find((w) => w.id === item.wardrobeItemId) ||
+        wardrobeItems.find(
+          (w) => w.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
+        )
+      const isRemoteSeed =
+        (item.wardrobeItemId === 13 || item.wardrobeItemId === 14) &&
+        typeof item.imageData === "string" &&
+        item.imageData.startsWith("http")
+      const resolvedImage =
+        (!isRemoteSeed && item.imageData) ||
+        matched?.imageData ||
+        getSampleGarmentImage(item.name, item.type)
+      return resolvedImage && resolvedImage !== item.imageData
+        ? { ...item, imageData: resolvedImage }
+        : item
+    }),
+  }))
+}
+
+function buildDefaultFavoriteOutfits(
+  wardrobeItems: WardrobeItem[],
+  personaId?: PersonaId,
+): FavoriteOutfit[] {
+  const outfits: FavoriteOutfit[] = []
+  const toFavItem = (
+    w: WardrobeItem,
+    slotOverride?: string,
+  ): FavoriteOutfitItem => ({
+    type:
+      slotOverride ||
+      (w.category === "Accessories"
+        ? "Accessory"
+        : w.category === "Outerwear"
+          ? "Outerwear"
+          : w.category.slice(0, -1)),
+    name: w.name,
+    color: w.color,
+    emoji:
+      w.category === "Outerwear"
+        ? "🧥"
+        : w.category === "Bottoms"
+          ? "👖"
+          : w.category === "Shoes"
+            ? "👟"
+            : w.category === "Accessories"
+              ? "💍"
+              : "👕",
+    imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
+    wardrobeItemId: w.id,
+  })
+
+  const makeLook = (
+    id: string,
+    label: string,
+    tagline: string,
+    itemNames: string[],
+  ) => {
+    const matched = itemNames
+      .map((n) =>
+        wardrobeItems.find(
+          (w) => w.name.trim().toLowerCase() === n.trim().toLowerCase(),
+        ),
+      )
+      .filter(Boolean) as WardrobeItem[]
+    if (matched.length < 2) return
+    outfits.push({
+      id,
+      label,
+      tagline,
+      colors: matched.slice(0, 3).map((m) => m.color),
+      items: matched.map((m) => toFavItem(m)),
+      createdAt: "Seeded favorite",
+    })
+  }
+
+  const pid = personaId || "eliora"
+  if (pid === "eliora") {
+    makeLook("fav-eliora-pastel", "Pastel Goth Signature", "Dusty rose blouse · midnight wide-legs", [
+      "Pastel pink tailored blouse",
+      "Black wide-leg trousers",
+      "Black lug-sole Mary Janes",
+    ])
+    makeLook("fav-eliora-soft", "Sensory Soft Studio", "Seamless burgundy tee · platform sneakers", [
+      "Burgundy soft scoop tee",
+      "Black wide-leg trousers",
+      "Chunky platform sneakers",
+    ])
+  } else if (pid === "ethan") {
+    makeLook("fav-ethan-dinner", "Executive Client Dinner", "Navy knit blazer · warm camel trousers", [
+      "Sky blue pinpoint dress shirt",
+      "Navy structured knit blazer",
+      "Camel wide trousers",
+      "Tan leather loafers",
+    ])
+    makeLook("fav-ethan-office", "Business Casual Oxford", "Crisp white Oxford · tailored navy chinos", [
+      "Crisp white Oxford shirt",
+      "Navy tailored chinos",
+      "Tan leather loafers",
+    ])
+  } else if (pid === "jordan") {
+    makeLook("fav-jordan-earth", "Earth Tone Calm", "Oatmeal overshirt · forest olive chinos", [
+      "Oatmeal linen overshirt",
+      "Olive relaxed chinos",
+      "Tan suede desert boots",
+    ])
+    makeLook("fav-jordan-zero", "Zero-Fatigue Daily", "Navy Pima tee · slim indigo jeans", [
+      "Navy relaxed crew tee",
+      "Slim medium jeans",
+      "White leather sneakers",
+    ])
+  } else if (pid === "josephine") {
+    makeLook("fav-josephine-contrast", "High-Contrast 15:1 Look", "Stark white tee · onyx wide-leg trousers", [
+      "Crisp white cotton tee",
+      "Black wide-leg trousers",
+      "White leather sneakers",
+    ])
+    makeLook("fav-josephine-gold", "Warm Gold & Burgundy", "Soft scoop tee · bamboo-knit cardigan", [
+      "Burgundy soft scoop tee",
+      "Soft bamboo-knit cardigan",
+      "Black wide-leg trousers",
+      "Black cushioned ballet loafers",
+    ])
+  } else if (pid === "areeba") {
+    makeLook("fav-areeba-lead", "Team Lead Statement", "Deep teal trench · warm camel trousers", [
+      "Cream linen blouse",
+      "Teal trench coat",
+      "Camel wide trousers",
+      "Tan leather loafers",
+    ])
+    makeLook("fav-areeba-snoopy", "Snoopy Studio Creative", "Vintage graphic tee · tailored cream blazer", [
+      "Snoopy graphic studio tee",
+      "Tailored cream blazer",
+      "Slim medium jeans",
+      "White leather sneakers",
+    ])
+  }
+
   const top = wardrobeItems.find((item) => item.id === 14)
   const bottom = wardrobeItems.find((item) => item.id === 13)
-  if (!top || !bottom) return []
-  return [
-    {
+  if (top && bottom) {
+    outfits.push({
       id: "fav-blue-casual",
       label: "Light Blue Button-Up & Blue Jeans",
-      tagline: "A clean, casual favorite ready for 3D posing & Cat-VTON",
+      tagline: "A clean, casual favorite ready for 3D posing & Virtual Try-On",
       colors: [top.color, bottom.color],
-      items: [
-        {
-          type: "Top",
-          name: top.name,
-          color: top.color,
-          emoji: "👕",
-          imageData: top.imageData,
-          wardrobeItemId: top.id,
-        },
-        {
-          type: "Bottom",
-          name: bottom.name,
-          color: bottom.color,
-          emoji: "👖",
-          imageData: bottom.imageData,
-          wardrobeItemId: bottom.id,
-        },
-      ],
+      items: [toFavItem(top, "Top"), toFavItem(bottom, "Bottom")],
       createdAt: "Seeded favorite",
-    },
-  ]
+    })
+  }
+  return outfits
 }
 
 function mapTodayOutfitToFavorite(
@@ -1405,7 +1543,7 @@ function mapTodayOutfitToFavorite(
       name: item.desc,
       color: item.color,
       emoji: item.emoji,
-      imageData: matched?.imageData,
+      imageData: matched?.imageData || getSampleGarmentImage(item.desc, item.type),
       wardrobeItemId: matched?.id,
     }
   })
@@ -1606,10 +1744,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
       if (stored !== null) {
         const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed)) return parsed
+        if (Array.isArray(parsed)) {
+          const hydrated = hydrateFavoriteOutfits(parsed, wardrobe)
+          if (hydrated.length === 1 && hydrated[0]?.id === "fav-blue-casual") {
+            const defaults = buildDefaultFavoriteOutfits(wardrobe, pid)
+            const extras = defaults.filter((d) => d.id !== "fav-blue-casual")
+            return [...extras, ...hydrated]
+          }
+          return hydrated
+        }
       }
     } catch { }
-    return buildDefaultFavoriteOutfits(wardrobe)
+    return buildDefaultFavoriteOutfits(wardrobe, pid)
   })
   const [activeTryOnOutfit, setActiveTryOnOutfit] = useState<FavoriteOutfit | null>(null)
   const [requestedTab, setRequestedTab] = useState<
@@ -1883,16 +2029,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const storedFavs = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
       if (storedFavs !== null) {
         const parsedFavs = JSON.parse(storedFavs)
-        setFavoriteOutfits(
-          Array.isArray(parsedFavs)
-            ? parsedFavs
-            : buildDefaultFavoriteOutfits(loadedWardrobe),
-        )
+        if (Array.isArray(parsedFavs)) {
+          const hydrated = hydrateFavoriteOutfits(parsedFavs, loadedWardrobe)
+          if (hydrated.length === 1 && hydrated[0]?.id === "fav-blue-casual") {
+            const defaults = buildDefaultFavoriteOutfits(loadedWardrobe, pid)
+            const extras = defaults.filter((d) => d.id !== "fav-blue-casual")
+            setFavoriteOutfits([...extras, ...hydrated])
+          } else {
+            setFavoriteOutfits(hydrated)
+          }
+        } else {
+          setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe, pid))
+        }
       } else {
-        setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe))
+        setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe, pid))
       }
     } catch {
-      setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe))
+      setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe, pid))
     }
   }
 
@@ -1918,11 +2071,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setWornToday(false)
     setOutfitHistory([])
-    showToast(
-      "Welcome back!",
-      `Signed in as ${userToSet.name}`,
-      "success",
-    )
   }
 
   const logout = () => {

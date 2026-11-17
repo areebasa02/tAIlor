@@ -5,6 +5,7 @@ import {
   type UploadState,
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
+import { getSampleGarmentImage } from "../data/personaData"
 import { THEME_COLORS } from "../types/theme"
 
 export type { UploadState }
@@ -62,6 +63,7 @@ const SAMPLE_ITEMS: ColorPickerItem[] = [
     category: "Outerwear",
     colorName: "Deep Teal",
     emoji: "🧥",
+    imageData: "/wardrobe/teal-trench-coat.png",
     description: "Water-resistant outerwear · cool teal",
   },
   {
@@ -70,6 +72,7 @@ const SAMPLE_ITEMS: ColorPickerItem[] = [
     category: "Tops",
     colorName: "Vivid Magenta",
     emoji: "👚",
+    imageData: "/wardrobe/magenta-button-down.png",
     description: "Oversized button-down · vivid magenta",
   },
   {
@@ -78,6 +81,7 @@ const SAMPLE_ITEMS: ColorPickerItem[] = [
     category: "Bottoms",
     colorName: "Warm Camel",
     emoji: "👖",
+    imageData: "/wardrobe/camel-wide-trousers.png",
     description: "Wide-leg bottoms · warm camel",
   },
   {
@@ -86,6 +90,7 @@ const SAMPLE_ITEMS: ColorPickerItem[] = [
     category: "Tops",
     colorName: "Deep Navy",
     emoji: "👕",
+    imageData: "/wardrobe/navy-crew-tee.png",
     description: "Relaxed crew top · deep navy",
   },
   {
@@ -94,6 +99,7 @@ const SAMPLE_ITEMS: ColorPickerItem[] = [
     category: "Tops",
     colorName: "Soft Mint",
     emoji: "🧶",
+    imageData: "/wardrobe/mint-ribbed-mock-neck.png",
     description: "Ribbed knit top · soft mint",
   },
 ]
@@ -207,7 +213,7 @@ export default function ColorsTab() {
           color: w.color,
           colorName: w.colorName,
           category: w.category,
-          imageData: w.imageData,
+          imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
           emoji:
             w.category === "Outerwear"
               ? "🧥"

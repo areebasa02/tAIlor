@@ -11,6 +11,7 @@ export type WardrobeScanItem = {
   sentimentalValue: "Low" | "Medium" | "High"
   cost: string
   confidence: number
+  imageData?: string
 }
 
 export type WardrobeScanResponse = {

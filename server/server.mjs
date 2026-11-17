@@ -51,6 +51,7 @@ const MOCK_WARDROBE_SAMPLES = {
     sentimentalValue: "Medium",
     cost: "$89",
     confidence: 0.94,
+    imageData: "/wardrobe/teal-gabardine-trench.png",
   },
   "magenta-blouse": {
     name: "Magenta Silk Blouse",
@@ -63,6 +64,7 @@ const MOCK_WARDROBE_SAMPLES = {
     sentimentalValue: "High",
     cost: "$65",
     confidence: 0.91,
+    imageData: "/wardrobe/magenta-silk-blouse.png",
   },
   "gold-cardigan": {
     name: "Gold Knit Cardigan",
@@ -75,6 +77,7 @@ const MOCK_WARDROBE_SAMPLES = {
     sentimentalValue: "Medium",
     cost: "$48",
     confidence: 0.89,
+    imageData: "/wardrobe/gold-knit-cardigan.png",
   },
   default: {
     name: "Detected Cotton Tee",
@@ -87,6 +90,7 @@ const MOCK_WARDROBE_SAMPLES = {
     sentimentalValue: "Low",
     cost: "$28",
     confidence: 0.82,
+    imageData: "/wardrobe/detected-cotton-tee.png",
   },
 }
 
@@ -174,99 +178,94 @@ async function readJsonBody(request, maxBytes = 10_000) {
   return JSON.parse(body || "{}")
 }
 
-async function runCatVton(humanImageUrl, garmentImageUrl) {
-  const modelEndpoint = "fal-ai/image-apps-v2/virtual-try-on"
-  const falResponse = await fetch(`https://queue.fal.run/${modelEndpoint}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Key ${process.env.FAL_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      person_image_url: humanImageUrl,
-      clothing_image_url: garmentImageUrl,
-      preserve_pose: true,
-    }),
-  })
-  const submitted = await falResponse.json().catch(() => ({}))
-  if (!falResponse.ok) {
-    const message = submitted?.detail || submitted?.error || "fal Cat-VTON request failed."
-    throw new Error(String(message))
-  }
-
-  let result = submitted
-  if (submitted.request_id) {
-    const requestId = encodeURIComponent(submitted.request_id)
-    const statusUrl = submitted.status_url || `https://queue.fal.run/${modelEndpoint}/requests/${requestId}/status`
-    const responseUrl = submitted.response_url || `https://queue.fal.run/${modelEndpoint}/requests/${requestId}`
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      const statusResponse = await fetch(statusUrl, {
-        headers: { Authorization: `Key ${process.env.FAL_KEY}` },
-      })
-      const status = await statusResponse.json().catch(() => ({}))
-      if (status.status === "COMPLETED") {
-        const resultResponse = await fetch(responseUrl, {
-          headers: { Authorization: `Key ${process.env.FAL_KEY}` },
-        })
-        result = await resultResponse.json().catch(() => ({}))
-        break
-      }
-      if (status.status === "FAILED") throw new Error("fal Cat-VTON processing failed.")
-    }
-  }
-
-  const image = result?.images?.[0]
-  if (!image?.url) throw new Error("fal Cat-VTON returned no preview image.")
-  return image.url
-}
+const tryOnUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/v1/try-on`
 
 async function handleTryOn(request, response) {
-  const body = await readJsonBody(request, 20 * 1024 * 1024)
+  const body = await readJsonBody(request, 32 * 1024 * 1024)
   const garments = Array.isArray(body.garments)
     ? body.garments
-        .filter((garment) => garment && typeof garment.imageUrl === "string")
+        .filter((garment) => garment && (typeof garment.imageUrl === "string" || typeof garment.description === "string"))
         .map((garment) => ({
-          imageUrl: garment.imageUrl.trim(),
+          imageUrl: typeof garment.imageUrl === "string" ? garment.imageUrl.trim() : "",
           description: typeof garment.description === "string" ? garment.description : "",
           type: typeof garment.type === "string" ? garment.type : "",
+          color: typeof garment.color === "string" ? garment.color : "",
+          colorName: typeof garment.colorName === "string" ? garment.colorName : "",
+          material: typeof garment.material === "string" ? garment.material : "",
         }))
-        .filter((garment) => garment.imageUrl)
-        .slice(0, 2)
+        .slice(0, 6)
     : []
-  const customMannequinImage =
+  const mannequinImage =
     typeof body.mannequinImage === "string" ? body.mannequinImage.trim() : ""
-  const mannequinImageUrl =
-    customMannequinImage || process.env.FAL_MANNEQUIN_IMAGE_URL?.trim()
-  if (!process.env.FAL_KEY) {
-    sendJson(response, 503, { error: "FAL_KEY is not configured on the server." })
-    return
-  }
-  if (!mannequinImageUrl) {
-    sendJson(response, 503, {
-      error: "No mannequin pose image was provided and FAL_MANNEQUIN_IMAGE_URL is not configured.",
+  const openposeImage =
+    typeof body.openposeImage === "string" ? body.openposeImage.trim() : ""
+  const dressedImage =
+    typeof body.dressedImage === "string" ? body.dressedImage.trim() : ""
+
+  if (!mannequinImage && !openposeImage && !dressedImage) {
+    sendJson(response, 400, {
+      error: "No pose image or skeleton was provided.",
     })
     return
   }
   if (garments.length === 0) {
     sendJson(response, 400, {
-      error: "The selected wardrobe outfit does not have saved garment images.",
+      error: "Select at least one outfit piece to generate a try-on.",
     })
     return
   }
 
-  let imageUrl = mannequinImageUrl
-  for (const [index, garment] of garments.entries()) {
-    imageUrl = await runCatVton(imageUrl, garment.imageUrl)
-    if (index === 0 && garments.length > 1) {
-      console.log("[try-on] Cat-VTON top layer complete; using result as the next human image.")
-    }
-  }
+  // Run local CUDA GPU model server on port 8000 (colab_server.py /v1/try-on)
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 300_000)
+    const localResp = await fetch(tryOnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.LLM_API_KEY
+          ? { Authorization: `Bearer ${process.env.LLM_API_KEY}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        mannequinImage: mannequinImage || openposeImage || dressedImage,
+        openposeImage: openposeImage || undefined,
+        dressedImage: dressedImage || undefined,
+        garments,
+        keypoints: body.keypoints && typeof body.keypoints === "object" ? body.keypoints : undefined,
+        cameraPreset: typeof body.cameraPreset === "string" ? body.cameraPreset : "front",
+        backdropPreset: typeof body.backdropPreset === "string" ? body.backdropPreset : "cyclorama",
+        includeMyFace: Boolean(body.includeMyFace),
+        faceImage: typeof body.faceImage === "string" ? body.faceImage : undefined,
+        poseLabel: typeof body.poseLabel === "string" ? body.poseLabel : undefined,
+        bodyPreset: typeof body.bodyPreset === "string" ? body.bodyPreset : undefined,
+        materialId: typeof body.materialId === "string" ? body.materialId : "porcelain",
+        seed: typeof body.seed === "number" ? body.seed : undefined,
+      }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
 
-  sendJson(response, 200, {
-    imageUrl,
-    runs: garments.length,
-  })
+    const payload = await localResp.json().catch(() => ({}))
+    if (!localResp.ok || !payload?.imageUrl) {
+      const detail = payload?.detail || payload?.error || `Local try-on model returned HTTP ${localResp.status}.`
+      sendJson(response, localResp.status >= 400 ? localResp.status : 502, { error: String(detail) })
+      return
+    }
+
+    sendJson(response, 200, {
+      imageUrl: payload.imageUrl,
+      model: payload.model || "RealVisXL-OpenPose-IPAdapter",
+      runs: payload.runs || garments.length,
+    })
+  } catch (err) {
+    const causeMsg = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : ""
+    const message =
+      err instanceof Error ? `${err.message}${causeMsg}` : "Could not reach local GPU try-on server."
+    console.error("[try-on] Local GPU try-on error:", message)
+    sendJson(response, 502, {
+      error: `Local GPU try-on server unavailable (${message}). Ensure colab_server.py is running on ${visionBaseUrl}.`,
+    })
+  }
 }
 
 function normalizeWardrobeScanItem(raw = {}) {
@@ -320,6 +319,7 @@ function normalizeWardrobeScanItem(raw = {}) {
     sentimentalValue,
     cost: String(raw.cost || "$40").trim().slice(0, 20),
     confidence,
+    ...(typeof raw.imageData === "string" && raw.imageData ? { imageData: raw.imageData } : {}),
   }
 }
 
@@ -336,6 +336,8 @@ function mockWardrobeScan(mockSample) {
 }
 
 async function requestWardrobeScanFromColab(image, mimeType) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120_000)
   const response = await fetch(wardrobeScanUrl, {
     method: "POST",
     headers: {
@@ -348,7 +350,8 @@ async function requestWardrobeScanFromColab(image, mimeType) {
       image,
       mimeType: mimeType || "image/jpeg",
     }),
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout))
   const result = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message =
@@ -423,7 +426,9 @@ async function handleWardrobeScan(request, response) {
   }
 }
 
-async function requestModel(prompt) {
+async function requestModel(prompt, temperature = 0.3) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120_000)
   const inferenceResponse = await fetch(inferenceUrl, {
     method: "POST",
     headers: {
@@ -436,9 +441,10 @@ async function requestModel(prompt) {
       model: textModel,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 450,
-      temperature: 0.3,
+      temperature,
     }),
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout))
 
   const result = await inferenceResponse.json().catch(() => ({}))
   if (!inferenceResponse.ok) {
@@ -453,6 +459,33 @@ async function requestModel(prompt) {
     throw new Error("The stylist model returned an empty response.")
   }
   return text.trim()
+}
+
+function matchWardrobeItem(rawDescription, wardrobeItems) {
+  const cleaned = String(rawDescription || "")
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/^[-*]\s*/, "")
+    .trim()
+    .toLowerCase()
+  if (!cleaned || /^(none|n\/a|na|not applicable|optional|skip|-+)$/i.test(cleaned)) {
+    return null
+  }
+  const exact = wardrobeItems.find((w) => w.name.toLowerCase() === cleaned)
+  if (exact) return exact
+
+  // Prefer longest wardrobe name contained inside model output to avoid short-substring collisions
+  const contained = wardrobeItems
+    .filter((w) => cleaned.includes(w.name.toLowerCase()))
+    .sort((a, b) => b.name.length - a.name.length)
+  if (contained.length > 0) return contained[0]
+
+  if (cleaned.length >= 4) {
+    const partial = wardrobeItems
+      .filter((w) => w.name.toLowerCase().includes(cleaned))
+      .sort((a, b) => a.name.length - b.name.length)
+    if (partial.length > 0) return partial[0]
+  }
+  return null
 }
 
 function parseOutfitResponse(raw) {
@@ -478,21 +511,23 @@ function parseOutfitResponse(raw) {
 
 async function handleStylist(request, response) {
   const requestId = Math.random().toString(36).slice(2, 8)
-  const body = await readJsonBody(request)
+  const body = await readJsonBody(request, 256_000)
   const event = typeof body.event === "string" ? body.event.trim() : ""
   const dresscode = typeof body.dresscode === "string" ? body.dresscode.trim() : ""
-  const wardrobe = Array.isArray(body.wardrobe)
-    ? body.wardrobe
-        .filter((item) => item && typeof item.name === "string")
-        .slice(0, 40)
-        .map((item) => `${item.name} (${item.category || "item"}, ${item.color || "unknown color"})`)
-        .join(", ")
-    : ""
+  const sensorySensitive = Boolean(body.sensorySensitive)
+  const stylistNotes = typeof body.stylistNotes === "string" ? body.stylistNotes.trim() : ""
+  const weatherSummary = typeof body.weather === "string" ? body.weather.trim() : ""
   const wardrobeItems = Array.isArray(body.wardrobe)
     ? body.wardrobe
         .filter((item) => item && typeof item.name === "string")
         .slice(0, 40)
     : []
+  const wardrobe = wardrobeItems
+    .map((item) => {
+      const mat = item.material ? `, ${item.material}` : ""
+      return `${item.name} (${item.category || "item"}, ${item.color || "unknown color"}${mat})`
+    })
+    .join(", ")
   logStylist(requestId, "request", {
     event,
     dresscode,
@@ -508,6 +543,9 @@ async function handleStylist(request, response) {
     "You are a practical personal stylist.",
     `Create one outfit recommendation for this event: ${event}.`,
     dresscode ? `Target dress code: ${dresscode}.` : "",
+    weatherSummary ? `Current weather: ${weatherSummary}.` : "",
+    sensorySensitive ? "Prioritize soft, breathable, tagless/non-scratchy fabrics." : "",
+    stylistNotes ? `Wearer preferences: ${stylistNotes}.` : "",
     wardrobe ? `Available wardrobe: ${wardrobe}. Use only these items.` : "",
     "Return ONLY these labeled lines, with no markdown or extra text:",
     "LABEL: short outfit name",
@@ -525,8 +563,8 @@ async function handleStylist(request, response) {
   let generated
   try {
     const rawOutfits = await Promise.all([
-      requestModel(`${sharedPrompt}\nMake this look polished and understated.`),
-      requestModel(`${sharedPrompt}\nMake this look more expressive and distinctive.`),
+      requestModel(`${sharedPrompt}\nMake this look polished and understated.`, 0.3),
+      requestModel(`${sharedPrompt}\nMake this look more expressive and distinctive.`, 0.55),
     ])
     const previousOutfitNames = new Set()
     generated = await Promise.all(rawOutfits.map(async (raw, index) => {
@@ -543,7 +581,7 @@ async function handleStylist(request, response) {
         fallbackReason = "invalid-outfit-response"
         outfit = {
           label: `AI Look ${index + 1}`,
-          items: wardrobeItems.slice(0, 3),
+          items: wardrobeItems.slice(0, 3).map((item) => ({ type: item.category, desc: item.name })),
         }
       }
       if (!outfit || typeof outfit !== "object") {
@@ -552,7 +590,7 @@ async function handleStylist(request, response) {
       if (!Array.isArray(outfit.items) || outfit.items.length < 2) {
         usedFallback = true
         fallbackReason = "missing-items"
-        outfit.items = wardrobeItems.slice(0, 3)
+        outfit.items = wardrobeItems.slice(0, 3).map((item) => ({ type: item.category, desc: item.name }))
       }
       if (typeof outfit.label !== "string") outfit.label = `AI Look ${index + 1}`
       logStylist(requestId, `model result ${index + 1}`, {
@@ -567,13 +605,9 @@ async function handleStylist(request, response) {
       const usedCategories = new Set()
       const reusedNames = new Set(previousOutfitNames)
       const generatedMatches = outfit.items
-        .map((generatedItem) => {
-          const description = String(generatedItem.desc || "").toLowerCase()
-          return wardrobeItems.find((wardrobeItem) => {
-            const name = wardrobeItem.name.toLowerCase()
-            return description === name || description.includes(name) || name.includes(description)
-          })
-        })
+        .map((generatedItem) =>
+          matchWardrobeItem(generatedItem?.desc || generatedItem?.name || "", wardrobeItems),
+        )
         .filter(Boolean)
       if (generatedMatches.length < 2) {
         usedFallback = true
@@ -582,7 +616,6 @@ async function handleStylist(request, response) {
       const candidates = generatedMatches
         .filter((item) => {
           if (usedWardrobeNames.has(item.name)) return false
-          const category = categoryKey(item)
           usedWardrobeNames.add(item.name)
           return true
         })
@@ -727,7 +760,7 @@ const server = createServer(async (request, response) => {
       response.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       })
       response.end()
       return
@@ -744,6 +777,29 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === "/api/wardrobe/scan" && request.method === "POST") {
       await handleWardrobeScan(request, response)
+      return
+    }
+    if (url.pathname === "/api/ai/health" && request.method === "GET") {
+      const backendHealthUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/health`
+      let backend = null
+      let backendError = null
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 3000)
+        const resp = await fetch(backendHealthUrl, { signal: controller.signal }).finally(() =>
+          clearTimeout(timeout),
+        )
+        backend = await resp.json().catch(() => ({ status: resp.status }))
+      } catch (err) {
+        backendError = err instanceof Error ? err.message : String(err)
+      }
+      sendJson(response, backend ? 200 : 503, {
+        status: backend ? "ok" : "unavailable",
+        proxyPort: port,
+        backendUrl: backendHealthUrl,
+        backend,
+        ...(backendError ? { error: backendError } : {}),
+      })
       return
     }
     if (url.pathname === "/api/wardrobe/scan/health" && request.method === "GET") {

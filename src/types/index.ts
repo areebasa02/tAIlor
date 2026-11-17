@@ -226,18 +226,27 @@ export interface MannequinCustomization {
   faceImageData?: string
 }
 
-export type MannequinJointId =
-  | "head"
-  | "torso"
+export type PoseJointId =
+  | "nose"
+  | "neck"
   | "shoulderL"
   | "shoulderR"
   | "elbowL"
   | "elbowR"
+  | "wristL"
+  | "wristR"
+  | "pelvis"
   | "hipL"
   | "hipR"
   | "kneeL"
   | "kneeR"
+  | "ankleL"
+  | "ankleR"
 
-export type JointAngles = [number, number, number]
+export type PosePoint2D = [number, number]
 
-export type MannequinPose = Record<MannequinJointId, JointAngles>
+export type Pose2D = Record<PoseJointId, PosePoint2D>
+
+/** Legacy aliases retained temporarily for local state typing */
+export type MannequinJointId = PoseJointId
+export type MannequinPose = Pose2D

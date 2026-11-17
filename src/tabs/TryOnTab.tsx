@@ -5,25 +5,34 @@ import {
   useRef,
   useState,
 } from "react"
-import * as THREE from "three"
 import {
   AIErrorBanner,
   AIStatusPill,
   PulseOrb,
 } from "../components/AIComponents"
-import TryOnMannequin3D, {
+import TryOnPoseStudio2D, {
   BODY_PRESET_VALUES,
+  CAMERA_PRESETS,
   DEFAULT_CUSTOMIZATION,
   DEFAULT_POSE,
   JOINT_LABELS,
-  JOINT_LIMITS,
+  JOINT_ORDER,
   MANNEQUIN_MATERIALS,
   POSE_PRESETS,
-  clampJointAngles,
+  STUDIO_BACKDROP_PRESETS,
+  clampPoint2D,
   createRandomPose,
+  isValidPose2D,
+  mirrorPoseLeftRight,
+  projectPoseForView,
+  symmetrizePose,
+  type BackdropPresetId,
+  type CameraPresetId,
   type PosePresetId,
-} from "../components/TryOnMannequin3D"
+  type TryOnPoseCaptureResult,
+} from "../components/TryOnPoseStudio2D"
 import { useApp } from "../context/AppContext"
+import { getSampleGarmentImage } from "../data/personaData"
 import {
   getDefaultFacePortraitDataUrl,
   getGarmentImageForTryOn,
@@ -37,25 +46,25 @@ import {
 import type {
   FavoriteOutfit,
   FavoriteOutfitItem,
-  JointAngles,
   MannequinBodyPreset,
   MannequinCustomization,
-  MannequinJointId,
   MannequinMaterialId,
-  MannequinPose,
   Outfit,
+  Pose2D,
+  PoseJointId,
+  PosePoint2D,
   WardrobeItem,
 } from "../types"
 
 type Step = "studio" | "processing" | "preview" | "error"
 type StudioPanelTab = "pose" | "body" | "face"
-type ResultViewMode = "ai" | "compare" | "studio3d"
+type ResultViewMode = "ai" | "compare"
 
 const STAGES = [
-  "Capturing clean pose snapshot from 3D studio…",
-  "Preparing garment flat-lay silhouettes…",
-  "Analyzing posed silhouette (cat-VTON)…",
-  "Drape-fitting fabrics onto your mannequin pose…",
+  "Encoding 2D OpenPose skeleton & camera framing…",
+  "Extracting outfit garments & material references…",
+  "Generating posed mannequin on local RTX GPU…",
+  "Refining cloth drape, seams & studio lighting…",
 ]
 
 function getPieceEmoji(typeOrCat: string, fallback = "👕"): string {
@@ -85,7 +94,8 @@ function mapOutfitToTryOn(outfit: Outfit, wardrobe: WardrobeItem[]): FavoriteOut
       name: piece.desc,
       color: piece.color,
       emoji: getPieceEmoji(piece.type, piece.emoji),
-      imageData: match?.imageData,
+      imageData:
+        match?.imageData || getSampleGarmentImage(piece.desc, piece.type),
       wardrobeItemId: match?.id,
     }
   })
@@ -123,7 +133,7 @@ function buildFallbackWardrobeOutfit(wardrobe: WardrobeItem[]): FavoriteOutfit {
       name: w.name,
       color: w.color,
       emoji: getPieceEmoji(w.category),
-      imageData: w.imageData,
+      imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
       wardrobeItemId: w.id,
     })),
   }
@@ -139,93 +149,39 @@ const POSE_SHORT_LABELS: Record<PosePresetId, string> = {
   wave: "Wave",
 }
 
-function projectPose2D(pose: MannequinPose) {
-  const euler = new THREE.Euler()
-  const quatFrom = (a: JointAngles) =>
-    new THREE.Quaternion().setFromEuler(euler.set(a[0], a[1], a[2], "XYZ"))
-
-  const pelvis = new THREE.Vector3(0, 0.95, 0)
-  const qTorso = quatFrom(pose.torso)
-  const qHead = qTorso.clone().multiply(quatFrom(pose.head))
-
-  const waistPos = new THREE.Vector3(0, 0.13, 0).add(pelvis)
-  const neckPos = new THREE.Vector3(0, 0.44, 0)
-    .applyQuaternion(qTorso)
-    .add(waistPos)
-  const headPos = new THREE.Vector3(0, 0.145, 0)
-    .applyQuaternion(qHead)
-    .add(neckPos)
-
-  const arm = (side: 1 | -1) => {
-    const shKey: MannequinJointId = side === 1 ? "shoulderL" : "shoulderR"
-    const elKey: MannequinJointId = side === 1 ? "elbowL" : "elbowR"
-    const shoulder = new THREE.Vector3(side * 0.175, 0.345, 0)
-      .applyQuaternion(qTorso)
-      .add(waistPos)
-    const qSh = qTorso.clone().multiply(quatFrom(pose[shKey]))
-    const elbow = new THREE.Vector3(0, -0.28, 0)
-      .applyQuaternion(qSh)
-      .add(shoulder)
-    const qEl = qSh.clone().multiply(quatFrom(pose[elKey]))
-    const hand = new THREE.Vector3(0, -0.26, 0)
-      .applyQuaternion(qEl)
-      .add(elbow)
-    return { shoulder, elbow, hand }
-  }
-
-  const leg = (side: 1 | -1) => {
-    const hipKey: MannequinJointId = side === 1 ? "hipL" : "hipR"
-    const kneeKey: MannequinJointId = side === 1 ? "kneeL" : "kneeR"
-    const hip = new THREE.Vector3(side * 0.09, -0.02, 0).add(pelvis)
-    const qHip = quatFrom(pose[hipKey])
-    const knee = new THREE.Vector3(0, -0.43, 0)
-      .applyQuaternion(qHip)
-      .add(hip)
-    const qKnee = qHip.clone().multiply(quatFrom(pose[kneeKey]))
-    const ankle = new THREE.Vector3(0, -0.43, 0)
-      .applyQuaternion(qKnee)
-      .add(knee)
-    return { hip, knee, ankle }
-  }
-
-  const to2D = (v: THREE.Vector3): [number, number] => [
-    Number((32 + v.x * 33 + v.z * 5).toFixed(1)),
-    Number((69 - v.y * 32.5 + v.z * 2.5).toFixed(1)),
-  ]
-
-  const leftArm = arm(1)
-  const rightArm = arm(-1)
-  const leftLeg = leg(1)
-  const rightLeg = leg(-1)
-
-  return {
-    head: to2D(headPos),
-    neck: to2D(neckPos),
-    waist: to2D(waistPos),
-    pelvis: to2D(pelvis),
-    shL: to2D(leftArm.shoulder),
-    elL: to2D(leftArm.elbow),
-    hdL: to2D(leftArm.hand),
-    shR: to2D(rightArm.shoulder),
-    elR: to2D(rightArm.elbow),
-    hdR: to2D(rightArm.hand),
-    hipL: to2D(leftLeg.hip),
-    knL: to2D(leftLeg.knee),
-    akL: to2D(leftLeg.ankle),
-    hipR: to2D(rightLeg.hip),
-    knR: to2D(rightLeg.knee),
-    akR: to2D(rightLeg.ankle),
-  }
-}
-
 function MiniPosePreviewSVG({
   pose,
   active,
 }: {
-  pose: MannequinPose
+  pose: Pose2D
   active: boolean
 }) {
-  const p = useMemo(() => projectPose2D(pose), [pose])
+  const projected = useMemo(
+    () => projectPoseForView(pose, DEFAULT_CUSTOMIZATION, "front"),
+    [pose],
+  )
+  const p = projected.norm
+  const pt = (id: PoseJointId): [number, number] => [
+    12 + p[id][0] * 40,
+    5 + p[id][1] * 66,
+  ]
+
+  const nose = pt("nose")
+  const neck = pt("neck")
+  const pelvis = pt("pelvis")
+  const shR = pt("shoulderR")
+  const shL = pt("shoulderL")
+  const elR = pt("elbowR")
+  const elL = pt("elbowL")
+  const wrR = pt("wristR")
+  const wrL = pt("wristL")
+  const hipR = pt("hipR")
+  const hipL = pt("hipL")
+  const knR = pt("kneeR")
+  const knL = pt("kneeL")
+  const akR = pt("ankleR")
+  const akL = pt("ankleL")
+
   const bodyStroke = active ? "#FFFFFF" : "currentColor"
   const jointFill = active ? "#FFCB44" : "#CE005A"
 
@@ -235,7 +191,6 @@ function MiniPosePreviewSVG({
       aria-hidden="true"
       className="w-11 h-12 shrink-0 overflow-visible"
     >
-      {/* Plinth ground oval */}
       <ellipse
         cx="32"
         cy="69.5"
@@ -243,80 +198,75 @@ function MiniPosePreviewSVG({
         ry="2.5"
         fill={active ? "rgba(255,255,255,0.28)" : "rgba(120,120,145,0.22)"}
       />
-
-      {/* Legs */}
       <g stroke={bodyStroke} strokeWidth="3.6" strokeLinecap="round" fill="none">
-        <line x1={p.hipR[0]} y1={p.hipR[1]} x2={p.knR[0]} y2={p.knR[1]} />
-        <line x1={p.knR[0]} y1={p.knR[1]} x2={p.akR[0]} y2={p.akR[1]} />
-        <line x1={p.hipL[0]} y1={p.hipL[1]} x2={p.knL[0]} y2={p.knL[1]} />
-        <line x1={p.knL[0]} y1={p.knL[1]} x2={p.akL[0]} y2={p.akL[1]} />
+        <line x1={hipR[0]} y1={hipR[1]} x2={knR[0]} y2={knR[1]} />
+        <line x1={knR[0]} y1={knR[1]} x2={akR[0]} y2={akR[1]} />
+        <line x1={hipL[0]} y1={hipL[1]} x2={knL[0]} y2={knL[1]} />
+        <line x1={knL[0]} y1={knL[1]} x2={akL[0]} y2={akL[1]} />
       </g>
-
-      {/* Pelvis & Torso bridge */}
-      <line
-        x1={p.hipR[0]}
-        y1={p.hipR[1]}
-        x2={p.hipL[0]}
-        y2={p.hipL[1]}
-        stroke={bodyStroke}
-        strokeWidth="4.4"
-        strokeLinecap="round"
-      />
-      <line
-        x1={p.pelvis[0]}
-        y1={p.pelvis[1]}
-        x2={p.neck[0]}
-        y2={p.neck[1]}
-        stroke={bodyStroke}
-        strokeWidth="6.2"
-        strokeLinecap="round"
-      />
-      <line
-        x1={p.shR[0]}
-        y1={p.shR[1]}
-        x2={p.shL[0]}
-        y2={p.shL[1]}
-        stroke={bodyStroke}
-        strokeWidth="4.4"
-        strokeLinecap="round"
-      />
-
-      {/* Arms */}
+      <line x1={hipR[0]} y1={hipR[1]} x2={hipL[0]} y2={hipL[1]} stroke={bodyStroke} strokeWidth="4.4" strokeLinecap="round" />
+      <line x1={pelvis[0]} y1={pelvis[1]} x2={neck[0]} y2={neck[1]} stroke={bodyStroke} strokeWidth="6.2" strokeLinecap="round" />
+      <line x1={shR[0]} y1={shR[1]} x2={shL[0]} y2={shL[1]} stroke={bodyStroke} strokeWidth="4.4" strokeLinecap="round" />
       <g stroke={bodyStroke} strokeWidth="2.9" strokeLinecap="round" fill="none">
-        <line x1={p.shR[0]} y1={p.shR[1]} x2={p.elR[0]} y2={p.elR[1]} />
-        <line x1={p.elR[0]} y1={p.elR[1]} x2={p.hdR[0]} y2={p.hdR[1]} />
-        <line x1={p.shL[0]} y1={p.shL[1]} x2={p.elL[0]} y2={p.elL[1]} />
-        <line x1={p.elL[0]} y1={p.elL[1]} x2={p.hdL[0]} y2={p.hdL[1]} />
+        <line x1={shR[0]} y1={shR[1]} x2={elR[0]} y2={elR[1]} />
+        <line x1={elR[0]} y1={elR[1]} x2={wrR[0]} y2={wrR[1]} />
+        <line x1={shL[0]} y1={shL[1]} x2={elL[0]} y2={elL[1]} />
+        <line x1={elL[0]} y1={elL[1]} x2={wrL[0]} y2={wrL[1]} />
       </g>
-
-      {/* Head */}
-      <circle cx={p.head[0]} cy={p.head[1]} r="4.8" fill={bodyStroke} />
-
-      {/* Accent joint pins */}
+      <circle cx={nose[0]} cy={nose[1]} r="4.8" fill={bodyStroke} />
       <g fill={jointFill}>
-        <circle cx={p.shL[0]} cy={p.shL[1]} r="1.6" />
-        <circle cx={p.shR[0]} cy={p.shR[1]} r="1.6" />
-        <circle cx={p.elL[0]} cy={p.elL[1]} r="1.4" />
-        <circle cx={p.elR[0]} cy={p.elR[1]} r="1.4" />
-        <circle cx={p.knL[0]} cy={p.knL[1]} r="1.5" />
-        <circle cx={p.knR[0]} cy={p.knR[1]} r="1.5" />
+        {[shL, shR, elL, elR, knL, knR].map((pin, i) => (
+          <circle key={i} cx={pin[0]} cy={pin[1]} r="1.5" />
+        ))}
       </g>
     </svg>
   )
 }
 
-const JOINT_ORDER: MannequinJointId[] = [
-  "head",
-  "torso",
-  "shoulderL",
-  "shoulderR",
-  "elbowL",
-  "elbowR",
-  "hipL",
-  "hipR",
-  "kneeL",
-  "kneeR",
-]
+/** Compact floating corner bar for switching studio backdrop & lighting presets directly inside preview cards. */
+function StudioBackdropCornerBar({
+  value,
+  onChange,
+}: {
+  value: BackdropPresetId
+  onChange: (id: BackdropPresetId) => void
+}) {
+  const activeSpec =
+    STUDIO_BACKDROP_PRESETS[value] || STUDIO_BACKDROP_PRESETS.cyclorama
+  return (
+    <div
+      role="group"
+      aria-label="Studio backdrop and lighting"
+      className="pointer-events-auto inline-flex items-center gap-1 px-1.5 py-1 rounded-2xl bg-white/92 backdrop-blur-md border border-black/15 shadow-md max-w-full"
+    >
+      {(Object.keys(STUDIO_BACKDROP_PRESETS) as BackdropPresetId[]).map(
+        (presetId) => {
+          const spec = STUDIO_BACKDROP_PRESETS[presetId]
+          const active = value === presetId
+          return (
+            <button
+              key={presetId}
+              type="button"
+              onClick={() => onChange(presetId)}
+              aria-label={`Backdrop & Lighting: ${spec.label}`}
+              aria-pressed={active}
+              title={`Backdrop & Lighting: ${spec.label}`}
+              className={`w-5 h-5 rounded-full border shrink-0 cursor-pointer transition-all ${
+                active
+                  ? "ring-2 ring-pink border-white scale-110 shadow-xs"
+                  : "border-black/25 opacity-85 hover:opacity-100 hover:scale-105"
+              }`}
+              style={{ background: spec.swatch }}
+            />
+          )
+        },
+      )}
+      <span className="hidden sm:inline-block pl-1 pr-0.5 text-[10px] font-black text-neutral-900 whitespace-nowrap">
+        {activeSpec.label}
+      </span>
+    </div>
+  )
+}
 
 export default function TryOnTab() {
   const {
@@ -347,13 +297,13 @@ export default function TryOnTab() {
     return DEFAULT_CUSTOMIZATION
   })
 
-  const [pose, setPose] = useState<MannequinPose>(() => {
+  const [pose, setPose] = useState<Pose2D>(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (parsed?.pose) {
-          return { ...DEFAULT_POSE, ...parsed.pose }
+        if (isValidPose2D(parsed?.pose)) {
+          return parsed.pose
         }
       }
     } catch { }
@@ -361,9 +311,10 @@ export default function TryOnTab() {
   })
 
   const [activePosePreset, setActivePosePreset] = useState<PosePresetId | "custom">("classic")
-  const [selectedJoint, setSelectedJoint] = useState<MannequinJointId>("shoulderL")
+  const [selectedJoint, setSelectedJoint] = useState<PoseJointId>("wristL")
   const [studioTab, setStudioTab] = useState<StudioPanelTab>("pose")
-  const [resetCameraNonce, setResetCameraNonce] = useState(0)
+  const [cameraPreset, setCameraPreset] = useState<CameraPresetId>("front")
+  const [backdropPreset, setBackdropPreset] = useState<BackdropPresetId>("cyclorama")
 
   // Reload studio customization & pose when switching user persona
   useEffect(() => {
@@ -376,8 +327,13 @@ export default function TryOnTab() {
             ? { ...DEFAULT_CUSTOMIZATION, ...parsed.customization }
             : DEFAULT_CUSTOMIZATION,
         )
-        setPose(parsed?.pose ? { ...DEFAULT_POSE, ...parsed.pose } : DEFAULT_POSE)
-        setActivePosePreset("custom")
+        if (isValidPose2D(parsed?.pose)) {
+          setPose(parsed.pose)
+          setActivePosePreset("custom")
+        } else {
+          setPose(DEFAULT_POSE)
+          setActivePosePreset("classic")
+        }
         return
       }
     } catch { }
@@ -430,13 +386,16 @@ export default function TryOnTab() {
   const [step, setStep] = useState<Step>("studio")
   const [processingStage, setProcessingStage] = useState(0)
   const [poseSnapshot, setPoseSnapshot] = useState<string | null>(null)
+  const [barePoseSnapshot, setBarePoseSnapshot] = useState<string | null>(null)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
   const [generationError, setGenerationError] = useState("")
   const [resultView, setResultView] = useState<ResultViewMode>("ai")
   const [simulatedError, setSimulatedError] = useState(false)
   const [speakingPreview, setSpeakingPreview] = useState(false)
 
-  const captureFnRef = useRef<(() => Promise<string>) | null>(null)
+  const captureFnRef = useRef<(() => Promise<TryOnPoseCaptureResult>) | null>(null)
+  const lastKeypointsRef = useRef<Record<string, [number, number, number]> | null>(null)
+  const lastOpenposeRef = useRef<string | null>(null)
   const faceUploadInputRef = useRef<HTMLInputElement | null>(null)
   const intervalRef = useRef<number | null>(null)
 
@@ -462,9 +421,16 @@ export default function TryOnTab() {
     setBuilderOpen(false)
     setGeneratedImage(null)
     setPoseSnapshot(null)
+    lastOpenposeRef.current = null
+    lastKeypointsRef.current = null
     setStep("studio")
     setActiveTryOnOutfit(null)
   }, [activeTryOnOutfit, setActiveTryOnOutfit])
+
+  useEffect(() => {
+    lastOpenposeRef.current = null
+    setPoseSnapshot(null)
+  }, [selectedOutfit])
 
   // Open manual builder automatically if favorites become empty
   useEffect(() => {
@@ -473,13 +439,16 @@ export default function TryOnTab() {
     }
   }, [favoriteOutfits.length])
 
-  const handleRegisterCapture = useCallback((fn: () => Promise<string>) => {
-    captureFnRef.current = fn
-  }, [])
+  const handleRegisterCapture = useCallback(
+    (fn: () => Promise<TryOnPoseCaptureResult>) => {
+      captureFnRef.current = fn
+    },
+    [],
+  )
 
   const handleChangeJoint = useCallback(
-    (jointId: MannequinJointId, angles: JointAngles) => {
-      const clamped = clampJointAngles(jointId, angles)
+    (jointId: PoseJointId, pt: PosePoint2D) => {
+      const clamped = clampPoint2D(pt)
       setPose((prev) => ({
         ...prev,
         [jointId]: clamped,
@@ -488,6 +457,11 @@ export default function TryOnTab() {
     },
     [],
   )
+
+  const handleChangePose = useCallback((nextPose: Pose2D) => {
+    setPose(nextPose)
+    setActivePosePreset("custom")
+  }, [])
 
   const handleSelectPosePreset = (presetId: PosePresetId) => {
     setPose(POSE_PRESETS[presetId].pose)
@@ -502,6 +476,16 @@ export default function TryOnTab() {
   const handleResetPose = () => {
     setPose(DEFAULT_POSE)
     setActivePosePreset("classic")
+  }
+
+  const handleMirrorPose = () => {
+    setPose((prev) => mirrorPoseLeftRight(prev))
+    setActivePosePreset("custom")
+  }
+
+  const handleSymmetrizePose = () => {
+    setPose((prev) => symmetrizePose(prev))
+    setActivePosePreset("custom")
   }
 
   const handleBodyPreset = (preset: MannequinBodyPreset) => {
@@ -610,7 +594,7 @@ export default function TryOnTab() {
       }))
       showToast(
         "Face Applied",
-        "Your face photo is now projected onto the 3D mannequin head.",
+        "Your face photo will be blended onto the generated mannequin.",
         "success",
       )
     } catch (error) {
@@ -638,14 +622,23 @@ export default function TryOnTab() {
     const garments = selectedOutfit.items
       .filter((item) => {
         const slot = normalizeSlotType(item.type)
-        return slot === "Top" || slot === "Bottom" || slot === "Outerwear"
+        return (
+          slot === "Top" ||
+          slot === "Bottom" ||
+          slot === "Outerwear" ||
+          slot === "Shoes"
+        )
       })
       .sort((a, b) => {
-        const aTop = a.type === "Top" || a.type === "Outerwear" ? -1 : 1
-        const bTop = b.type === "Top" || b.type === "Outerwear" ? -1 : 1
-        return aTop - bTop
+        const rank = (t: string) => {
+          const s = normalizeSlotType(t)
+          if (s === "Top") return 0
+          if (s === "Outerwear") return 1
+          if (s === "Bottom") return 2
+          return 3
+        }
+        return rank(a.type) - rank(b.type)
       })
-      .slice(0, 2)
 
     if (garments.length === 0) {
       showToast(
@@ -656,20 +649,28 @@ export default function TryOnTab() {
       return
     }
 
-    let snapshot = reuseSnapshot || ""
-    if (!snapshot) {
+    let bareSnapshot = reuseSnapshot || ""
+    let openposeSnapshot = reuseSnapshot ? lastOpenposeRef.current || "" : ""
+    let capturedKeypoints = lastKeypointsRef.current
+    if (!bareSnapshot || !openposeSnapshot) {
       if (!captureFnRef.current) {
         showToast(
           "Studio Still Loading",
-          "Wait a moment for the 3D mannequin canvas to finish initializing.",
+          "Wait a moment for the pose studio canvas to finish initializing.",
           "warning",
         )
         return
       }
-      snapshot = await captureFnRef.current()
+      const captureRes = await captureFnRef.current()
+      bareSnapshot = captureRes.imageDataUrl
+      openposeSnapshot = captureRes.openposeImageDataUrl
+      capturedKeypoints = captureRes.keypoints
+      lastKeypointsRef.current = capturedKeypoints
+      lastOpenposeRef.current = openposeSnapshot
     }
 
-    setPoseSnapshot(snapshot)
+    setBarePoseSnapshot(bareSnapshot)
+    setPoseSnapshot(bareSnapshot)
     setGeneratedImage(null)
     setGenerationError("")
     setProcessingStage(0)
@@ -677,25 +678,48 @@ export default function TryOnTab() {
 
     intervalRef.current = window.setInterval(() => {
       setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
-    }, 950)
+    }, 850)
 
     try {
-      const preparedGarments = garments.map((g) => ({
-        imageUrl: getGarmentImageForTryOn(g, wardrobe),
-        description: g.name,
-        type: g.type,
-      }))
+      const preparedGarments = selectedOutfit.items.map((g) => {
+        const match = wardrobe.find(
+          (w) =>
+            w.id === g.wardrobeItemId ||
+            w.name.trim().toLowerCase() === g.name.trim().toLowerCase(),
+        )
+        return {
+          imageUrl: getGarmentImageForTryOn(g, wardrobe),
+          description: g.name,
+          type: g.type,
+          color: g.color,
+          colorName: match?.colorName || "",
+          material: match?.material || "",
+        }
+      })
+
+      const poseLabel =
+        activePosePreset === "custom"
+          ? "Custom Pose"
+          : POSE_PRESETS[activePosePreset].label
 
       const response = await fetch("/api/try-on", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mannequinImage: snapshot,
+          mannequinImage: bareSnapshot,
+          openposeImage: openposeSnapshot,
           garments: preparedGarments,
+          keypoints: capturedKeypoints,
+          cameraPreset,
+          backdropPreset,
+          poseLabel,
+          bodyPreset: BODY_PRESET_VALUES[customization.bodyPreset].label,
+          materialId: customization.materialId,
           includeMyFace: customization.includeMyFace,
           faceImage: customization.includeMyFace
             ? customization.faceImageData || defaultFacePortrait
             : undefined,
+          seed: reuseSnapshot ? Math.floor(Math.random() * 2_000_000_000) : undefined,
         }),
       })
       const result = (await response.json().catch(() => ({}))) as {
@@ -703,7 +727,7 @@ export default function TryOnTab() {
         error?: string
       }
       if (!response.ok || !result.imageUrl) {
-        throw new Error(result.error || "Cat-VTON request failed.")
+        throw new Error(result.error || "Virtual Try-On request failed.")
       }
 
       setGeneratedImage(result.imageUrl)
@@ -711,12 +735,12 @@ export default function TryOnTab() {
       setStep("preview")
       showToast(
         "AI Try-On Ready!",
-        "Your posed mannequin try-on image has been generated.",
+        "Your posed studio virtual try-on render is ready.",
         "success",
       )
     } catch (error) {
       setGenerationError(
-        error instanceof Error ? error.message : "Cat-VTON request failed.",
+        error instanceof Error ? error.message : "Virtual Try-On request failed.",
       )
       setStep("error")
     } finally {
@@ -775,8 +799,7 @@ export default function TryOnTab() {
     }
   }
 
-  const currentJointAngles = pose[selectedJoint] || [0, 0, 0]
-  const currentJointLimits = JOINT_LIMITS[selectedJoint]
+  const currentJointPoint = pose[selectedJoint] || DEFAULT_POSE[selectedJoint]
   const swapPool = swapSlot
     ? wardrobe.filter((w) => normalizeSlotType(w.category) === swapSlot)
     : []
@@ -793,10 +816,10 @@ export default function TryOnTab() {
             className="text-xl font-black text-foreground leading-tight"
             style={{ fontFamily: "Nunito, sans-serif" }}
           >
-            3D Try-On Studio
+            AI Try-On Studio
           </h1>
           <p className="text-xs font-semibold text-muted-foreground mt-0.5 leading-snug">
-            Customize &amp; pose your mannequin, then dress your exact pose with cat-VTON.
+            Set the 2D pose, angle, and lighting, then generate a studio photo on your local GPU.
           </p>
         </div>
         {showListen && (
@@ -824,7 +847,7 @@ export default function TryOnTab() {
                 1. Select or Build an Outfit
               </h2>
               <p className="text-[11px] font-medium text-muted-foreground">
-                Pick a favorite look or mix pieces from your closet to open the 3D posing studio.
+                Pick a favorite look or mix pieces from your closet to open the AI pose studio.
               </p>
             </div>
             {favoriteOutfits.length > 0 && (
@@ -1101,10 +1124,10 @@ export default function TryOnTab() {
         <div className="rounded-2xl p-3.5 border-2 border-dashed border-border bg-card/70 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-black text-foreground">
-              🔒 2. Pose &amp; Customize 3D Mannequin
+              🔒 2. Pose &amp; Customize Studio Look
             </p>
             <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
-              Select an outfit above to open the 3D posing studio.
+              Select an outfit above to open the 2D pose &amp; lighting studio.
             </p>
           </div>
           <button
@@ -1117,55 +1140,80 @@ export default function TryOnTab() {
         </div>
       )}
 
-      {/* Step 2 Expanded: Main Interactive 3D Mannequin Studio */}
+      {/* Step 2 Expanded: Interactive 2D Pose & AI Try-On Studio */}
       {step === "studio" && outfitSelected && (
         <div className="space-y-2.5">
-          {/* 3D Mannequin Viewport */}
+          {/* 2D Pose & Silhouette Preview Window */}
           <div
-            className="rounded-3xl overflow-hidden relative border-2 shadow-xl h-[clamp(320px,45dvh,420px)]"
-            style={{ background: "#E8E5EE", borderColor: "var(--border)" }}
+            className="rounded-3xl overflow-hidden relative border-2 shadow-xl h-[clamp(340px,48dvh,450px)]"
+            style={{
+              background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg,
+              borderColor: "var(--border)",
+            }}
           >
-            {/* Floating Studio HUD */}
-            <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-2 pointer-events-none">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm bg-white/90 text-neutral-900 border border-black/10">
-                  {BODY_PRESET_VALUES[customization.bodyPreset].label} ·{" "}
-                  {MANNEQUIN_MATERIALS[customization.materialId].label}
-                </span>
-                {customization.includeMyFace && (
-                  <span className="px-2 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm bg-pink text-white">
-                    😊 My Face
-                  </span>
-                )}
-              </div>
+            {/* Floating Top Corner Studio HUD: Backdrop & Lighting (top-left) + Camera Framing (top-right) */}
+            <div className="absolute top-2.5 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-none flex-wrap">
+              <StudioBackdropCornerBar
+                value={backdropPreset}
+                onChange={setBackdropPreset}
+              />
 
-              <button
-                type="button"
-                onClick={() => setResetCameraNonce((n) => n + 1)}
-                className="pointer-events-auto px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-white/92 text-neutral-900 border border-black/15 hover:border-turquoise shadow-sm cursor-pointer"
-                title="Reset camera angle to front full body"
-              >
-                ↺ Camera
-              </button>
+              <div className="flex items-center gap-1 pointer-events-auto shrink-0">
+                {(Object.keys(CAMERA_PRESETS) as CameraPresetId[]).map((camId) => {
+                  const cam = CAMERA_PRESETS[camId]
+                  const activeCam = cameraPreset === camId
+                  return (
+                    <button
+                      key={camId}
+                      type="button"
+                      onClick={() => setCameraPreset(camId)}
+                      className={`px-2 py-1 rounded-xl text-[10px] font-extrabold border shadow-sm cursor-pointer transition-colors ${
+                        activeCam
+                          ? "bg-pink text-white border-pink"
+                          : "bg-white/92 text-neutral-900 border-black/15 hover:border-turquoise"
+                      }`}
+                      title={`Switch camera framing to ${cam.label} view`}
+                    >
+                      {cam.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
-            <TryOnMannequin3D
+            <TryOnPoseStudio2D
               customization={customization}
               pose={pose}
               selectedJoint={selectedJoint}
               onSelectJoint={setSelectedJoint}
               onChangeJoint={handleChangeJoint}
+              onChangePose={handleChangePose}
               facePreviewUrl={defaultFacePortrait}
-              resetCameraNonce={resetCameraNonce}
+              cameraPreset={cameraPreset}
+              backdropPreset={backdropPreset}
               onRegisterCapture={handleRegisterCapture}
             />
 
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-white/88 backdrop-blur-xs border border-black/10 text-[10px] font-bold text-neutral-700 whitespace-nowrap pointer-events-none">
-              Orbit background · Drag joint arrows ({JOINT_LABELS[selectedJoint]})
+            {/* Floating Bottom Studio HUD: Mannequin Finish badge (bottom-left) + Drag Hint (bottom-right) */}
+            <div className="absolute bottom-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-none flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm bg-white/90 text-neutral-900 border border-black/10">
+                  {BODY_PRESET_VALUES[customization.bodyPreset].label} ·{" "}
+                  {MANNEQUIN_MATERIALS[customization.materialId].label}
+                </span>
+                {customization.includeMyFace && (
+                  <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm bg-pink text-white">
+                    😊 My Face
+                  </span>
+                )}
+              </div>
+              <div className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-black/10 text-[10px] font-bold text-neutral-700 whitespace-nowrap ml-auto">
+                Drag joints ({JOINT_LABELS[selectedJoint]}) · Pull wrist/ankle for IK
+              </div>
             </div>
           </div>
 
-          {/* Primary Action: Snapshot Pose -> Cat-VTON */}
+          {/* Primary Action: Snapshot Bare Pose -> Generate 2D Outfit Try-On */}
           <button
             type="button"
             onClick={() => void handleGenerateFromPose()}
@@ -1175,7 +1223,7 @@ export default function TryOnTab() {
             <span>Generate AI Try-On from Pose</span>
           </button>
 
-          {/* Studio Control Panel Tabs (Pose / Body / Face) */}
+          {/* Studio Control Panel Tabs (Pose / Body / Face) + Backdrop/Lighting */}
           <div className="rounded-3xl p-3 border-2 border-border bg-card space-y-3 shadow-sm">
             <div
               role="tablist"
@@ -1209,17 +1257,35 @@ export default function TryOnTab() {
             {/* Tab 1: Pose Controls with Large Visual Preview Grid */}
             {studioTab === "pose" && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-1.5 flex-wrap">
                   <span className="text-[11px] font-black uppercase tracking-wider text-foreground">
                     Tap a Pose Preview
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleResetPose}
-                    className="min-h-[30px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-pink cursor-pointer"
-                  >
-                    ↺ Reset Pose
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleMirrorPose}
+                      className="min-h-[30px] px-2 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-turquoise cursor-pointer"
+                      title="Mirror left and right limbs"
+                    >
+                      ⇄ Flip L↔R
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSymmetrizePose}
+                      className="min-h-[30px] px-2 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-turquoise cursor-pointer"
+                      title="Match both sides symmetrically"
+                    >
+                      ⚖ Symmetrize
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetPose}
+                      className="min-h-[30px] px-2 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-pink cursor-pointer"
+                    >
+                      ↺ Reset
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2">
@@ -1276,7 +1342,7 @@ export default function TryOnTab() {
                   </button>
                 </div>
 
-                {/* Joint Selector + 3-Axis Fine Tune Sliders */}
+                {/* Joint Selector + 2D X/Y Fine Tune Sliders */}
                 <div className="space-y-2 pt-2 border-t border-border">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-black uppercase tracking-wider text-foreground">
@@ -1285,10 +1351,12 @@ export default function TryOnTab() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleChangeJoint(selectedJoint, [0, 0, 0])}
+                      onClick={() =>
+                        handleChangeJoint(selectedJoint, DEFAULT_POSE[selectedJoint])
+                      }
                       className="text-[11px] font-bold text-muted-foreground hover:text-foreground cursor-pointer"
                     >
-                      Zero joint
+                      Reset joint
                     </button>
                   </div>
 
@@ -1309,24 +1377,20 @@ export default function TryOnTab() {
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-0.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
                     {(
                       [
-                        { idx: 0 as const, label: "Bend / Forward–Back" },
-                        { idx: 1 as const, label: "Twist / Turn" },
-                        { idx: 2 as const, label: "Lift / Side Tilt" },
+                        { idx: 0 as const, label: "Horizontal (Left ↔ Right)", min: 0.08, max: 0.92 },
+                        { idx: 1 as const, label: "Vertical (Up ↕ Down)", min: 0.06, max: 0.94 },
                       ] as const
-                    ).map(({ idx, label }) => {
-                      const val = currentJointAngles[idx]
-                      const min = currentJointLimits.min[idx]
-                      const max = currentJointLimits.max[idx]
-                      const disabled = Math.abs(max - min) < 0.05
+                    ).map(({ idx, label, min, max }) => {
+                      const val = currentJointPoint[idx]
                       return (
                         <div key={idx} className="space-y-1">
                           <div className="flex justify-between text-[11px] font-bold text-foreground">
                             <span>{label}</span>
                             <span className="text-muted-foreground tabular-nums">
-                              {Math.round((val * 180) / Math.PI)}°
+                              {Math.round(val * 100)}%
                             </span>
                           </div>
                           <input
@@ -1334,15 +1398,14 @@ export default function TryOnTab() {
                             aria-label={`${JOINT_LABELS[selectedJoint]} ${label}`}
                             min={min}
                             max={max}
-                            step={0.02}
-                            disabled={disabled}
+                            step={0.01}
                             value={val}
                             onChange={(e) => {
-                              const next: JointAngles = [...currentJointAngles]
+                              const next: PosePoint2D = [...currentJointPoint]
                               next[idx] = Number(e.target.value)
                               handleChangeJoint(selectedJoint, next)
                             }}
-                            className="w-full accent-pink cursor-pointer disabled:opacity-40"
+                            className="w-full accent-pink cursor-pointer"
                           />
                         </div>
                       )
@@ -1470,7 +1533,7 @@ export default function TryOnTab() {
                       Put My Face on Final Image
                     </p>
                     <p className="text-xs text-muted-foreground leading-snug">
-                      Projects your portrait onto the posed 3D mannequin so the Cat-VTON render keeps your face.
+                      Conditions the local SDXL model with your portrait so the generated mannequin includes your face.
                     </p>
                   </div>
                   <button
@@ -1565,7 +1628,7 @@ export default function TryOnTab() {
             <div className="w-28 h-36 mx-auto rounded-2xl overflow-hidden border-2 border-turquoise shadow-md bg-[#E8E5EE]">
               <img
                 src={poseSnapshot}
-                alt="Captured 3D mannequin pose"
+                alt="Captured 2D pose skeleton reference"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -1605,7 +1668,7 @@ export default function TryOnTab() {
       {step === "preview" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <AIStatusPill state="success" label="cat-VTON Pose Render Ready" />
+            <AIStatusPill state="success" label="AI Virtual Try-On Render Ready" />
             <div
               role="tablist"
               aria-label="Preview display mode"
@@ -1615,7 +1678,6 @@ export default function TryOnTab() {
                 [
                   { id: "ai", label: "✨ AI Photo" },
                   { id: "compare", label: "🔀 Compare" },
-                  { id: "studio3d", label: "🧍 3D View" },
                 ] as const
               ).map((mode) => (
                 <button
@@ -1638,55 +1700,56 @@ export default function TryOnTab() {
 
           {/* Preview Canvas / Comparison Grid */}
           {resultView === "ai" && generatedImage && (
-            <div className="rounded-3xl overflow-hidden border-2 border-border bg-[#E8E5EE] shadow-xl h-[clamp(300px,46dvh,420px)]">
+            <div
+              className="relative rounded-3xl overflow-hidden border-2 border-border shadow-xl mx-auto aspect-[3/4] max-h-[440px] w-full max-w-[330px]"
+              style={{ background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg }}
+            >
+              <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
+                <StudioBackdropCornerBar
+                  value={backdropPreset}
+                  onChange={setBackdropPreset}
+                />
+              </div>
               <img
                 src={generatedImage}
                 alt={`AI virtual try-on of ${selectedOutfit.label}`}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
               />
             </div>
           )}
 
           {resultView === "compare" && (
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-2xl overflow-hidden border-2 border-border bg-[#E8E5EE] shadow-md flex flex-col">
+              <div
+                className="rounded-2xl overflow-hidden border-2 border-border shadow-md flex flex-col"
+                style={{ background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg }}
+              >
                 <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-white/90 text-neutral-800 border-b border-black/10">
-                  Posed 3D Snapshot
+                  Pose Reference
                 </span>
-                {poseSnapshot && (
+                {(barePoseSnapshot || poseSnapshot) && (
                   <img
-                    src={poseSnapshot}
-                    alt="Posed 3D mannequin snapshot"
+                    src={barePoseSnapshot || poseSnapshot || ""}
+                    alt="Pose silhouette reference"
                     className="w-full h-[260px] object-contain"
                   />
                 )}
               </div>
-              <div className="rounded-2xl overflow-hidden border-2 border-pink bg-[#E8E5EE] shadow-md flex flex-col">
+              <div
+                className="rounded-2xl overflow-hidden border-2 border-pink shadow-md flex flex-col"
+                style={{ background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg }}
+              >
                 <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-pink text-white">
                   AI Try-On Render
                 </span>
                 {generatedImage && (
                   <img
                     src={generatedImage}
-                    alt={`Cat-VTON render for ${selectedOutfit.label}`}
+                    alt={`Virtual Try-On render for ${selectedOutfit.label}`}
                     className="w-full h-[260px] object-contain"
                   />
                 )}
               </div>
-            </div>
-          )}
-
-          {resultView === "studio3d" && (
-            <div className="rounded-3xl overflow-hidden border-2 border-border bg-[#E8E5EE] shadow-xl h-[300px]">
-              <TryOnMannequin3D
-                compact
-                customization={customization}
-                pose={pose}
-                selectedJoint={selectedJoint}
-                onSelectJoint={setSelectedJoint}
-                onChangeJoint={handleChangeJoint}
-                facePreviewUrl={defaultFacePortrait}
-              />
             </div>
           )}
 
@@ -1735,7 +1798,7 @@ export default function TryOnTab() {
             title="Virtual Try-On Generation Failed"
             message={
               generationError ||
-              "The Cat-VTON request failed. Retry with your current pose or return to the 3D studio."
+              "The local AI model failed to generate this try-on image. Retry or return to the pose studio."
             }
             actions={[
               {

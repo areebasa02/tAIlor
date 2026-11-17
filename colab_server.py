@@ -15,6 +15,7 @@ http://127.0.0.1:8000/v1 or the GPU computer's private address.
 from __future__ import annotations
 
 import base64
+import gc
 import io
 import json
 import os
@@ -23,6 +24,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import cv2
+import numpy as np
 import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -42,6 +45,14 @@ def load_local_env() -> None:
 
 
 load_local_env()
+# hf-xet can stall on Windows/certain networks during large multi-GB downloads; fall back to standard HTTPS unless opted in.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
+from tryon_sdxl import (  # noqa: E402
+    TRYON_SDXL_MODEL,
+    generate_sdxl_tryon,
+    render_openpose_from_keypoints,
+)
 
 TEXT_MODEL_ID = os.environ.get("LLM_TEXT_MODEL", "Qwen/Qwen2.5-3B-Instruct")
 VISION_MODEL_ID = os.environ.get("LLM_VISION_MODEL", "Qwen/Qwen2.5-VL-3B-Instruct")
@@ -54,7 +65,19 @@ TEXT_DEVICE = os.environ.get(
     "LLM_TEXT_DEVICE",
     "cuda" if torch.cuda.is_available() else "cpu",
 ).lower()
-# Optional — Qwen models download anonymously; only set if your mirror requires it.
+TRYON_SDXL_MODEL = os.environ.get("TRYON_SDXL_MODEL", TRYON_SDXL_MODEL)
+TRYON_VAE_MODEL = os.environ.get("TRYON_VAE_MODEL", "madebyollin/sdxl-vae-fp16-fix")
+TRYON_CONTROLNET_MODEL = os.environ.get(
+    "TRYON_CONTROLNET_MODEL", "xinsir/controlnet-openpose-sdxl-1.0"
+)
+TRYON_IP_ADAPTER_REPO = os.environ.get("TRYON_IP_ADAPTER_REPO", "h94/IP-Adapter")
+TRYON_IP_ADAPTER_WEIGHT = os.environ.get(
+    "TRYON_IP_ADAPTER_WEIGHT", "ip-adapter-plus_sdxl_vit-h.safetensors"
+)
+TRYON_IP_ADAPTER_FACE_WEIGHT = os.environ.get(
+    "TRYON_IP_ADAPTER_FACE_WEIGHT", "ip-adapter-plus-face_sdxl_vit-h.safetensors"
+)
+# Optional — Qwen & RealVisXL weights download anonymously; only set if your mirror requires it.
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY") or None
 
 WARDROBE_CATEGORIES = ("Tops", "Bottoms", "Shoes", "Outerwear", "Accessories")
@@ -93,6 +116,68 @@ def _hf_kwargs() -> dict[str, Any]:
     return {"token": HF_TOKEN} if HF_TOKEN else {}
 
 
+def _dtype_kwarg(dtype: torch.dtype) -> dict[str, Any]:
+    import transformers
+    from packaging.version import Version
+
+    if Version(transformers.__version__) >= Version("4.56.0"):
+        return {"dtype": dtype}
+    return {"torch_dtype": dtype}
+
+
+def _model_is_quantized(model: Any) -> bool:
+    return bool(
+        model is not None
+        and (
+            getattr(model, "is_loaded_in_4bit", False)
+            or getattr(model, "is_loaded_in_8bit", False)
+            or getattr(model, "quantization_method", None) is not None
+        )
+    )
+
+
+def _current_device_str(model: Any) -> str:
+    if model is None:
+        return "unloaded"
+    try:
+        return str(next(model.parameters()).device)
+    except StopIteration:
+        return "unknown"
+
+
+def _move_unquantized(model: Any, target: str) -> str:
+    if model is None:
+        return "unloaded"
+    if _model_is_quantized(model) or hasattr(model, "hf_device_map"):
+        return _current_device_str(model)
+    cur = _current_device_str(model)
+    if cur == target or (target == "cuda" and cur.startswith("cuda")):
+        return cur
+    model.to(target)
+    return _current_device_str(model)
+
+
+def _free_cuda_vram(min_free_gb: float = 0.0, *, offload_text: bool = False, offload_vision: bool = False) -> None:
+    global text_model_device, vision_model_device
+    if not torch.cuda.is_available():
+        return
+    if offload_text and text_model is not None:
+        text_model_device = _move_unquantized(text_model, "cpu")
+    if offload_vision and vision_model is not None:
+        vision_model_device = _move_unquantized(vision_model, "cpu")
+    gc.collect()
+    torch.cuda.empty_cache()
+    if min_free_gb > 0:
+        free_bytes, _ = torch.cuda.mem_get_info()
+        if free_bytes < min_free_gb * (1024**3):
+            if text_model is not None and not offload_text:
+                text_model_device = _move_unquantized(text_model, "cpu")
+            if vision_model is not None and not offload_vision:
+                vision_model_device = _move_unquantized(vision_model, "cpu")
+            gc.collect()
+            torch.cuda.empty_cache()
+
+
 def load_models() -> None:
     global text_tokenizer, text_model, text_model_device
     global vision_processor, vision_model, vision_model_device
@@ -103,15 +188,17 @@ def load_models() -> None:
         else torch.float32
     )
     text_on_cpu = TEXT_DEVICE == "cpu"
-    common = {
-        "torch_dtype": dtype,
-        "device_map": "auto",
+    use_quant = QUANTIZE_MODELS and has_cuda and not text_on_cpu
+
+    text_common: dict[str, Any] = {
+        **_dtype_kwarg(torch.float32 if text_on_cpu else dtype),
+        "low_cpu_mem_usage": True,
         **_hf_kwargs(),
     }
-    text_common = dict(common)
-    if QUANTIZE_MODELS and has_cuda and not text_on_cpu:
+    if use_quant:
         from transformers import BitsAndBytesConfig
 
+        text_common["device_map"] = "auto"
         if QUANT_BITS == 4:
             text_common["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -121,16 +208,13 @@ def load_models() -> None:
             )
         else:
             text_common["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-    text_common = (
-        {
-            **text_common,
-            "device_map": {"": "cpu"},
-            "torch_dtype": torch.float32,
-        }
-        if text_on_cpu
-        else text_common
-    )
-    vision_common = common
+
+    vision_common: dict[str, Any] = {
+        **_dtype_kwarg(dtype),
+        "low_cpu_mem_usage": True,
+        **_hf_kwargs(),
+    }
+
     from transformers import (
         AutoModelForCausalLM,
         AutoProcessor,
@@ -139,20 +223,24 @@ def load_models() -> None:
     )
 
     if LOAD_MODE in {"both", "text"}:
-        print(f"Loading text model {TEXT_MODEL_ID}…")
+        print(f"Loading text model {TEXT_MODEL_ID}…", flush=True)
         text_tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_ID, **_hf_kwargs())
         text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_ID, **text_common)
-        text_model_device = str(next(text_model.parameters()).device)
-        print(f"Text model ready on {text_model_device} (dtype={dtype}, quantize={QUANTIZE_MODELS and has_cuda and not text_on_cpu})")
+        if not use_quant:
+            text_model.to("cpu" if text_on_cpu or not has_cuda else "cuda:0")
+        text_model_device = _current_device_str(text_model)
+        print(f"Text model ready on {text_model_device} (dtype={dtype}, quantize={use_quant})", flush=True)
 
     if LOAD_MODE in {"both", "vision"}:
-        print(f"Loading vision model {VISION_MODEL_ID}…")
+        print(f"Loading vision model {VISION_MODEL_ID}…", flush=True)
         vision_processor = AutoProcessor.from_pretrained(VISION_MODEL_ID, **_hf_kwargs())
         vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             VISION_MODEL_ID, **vision_common
         )
-        vision_model_device = str(next(vision_model.parameters()).device)
-        print(f"Vision model ready on {vision_model_device} (dtype={dtype})")
+        if has_cuda:
+            vision_model.to("cuda:0")
+        vision_model_device = _current_device_str(vision_model)
+        print(f"Vision model ready on {vision_model_device} (dtype={dtype})", flush=True)
 
 
 load_models()
@@ -174,6 +262,35 @@ class WardrobeScanRequest(BaseModel):
     image: str = Field(..., description="Base64-encoded image (raw or data-URL)")
     mime_type: str | None = Field(default="image/jpeg", alias="mimeType")
     mock_sample: str | None = Field(default=None, alias="mockSample")
+
+    model_config = {"populate_by_name": True}
+
+
+class TryOnGarmentInput(BaseModel):
+    image_url: str | None = Field(default=None, alias="imageUrl")
+    description: str = ""
+    type: str = ""
+    color: str = ""
+    color_name: str = Field(default="", alias="colorName")
+    material: str = ""
+
+    model_config = {"populate_by_name": True}
+
+
+class TryOnRequest(BaseModel):
+    mannequin_image: str | None = Field(default=None, alias="mannequinImage")
+    openpose_image: str | None = Field(default=None, alias="openposeImage")
+    dressed_image: str | None = Field(default=None, alias="dressedImage")
+    garments: list[TryOnGarmentInput] = Field(default_factory=list)
+    keypoints: dict[str, list[float]] | None = None
+    camera_preset: str | None = Field(default="front", alias="cameraPreset")
+    backdrop_preset: str | None = Field(default="cyclorama", alias="backdropPreset")
+    include_my_face: bool = Field(default=False, alias="includeMyFace")
+    face_image: str | None = Field(default=None, alias="faceImage")
+    pose_label: str | None = Field(default=None, alias="poseLabel")
+    body_preset: str | None = Field(default=None, alias="bodyPreset")
+    material_id: str | None = Field(default="porcelain", alias="materialId")
+    seed: int | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -265,6 +382,26 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ensure_text_device() -> torch.device:
+    global text_model_device
+    if torch.cuda.is_available() and TEXT_DEVICE != "cpu" and not _model_is_quantized(text_model):
+        cur = _current_device_str(text_model)
+        if not cur.startswith("cuda"):
+            _free_cuda_vram(min_free_gb=6.8, offload_vision=True)
+            text_model_device = _move_unquantized(text_model, "cuda:0")
+    return next(text_model.parameters()).device
+
+
+def _ensure_vision_device() -> torch.device:
+    global vision_model_device
+    if torch.cuda.is_available() and not _model_is_quantized(vision_model):
+        cur = _current_device_str(vision_model)
+        if not cur.startswith("cuda"):
+            _free_cuda_vram(min_free_gb=8.2, offload_text=True)
+            vision_model_device = _move_unquantized(vision_model, "cuda:0")
+    return next(vision_model.parameters()).device
+
+
 def generate_text_only(messages: list[dict[str, Any]], max_tokens: int, temperature: float) -> str:
     if text_tokenizer is None or text_model is None:
         raise HTTPException(
@@ -272,12 +409,12 @@ def generate_text_only(messages: list[dict[str, Any]], max_tokens: int, temperat
             detail=f"Text model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
     with gpu_lock:
+        target_device = _ensure_text_device()
         prompt = text_tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
-        target_device = next(text_model.parameters()).device
         inputs = text_tokenizer(prompt, return_tensors="pt").to(target_device)
         do_sample = (not QUANTIZE_MODELS) and temperature > 0.35
         gen_kwargs: dict[str, Any] = {
@@ -306,6 +443,7 @@ def generate_vl(
             detail=f"Vision model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
     with gpu_lock:
+        target_device = _ensure_vision_device()
         content: list[dict[str, Any]] = []
         if image is not None:
             content.append({"type": "image"})
@@ -315,7 +453,6 @@ def generate_vl(
         kwargs: dict[str, Any] = {"text": [prompt], "padding": True, "return_tensors": "pt"}
         if image is not None:
             kwargs["images"] = [image]
-        target_device = next(vision_model.parameters()).device
         inputs = vision_processor(**kwargs)
         inputs = {
             key: value.to(target_device) if hasattr(value, "to") else value
@@ -380,21 +517,34 @@ def health():
         "models": {
             "text": TEXT_MODEL_ID,
             "vision": VISION_MODEL_ID,
+            "tryon": TRYON_SDXL_MODEL,
         },
         "loaded": {
             "text": text_model is not None,
             "vision": vision_model is not None,
         },
         "devices": {
-            "text": text_model_device,
-            "vision": vision_model_device,
+            "text": _current_device_str(text_model),
+            "vision": _current_device_str(vision_model),
         },
         "text_device_config": TEXT_DEVICE,
         "quantized": text_quantized,
         "quant_bits": QUANT_BITS if text_quantized else None,
         "text_quantized": text_quantized,
         "vision_quantized": False,
-        "endpoints": ["/health", "/v1/chat/completions", "/v1/wardrobe/scan"],
+        "endpoints": ["/health", "/v1/models", "/v1/chat/completions", "/v1/wardrobe/scan", "/v1/try-on"],
+    }
+
+
+@app.get("/v1/models")
+def list_models():
+    return {
+        "object": "list",
+        "data": [
+            {"id": TEXT_MODEL_ID, "object": "model", "owned_by": "local"},
+            {"id": VISION_MODEL_ID, "object": "model", "owned_by": "local"},
+            {"id": TRYON_SDXL_MODEL, "object": "model", "owned_by": "local"},
+        ],
     }
 
 
@@ -455,6 +605,150 @@ def wardrobe_scan(request: WardrobeScanRequest):
         "model": VISION_MODEL_ID,
         "source": "qwen-vl",
         "raw": raw_text[:800],
+    }
+
+
+def decode_image_fullres(image_b64: str) -> Image.Image:
+    raw = image_b64.strip()
+    if raw.startswith("data:") and "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        data = base64.b64decode(raw, validate=False)
+        return Image.open(io.BytesIO(data)).convert("RGB")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid try-on image: {exc}") from exc
+
+
+PUBLIC_WARDROBE_DIR = Path(__file__).resolve().parent / "public" / "wardrobe"
+
+
+def _slugify_garment(name: str) -> str:
+    s = name.lower().strip().replace("&", "and")
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
+
+
+def load_garment_rgba(garment: TryOnGarmentInput) -> tuple[np.ndarray, np.ndarray] | None:
+    """Resolve a garment's RGB image + clean foreground alpha mask [0..1] from local assets or data URL."""
+    img_pil: Image.Image | None = None
+    slug = _slugify_garment(garment.description)
+    if slug:
+        local_path = PUBLIC_WARDROBE_DIR / f"{slug}.png"
+        if local_path.exists():
+            img_pil = Image.open(local_path).convert("RGBA")
+
+    if img_pil is None and garment.image_url:
+        url = garment.image_url.strip()
+        if "/wardrobe/" in url and not url.startswith("data:"):
+            fname = url.split("/wardrobe/", 1)[1].split("?", 1)[0].strip("/")
+            candidate = PUBLIC_WARDROBE_DIR / fname
+            if candidate.exists():
+                img_pil = Image.open(candidate).convert("RGBA")
+        elif url.startswith("data:"):
+            raw = url.split(",", 1)[1] if "," in url else url
+            try:
+                img_pil = Image.open(io.BytesIO(base64.b64decode(raw, validate=False))).convert("RGBA")
+            except Exception:  # noqa: BLE001
+                img_pil = None
+
+    if img_pil is None:
+        return None
+
+    arr = np.array(img_pil)
+    rgb = arr[:, :, :3].astype(np.float32) / 255.0
+    alpha_ch = arr[:, :, 3].astype(np.float32) / 255.0
+    if float(alpha_ch.min()) < 0.96:
+        return rgb, alpha_ch
+
+    # Floating flood-fill from studio corners separates even crisp white tees/sneakers cleanly
+    h, w = arr.shape[:2]
+    bgr_u8 = arr[:, :, :3].copy()
+    ff_mask = np.zeros((h + 2, w + 2), np.uint8)
+    for sx, sy in ((3, 3), (w - 4, 3), (3, h - 4), (w - 4, h - 4)):
+        cv2.floodFill(
+            bgr_u8,
+            ff_mask,
+            (sx, sy),
+            (0, 0, 0),
+            (2, 2, 2),
+            (2, 2, 2),
+            4 | (255 << 8) | cv2.FLOODFILL_MASK_ONLY,
+        )
+    fg = (ff_mask[1:-1, 1:-1] == 0).astype(np.float32)
+    area = float(fg.mean())
+    if area < 0.015 or area > 0.90:
+        corner = np.median(
+            np.concatenate([rgb[:12, :12], rgb[:12, -12:], rgb[-12:, :12], rgb[-12:, -12:]]),
+            axis=(0, 1),
+        )
+        dist = np.linalg.norm(rgb - corner[None, None, :], axis=2)
+        fg = np.clip((dist - 0.05) / 0.06, 0.0, 1.0)
+
+    fg_bin = (fg > 0.4).astype(np.uint8) * 255
+    fg_bin = cv2.morphologyEx(fg_bin, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    alpha = cv2.GaussianBlur(fg_bin.astype(np.float32) / 255.0, (3, 3), 0.7)
+    return rgb, np.clip(alpha, 0.0, 1.0)
+
+
+@app.post("/v1/try-on")
+def virtual_try_on(request: TryOnRequest):
+    """Local RTX GPU try-on studio generator (SDXL + OpenPose ControlNet + IP-Adapter)."""
+    if request.openpose_image:
+        openpose_img = decode_image_fullres(request.openpose_image)
+    elif request.keypoints:
+        openpose_img = render_openpose_from_keypoints(
+            request.keypoints,
+            include_face_features=bool(request.include_my_face and request.face_image),
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="openposeImage or keypoints is required for pose-conditioned try-on generation.",
+        )
+
+    face_img = (
+        decode_image_fullres(request.face_image)
+        if (request.include_my_face and request.face_image)
+        else None
+    )
+
+    with gpu_lock:
+        # Offload Qwen text/vision weights to system RAM before running SDXL + ControlNet + IP-Adapter
+        # so diffusion stays well inside 24 GB VRAM without OOM.
+        _free_cuda_vram(offload_text=True, offload_vision=True)
+        try:
+            rendered = generate_sdxl_tryon(
+                openpose_img=openpose_img,
+                garments=request.garments,
+                load_rgba_fn=load_garment_rgba,
+                camera_preset=request.camera_preset,
+                backdrop_preset=request.backdrop_preset,
+                pose_label=request.pose_label,
+                body_preset=request.body_preset,
+                material_id=request.material_id,
+                include_my_face=request.include_my_face,
+                face_img=face_img,
+                seed=request.seed,
+                hf_token=HF_TOKEN,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=502,
+                detail=f"Local SDXL Try-On generation failed: {exc}",
+            ) from exc
+
+    buf = io.BytesIO()
+    rendered.save(buf, format="JPEG", quality=93, optimize=True)
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return {
+        "imageUrl": f"data:image/jpeg;base64,{b64}",
+        "model": TRYON_SDXL_MODEL,
+        "runs": max(1, len(request.garments)),
     }
 
 
