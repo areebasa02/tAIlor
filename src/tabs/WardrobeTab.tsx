@@ -55,6 +55,7 @@ export default function WardrobeTab() {
   const [scanError, setScanError] = useState("")
   const [scanSource, setScanSource] = useState<string>("")
   const [scanNote, setScanNote] = useState("")
+  const [pendingImageData, setPendingImageData] = useState<string | undefined>()
   const [detectedItem, setDetectedItem] = useState<WardrobeScanItem>({
     name: "Teal Gabardine Trench",
     color: THEME_COLORS.darkTeal,
@@ -153,8 +154,10 @@ export default function WardrobeTab() {
         const encoded = await fileToBase64(options.file)
         image = encoded.base64
         mimeType = encoded.mimeType
+        setPendingImageData(`data:${mimeType};base64,${image}`)
         setUploadProgress(55)
       } else {
+        setPendingImageData(undefined)
         setUploadProgress(45)
       }
 
@@ -188,6 +191,7 @@ export default function WardrobeTab() {
       category: detectedItem.category,
       color: detectedItem.color,
       colorName: detectedItem.colorName,
+      imageData: pendingImageData,
       worn: 0,
       favorite: false,
       material: detectedItem.material || "Detected by AI",
@@ -204,6 +208,7 @@ export default function WardrobeTab() {
     )
     setAddStep("closed")
     setUploadState("empty")
+    setPendingImageData(undefined)
     setScanNote("")
     setScanSource("")
   }
@@ -288,6 +293,10 @@ export default function WardrobeTab() {
             onClick={() => {
               setAddStep("photo")
               setUploadState("empty")
+              setPendingImageData(undefined)
+              setScanError("")
+              setScanNote("")
+              setScanSource("")
             }}
             aria-label="Add wardrobe item"
             className="h-8 px-3 rounded-full flex items-center justify-center font-bold text-xs gap-1 shadow-md shadow-pink/20 transition-all active:scale-95 bg-pink text-white hover:brightness-110"
@@ -369,6 +378,7 @@ export default function WardrobeTab() {
             onRetake={() => {
               setScanError("")
               setScanNote("")
+              setPendingImageData(undefined)
               setUploadState("empty")
               setUploadProgress(0)
             }}
@@ -643,9 +653,17 @@ export default function WardrobeTab() {
               className="h-24 relative flex items-center justify-center p-3"
               style={{ background: item.color }}
             >
-              <span className="text-3xl drop-shadow-md select-none group-hover:scale-110 transition-transform">
-                {CATEGORY_EMOJI[item.category] ?? "👗"}
-              </span>
+              {item.imageData ? (
+                <img
+                  src={item.imageData}
+                  alt={item.name}
+                  className="h-full w-full object-contain drop-shadow-md group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <span className="text-3xl drop-shadow-md select-none group-hover:scale-110 transition-transform">
+                  {CATEGORY_EMOJI[item.category] ?? "👗"}
+                </span>
+              )}
 
               {/* Favorite Heart Button */}
               <button
@@ -727,10 +745,18 @@ export default function WardrobeTab() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-md shrink-0 border border-white/10"
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-md shrink-0 border border-white/10 overflow-hidden"
                   style={{ background: selectedItem.color }}
                 >
-                  {CATEGORY_EMOJI[selectedItem.category] ?? "👗"}
+                  {selectedItem.imageData ? (
+                    <img
+                      src={selectedItem.imageData}
+                      alt={selectedItem.name}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    CATEGORY_EMOJI[selectedItem.category] ?? "👗"
+                  )}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white leading-tight">
