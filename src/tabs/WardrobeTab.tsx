@@ -13,7 +13,7 @@ import {
   speakText,
   stopSpeaking,
 } from "../services/accessibilityHelpers"
-import type { Category, WardrobeItem } from "../types"
+import type { Category, FavoriteOutfit, FavoriteOutfitItem, WardrobeItem } from "../types"
 import { THEME_COLORS } from "../types/theme"
 
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -45,8 +45,13 @@ export default function WardrobeTab() {
     markItemWorn,
     user,
     showToast,
+    favoriteOutfits,
+    saveFavoriteOutfit,
+    removeFavoriteOutfit,
+    setActiveTryOnOutfit,
+    setRequestedTab,
   } = useApp()
-  const [section, setSection] = useState<"wardrobe" | "colors">("wardrobe")
+  const [section, setSection] = useState<"wardrobe" | "favorites" | "colors">("wardrobe")
   const [cat, setCat] = useState<Category | "All">("All")
   const [search, setSearch] = useState("")
   const [favoritesOnly, setFavoritesOnly] = useState(false)
@@ -55,6 +60,14 @@ export default function WardrobeTab() {
   const [addStep, setAddStep] = useState<AddStep>("closed")
   const [selectedItem, setSelectedItem] = useState<WardrobeItem | null>(null)
   const [speakingItem, setSpeakingItem] = useState(false)
+
+  // Favorite Outfit Builder state
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [favLabel, setFavLabel] = useState("")
+  const [favTopId, setFavTopId] = useState<number | "">("")
+  const [favBottomId, setFavBottomId] = useState<number | "">("")
+  const [favShoesId, setFavShoesId] = useState<number | "">("")
+  const [favOuterId, setFavOuterId] = useState<number | "">("")
 
   useEffect(() => () => stopSpeaking(), [])
 
@@ -258,21 +271,71 @@ export default function WardrobeTab() {
     setAddStep("closed")
   }
 
-  if (section === "colors") {
-    return (
-      <div>
-        <div className="pb-1">
-          <button
-            type="button"
-            onClick={() => setSection("wardrobe")}
-            className="text-xs font-semibold text-turquoise hover:underline transition-colors cursor-pointer"
-          >
-            ← Wardrobe
-          </button>
-        </div>
-        <ColorsTab />
-      </div>
-    )
+  const topsPool = wardrobe.filter((w) => w.category === "Tops")
+  const bottomsPool = wardrobe.filter((w) => w.category === "Bottoms")
+  const shoesPool = wardrobe.filter((w) => w.category === "Shoes")
+  const outerPool = wardrobe.filter((w) => w.category === "Outerwear")
+
+  const openBuilderWithDefaults = () => {
+    setBuilderOpen((prev) => {
+      const next = !prev
+      if (next) {
+        if (favTopId === "" && topsPool[0]) setFavTopId(topsPool[0].id)
+        if (favBottomId === "" && bottomsPool[0]) setFavBottomId(bottomsPool[0].id)
+        if (favShoesId === "" && shoesPool[0]) setFavShoesId(shoesPool[0].id)
+      }
+      return next
+    })
+  }
+
+  const buildFavoriteFromForm = (): FavoriteOutfit | null => {
+    const picked: WardrobeItem[] = []
+    const top = topsPool.find((i) => i.id === favTopId)
+    const bottom = bottomsPool.find((i) => i.id === favBottomId)
+    const outer = outerPool.find((i) => i.id === favOuterId)
+    const shoes = shoesPool.find((i) => i.id === favShoesId)
+    if (top) picked.push(top)
+    if (outer) picked.push(outer)
+    if (bottom) picked.push(bottom)
+    if (shoes) picked.push(shoes)
+
+    if (picked.length < 2) {
+      showToast(
+        "Pick at least 2 pieces",
+        "Select at least two wardrobe pieces (such as a Top and Bottom) to build an outfit.",
+        "warning",
+      )
+      return null
+    }
+
+    const items: FavoriteOutfitItem[] = picked.map((w) => ({
+      type:
+        w.category === "Accessories"
+          ? "Accessory"
+          : w.category === "Outerwear"
+            ? "Outerwear"
+            : w.category.slice(0, -1),
+      name: w.name,
+      color: w.color,
+      emoji: CATEGORY_EMOJI[w.category] || "👕",
+      imageData: w.imageData,
+      wardrobeItemId: w.id,
+    }))
+
+    const autoLabel =
+      picked
+        .slice(0, 2)
+        .map((p) => p.name)
+        .join(" & ") || "Custom Favorite Look"
+
+    return {
+      id: `fav-${Date.now()}`,
+      label: favLabel.trim() || autoLabel,
+      tagline: `Built from ${picked.length} closet pieces`,
+      colors: picked.slice(0, 3).map((p) => p.color),
+      items,
+      createdAt: new Date().toISOString(),
+    }
   }
 
   const showListen = Boolean(
@@ -291,42 +354,374 @@ export default function WardrobeTab() {
             {user.name.split(" ")[0]}&apos;s Closet
           </h1>
           <p className="text-xs font-semibold text-muted-foreground leading-snug mt-0.5">
-            {wardrobe.length} pieces ·{" "}
-            {wardrobe.filter((i) => i.favorite).length} favorites
+            {wardrobe.length} pieces · {favoriteOutfits.length} favorite outfit
+            {favoriteOutfits.length === 1 ? "" : "s"}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setSection("colors")}
-            aria-label="Open Color matcher"
-            className="min-h-[40px] rounded-xl px-3 flex items-center justify-center gap-1.5 text-xs font-extrabold whitespace-nowrap shrink-0 transition-transform active:scale-95 bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
-            title="Check colors & pairings"
-          >
-            <span aria-hidden="true">🎨</span>
-            <span>Colors</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAddStep("photo")
-              setUploadState("empty")
-              setScanError("")
-              setScanNote("")
-              setPendingImageData(undefined)
-            }}
-            aria-label="Add wardrobe item"
-            className="min-h-[40px] px-3.5 rounded-xl flex items-center justify-center font-black text-xs gap-1 whitespace-nowrap shrink-0 shadow-md shadow-pink/25 transition-all active:scale-95 bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 cursor-pointer"
-          >
-            <span aria-hidden="true">+</span>
-            <span>Add</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSection("wardrobe")
+            setAddStep("photo")
+            setUploadState("empty")
+            setScanError("")
+            setScanNote("")
+            setPendingImageData(undefined)
+          }}
+          aria-label="Add wardrobe item"
+          className="min-h-[40px] px-3.5 rounded-xl flex items-center justify-center font-black text-xs gap-1 whitespace-nowrap shrink-0 shadow-md shadow-pink/25 transition-all active:scale-95 bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 cursor-pointer"
+        >
+          <span aria-hidden="true">+</span>
+          <span>Add Piece</span>
+        </button>
       </div>
 
-      {/* Add Item — Photo flow with Live AI Recognition */}
+      {/* 3-Button Closet Section Bar */}
+      <div
+        role="tablist"
+        aria-label="Closet sections"
+        className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl border-2 border-border bg-muted"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "wardrobe"}
+          onClick={() => setSection("wardrobe")}
+          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
+            section === "wardrobe"
+              ? "bg-card text-foreground border-2 border-pink shadow-xs"
+              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
+          }`}
+        >
+          <span aria-hidden="true">👔 </span>Pieces ({wardrobe.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "favorites"}
+          onClick={() => setSection("favorites")}
+          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
+            section === "favorites"
+              ? "bg-card text-foreground border-2 border-pink shadow-xs"
+              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
+          }`}
+        >
+          <span aria-hidden="true">❤️ </span>Fav Outfits ({favoriteOutfits.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={section === "colors"}
+          onClick={() => setSection("colors")}
+          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
+            section === "colors"
+              ? "bg-card text-foreground border-2 border-turquoise shadow-xs"
+              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
+          }`}
+        >
+          <span aria-hidden="true">🎨 </span>Colors
+        </button>
+      </div>
+
+      {section === "colors" && <ColorsTab />}
+
+      {section === "favorites" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-black text-foreground">
+                Saved Favorite Outfits
+              </h2>
+              <p className="text-[11px] font-medium text-muted-foreground">
+                Ready for 1-tap loading in your 3D Mannequin Studio.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openBuilderWithDefaults}
+              className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-black bg-turquoise text-[#0D0F18] border-2 border-[#0D0F18]/20 hover:brightness-105 shadow-xs transition-all cursor-pointer shrink-0"
+            >
+              {builderOpen ? "Close Builder" : "+ Build New Favorite Outfit"}
+            </button>
+          </div>
+
+          {builderOpen && (
+            <div className="rounded-3xl p-4 space-y-3 border-2 border-turquoise bg-card shadow-lg animate-in fade-in duration-150">
+              <div>
+                <h3 className="text-sm font-black text-foreground">
+                  Build Favorite Outfit
+                </h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Mix pieces from your closet to save and try on your 3D mannequin.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="fav-outfit-label"
+                  className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                >
+                  Outfit Name (optional)
+                </label>
+                <input
+                  id="fav-outfit-label"
+                  value={favLabel}
+                  onChange={(e) => setFavLabel(e.target.value)}
+                  placeholder="e.g. Weekend Blue Denim Look"
+                  className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label
+                    htmlFor="fav-top-select"
+                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                  >
+                    Top
+                  </label>
+                  <select
+                    id="fav-top-select"
+                    value={favTopId}
+                    onChange={(e) =>
+                      setFavTopId(e.target.value ? Number(e.target.value) : "")
+                    }
+                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                  >
+                    <option value="">None</option>
+                    {topsPool.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="fav-bottom-select"
+                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                  >
+                    Bottom
+                  </label>
+                  <select
+                    id="fav-bottom-select"
+                    value={favBottomId}
+                    onChange={(e) =>
+                      setFavBottomId(e.target.value ? Number(e.target.value) : "")
+                    }
+                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                  >
+                    <option value="">None</option>
+                    {bottomsPool.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="fav-outer-select"
+                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                  >
+                    Outerwear (optional)
+                  </label>
+                  <select
+                    id="fav-outer-select"
+                    value={favOuterId}
+                    onChange={(e) =>
+                      setFavOuterId(e.target.value ? Number(e.target.value) : "")
+                    }
+                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                  >
+                    <option value="">None</option>
+                    {outerPool.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="fav-shoes-select"
+                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                  >
+                    Shoes
+                  </label>
+                  <select
+                    id="fav-shoes-select"
+                    value={favShoesId}
+                    onChange={(e) =>
+                      setFavShoesId(e.target.value ? Number(e.target.value) : "")
+                    }
+                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                  >
+                    <option value="">None</option>
+                    {shoesPool.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const built = buildFavoriteFromForm()
+                    if (!built) return
+                    saveFavoriteOutfit(built)
+                    setFavLabel("")
+                    setBuilderOpen(false)
+                  }}
+                  className="min-h-[42px] py-2 rounded-xl text-xs font-black bg-pink text-white border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-sm cursor-pointer"
+                >
+                  ♥ Save Favorite
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const built = buildFavoriteFromForm()
+                    if (!built) return
+                    saveFavoriteOutfit(built)
+                    setFavLabel("")
+                    setBuilderOpen(false)
+                    setActiveTryOnOutfit(built)
+                    setRequestedTab("tryon")
+                  }}
+                  className="min-h-[42px] py-2 rounded-xl text-xs font-black bg-turquoise text-[#0D0F18] border-2 border-[#0D0F18]/20 hover:brightness-105 shadow-sm cursor-pointer"
+                >
+                  🪞 Save & Try On
+                </button>
+              </div>
+            </div>
+          )}
+
+          {favoriteOutfits.length === 0 ? (
+            <div className="text-center py-8 rounded-3xl border-2 border-dashed border-border p-5 bg-card/60 space-y-2">
+              <span aria-hidden="true" className="text-3xl">
+                ❤️
+              </span>
+              <p className="text-sm font-black text-foreground">
+                No favorite outfits yet
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                Build a custom look above, favorite a recommendation on the Today tab, or use the manual outfit builder inside Try-On.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={openBuilderWithDefaults}
+                  className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-black bg-pink text-white border-2 border-[#0D0F18]/20 hover:brightness-110 cursor-pointer"
+                >
+                  + Build Favorite Outfit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestedTab("tryon")}
+                  className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-extrabold bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
+                >
+                  Open Try-On Studio →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {favoriteOutfits.map((outfit) => (
+                <div
+                  key={outfit.id}
+                  className="rounded-2xl p-3.5 space-y-2.5 border-2 border-border bg-card shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-black text-foreground leading-tight">
+                        {outfit.label}
+                      </h3>
+                      <p className="text-xs font-medium text-muted-foreground mt-0.5">
+                        {outfit.tagline}
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0 pt-0.5">
+                      {outfit.colors.map((c, idx) => (
+                        <div
+                          key={idx}
+                          aria-hidden="true"
+                          className="w-5 h-5 rounded-md border-2 border-foreground/20"
+                          style={{ background: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t-2 border-border">
+                    {outfit.items.map((item) => (
+                      <div
+                        key={`${outfit.id}-${item.type}-${item.name}`}
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-muted border border-border"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {item.imageData ? (
+                            <img
+                              src={item.imageData}
+                              alt={item.name}
+                              className="w-8 h-8 rounded-lg object-contain bg-card border border-border shrink-0"
+                            />
+                          ) : (
+                            <div
+                              aria-hidden="true"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center border border-border text-sm shrink-0"
+                              style={{ background: `${item.color}22` }}
+                            >
+                              {item.emoji}
+                            </div>
+                          )}
+                          <p className="text-xs font-bold text-foreground truncate">
+                            {item.name}
+                          </p>
+                        </div>
+                        <span className="text-[11px] uppercase tracking-wider font-extrabold text-muted-foreground shrink-0">
+                          {item.type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-[1fr_auto] gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTryOnOutfit(outfit)
+                        setRequestedTab("tryon")
+                      }}
+                      className="min-h-[42px] py-2 px-3 rounded-xl text-xs font-black bg-pink text-white border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-sm cursor-pointer"
+                    >
+                      🪞 Try On Mannequin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFavoriteOutfit(outfit.id)}
+                      className="min-h-[42px] py-2 px-3 rounded-xl text-xs font-extrabold bg-muted text-foreground border-2 border-border hover:border-red cursor-pointer"
+                    >
+                      Remove ♥
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === "wardrobe" && (
+        <>
+          {/* Add Item — Photo flow with Live AI Recognition */}
       {addStep === "photo" && (
         <div className="rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-xl border-2 border-border bg-card animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between">
@@ -866,6 +1261,8 @@ export default function WardrobeTab() {
             + Add Item
           </button>
         </div>
+      )}
+        </>
       )}
 
       {/* Item Detail Modal */}

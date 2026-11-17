@@ -234,14 +234,17 @@ async function handleTryOn(request, response) {
         .filter((garment) => garment.imageUrl)
         .slice(0, 2)
     : []
-  const mannequinImageUrl = process.env.FAL_MANNEQUIN_IMAGE_URL?.trim()
+  const customMannequinImage =
+    typeof body.mannequinImage === "string" ? body.mannequinImage.trim() : ""
+  const mannequinImageUrl =
+    customMannequinImage || process.env.FAL_MANNEQUIN_IMAGE_URL?.trim()
   if (!process.env.FAL_KEY) {
     sendJson(response, 503, { error: "FAL_KEY is not configured on the server." })
     return
   }
   if (!mannequinImageUrl) {
     sendJson(response, 503, {
-      error: "FAL_MANNEQUIN_IMAGE_URL is not configured on the server.",
+      error: "No mannequin pose image was provided and FAL_MANNEQUIN_IMAGE_URL is not configured.",
     })
     return
   }

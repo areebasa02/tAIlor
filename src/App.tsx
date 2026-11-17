@@ -42,6 +42,8 @@ function MainApp() {
     weather,
     wardrobe,
     showToast,
+    requestedTab,
+    setRequestedTab,
   } = useApp()
   const [tab, setTab] = useState<Tab>("home")
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -50,6 +52,13 @@ function MainApp() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [assistBarOpen, setAssistBarOpen] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
+
+  useEffect(() => {
+    if (requestedTab) {
+      setTab(requestedTab)
+      setRequestedTab(null)
+    }
+  }, [requestedTab, setRequestedTab])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

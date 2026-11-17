@@ -179,3 +179,65 @@ export interface FeedbackRecord {
   notes: string
   timestamp: string
 }
+
+export interface FavoriteOutfitItem {
+  type: string
+  name: string
+  color: string
+  emoji: string
+  imageData?: string
+  wardrobeItemId?: number
+}
+
+export interface FavoriteOutfit {
+  id: string
+  label: string
+  tagline: string
+  colors: string[]
+  items: FavoriteOutfitItem[]
+  createdAt?: string
+}
+
+export type MannequinBodyPreset =
+  | "petite"
+  | "standard"
+  | "athletic"
+  | "curvy"
+  | "tall"
+
+export type MannequinMaterialId =
+  | "porcelain"
+  | "bisque"
+  | "sand"
+  | "tan"
+  | "espresso"
+  | "walnut"
+  | "charcoal"
+
+export interface MannequinCustomization {
+  bodyPreset: MannequinBodyPreset
+  height: number
+  shoulders: number
+  chest: number
+  waistHips: number
+  limbBuild: number
+  materialId: MannequinMaterialId
+  includeMyFace: boolean
+  faceImageData?: string
+}
+
+export type MannequinJointId =
+  | "head"
+  | "torso"
+  | "shoulderL"
+  | "shoulderR"
+  | "elbowL"
+  | "elbowR"
+  | "hipL"
+  | "hipR"
+  | "kneeL"
+  | "kneeR"
+
+export type JointAngles = [number, number, number]
+
+export type MannequinPose = Record<MannequinJointId, JointAngles>

@@ -12,6 +12,8 @@ import type {
   QuizResult,
   FontScale,
   AccessibleFont,
+  FavoriteOutfit,
+  FavoriteOutfitItem,
 } from "../types"
 import { getContrastTextColor } from "../types"
 import { THEME_COLORS } from "../types/theme"
@@ -1337,15 +1339,84 @@ export interface AppContextType {
   accessibleFont: AccessibleFont
   setAccessibleFont: (font: AccessibleFont) => void
 
-  // Outfit favorites
+  // Outfit favorites & cross-tab Try-On navigation
   favoriteOutfitIds: string[]
-  toggleFavoriteOutfit: (outfitId: string) => void
+  favoriteOutfits: FavoriteOutfit[]
+  toggleFavoriteOutfit: (outfitId: string, outfitPayload?: FavoriteOutfit) => void
+  saveFavoriteOutfit: (outfit: FavoriteOutfit) => void
+  removeFavoriteOutfit: (id: string) => void
+  activeTryOnOutfit: FavoriteOutfit | null
+  setActiveTryOnOutfit: (outfit: FavoriteOutfit | null) => void
+  requestedTab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null
+  setRequestedTab: (
+    tab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null,
+  ) => void
 
   // Feedback notes
   outfitFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
   saveOutfitFeedback: (outfitId: string, notes: string, reasons?: string[]) => void
   garmentFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
   saveGarmentFeedback: (itemId: string, notes: string, reasons?: string[]) => void
+}
+
+function buildDefaultFavoriteOutfits(wardrobeItems: WardrobeItem[]): FavoriteOutfit[] {
+  const top = wardrobeItems.find((item) => item.id === 14)
+  const bottom = wardrobeItems.find((item) => item.id === 13)
+  if (!top || !bottom) return []
+  return [
+    {
+      id: "fav-blue-casual",
+      label: "Light Blue Button-Up & Blue Jeans",
+      tagline: "A clean, casual favorite ready for 3D posing & Cat-VTON",
+      colors: [top.color, bottom.color],
+      items: [
+        {
+          type: "Top",
+          name: top.name,
+          color: top.color,
+          emoji: "👕",
+          imageData: top.imageData,
+          wardrobeItemId: top.id,
+        },
+        {
+          type: "Bottom",
+          name: bottom.name,
+          color: bottom.color,
+          emoji: "👖",
+          imageData: bottom.imageData,
+          wardrobeItemId: bottom.id,
+        },
+      ],
+      createdAt: "Seeded favorite",
+    },
+  ]
+}
+
+function mapTodayOutfitToFavorite(
+  outfit: Outfit,
+  wardrobeItems: WardrobeItem[],
+): FavoriteOutfit {
+  const mappedItems: FavoriteOutfitItem[] = outfit.items.map((item) => {
+    const matched = wardrobeItems.find(
+      (w) => w.name.trim().toLowerCase() === item.desc.trim().toLowerCase(),
+    )
+    return {
+      type: item.type,
+      name: item.desc,
+      color: item.color,
+      emoji: item.emoji,
+      imageData: matched?.imageData,
+      wardrobeItemId: matched?.id,
+    }
+  })
+  return {
+    id: String(outfit.id || outfit.label),
+    label: outfit.label,
+    tagline: outfit.tagline || "Saved favorite outfit",
+    colors: mappedItems.map((i) => i.color).slice(0, 3),
+    items: mappedItems,
+    createdAt: new Date().toISOString(),
+  }
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -1528,6 +1599,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { }
     return getRecentLooksForPersona(pid)
   })
+
+  const [favoriteOutfits, setFavoriteOutfits] = useState<FavoriteOutfit[]>(() => {
+    const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
+    try {
+      const stored = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
+      if (stored !== null) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch { }
+    return buildDefaultFavoriteOutfits(wardrobe)
+  })
+  const [activeTryOnOutfit, setActiveTryOnOutfit] = useState<FavoriteOutfit | null>(null)
+  const [requestedTab, setRequestedTab] = useState<
+    "home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile" | null
+  >(null)
+
+  useEffect(() => {
+    try {
+      const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
+      localStorage.setItem(`tailor_favorite_outfit_objects_${pid}`, JSON.stringify(favoriteOutfits))
+    } catch { }
+  }, [favoriteOutfits, currentUser.id])
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
 
@@ -1768,22 +1862,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   const loadPersonaData = (pid: PersonaId) => {
+    let loadedWardrobe: WardrobeItem[]
     try {
       const storedW = localStorage.getItem(`tailor_wardrobe_${pid}`)
       const parsed = storedW ? JSON.parse(storedW) : null
-      setWardrobe(
-        Array.isArray(parsed)
-          ? ensureSeededTryOnItems(parsed)
-          : getWardrobeForPersona(pid),
-      )
+      loadedWardrobe = Array.isArray(parsed)
+        ? ensureSeededTryOnItems(parsed)
+        : getWardrobeForPersona(pid)
     } catch {
-      setWardrobe(getWardrobeForPersona(pid))
+      loadedWardrobe = getWardrobeForPersona(pid)
     }
+    setWardrobe(loadedWardrobe)
     try {
       const storedR = localStorage.getItem(`tailor_recent_looks_${pid}`)
       setRecentLooks(storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid))
     } catch {
       setRecentLooks(getRecentLooksForPersona(pid))
+    }
+    try {
+      const storedFavs = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
+      if (storedFavs !== null) {
+        const parsedFavs = JSON.parse(storedFavs)
+        setFavoriteOutfits(
+          Array.isArray(parsedFavs)
+            ? parsedFavs
+            : buildDefaultFavoriteOutfits(loadedWardrobe),
+        )
+      } else {
+        setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe))
+      }
+    } catch {
+      setFavoriteOutfits(buildDefaultFavoriteOutfits(loadedWardrobe))
     }
   }
 
@@ -2031,17 +2140,71 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
-  const toggleFavoriteOutfit = (outfitId: string) => {
-    setFavoriteOutfitIds((prev) => {
-      const exists = prev.includes(outfitId)
-      const next = exists ? prev.filter((id) => id !== outfitId) : [...prev, outfitId]
-      showToast(
-        exists ? "Removed from Favorites" : "Outfit Favorited ❤️",
-        exists ? "Look removed from saved favorites." : "Look saved to your favorites.",
-        "info",
-      )
-      return next
+  const saveFavoriteOutfit = (outfit: FavoriteOutfit) => {
+    setFavoriteOutfits((prev) => {
+      const existsIndex = prev.findIndex((o) => o.id === outfit.id)
+      if (existsIndex >= 0) {
+        const next = [...prev]
+        next[existsIndex] = outfit
+        return next
+      }
+      return [outfit, ...prev]
     })
+    setFavoriteOutfitIds((prev) =>
+      prev.includes(outfit.id) ? prev : [outfit.id, ...prev],
+    )
+    showToast(
+      "Outfit Favorited ❤️",
+      `"${outfit.label}" saved to Favorite Outfits.`,
+      "success",
+    )
+  }
+
+  const removeFavoriteOutfit = (id: string) => {
+    const target = favoriteOutfits.find((o) => o.id === id)
+    setFavoriteOutfits((prev) => prev.filter((o) => o.id !== id))
+    setFavoriteOutfitIds((prev) => prev.filter((fid) => fid !== id))
+    showToast(
+      "Removed from Favorites",
+      target
+        ? `"${target.label}" removed from Favorite Outfits.`
+        : "Look removed from Favorite Outfits.",
+      "info",
+    )
+  }
+
+  const toggleFavoriteOutfit = (outfitId: string, outfitPayload?: FavoriteOutfit) => {
+    const exists = favoriteOutfitIds.includes(outfitId)
+    setFavoriteOutfitIds((prev) =>
+      exists ? prev.filter((id) => id !== outfitId) : [...prev, outfitId],
+    )
+
+    const matchedSource =
+      outfitPayload ||
+      (String(currentOutfit?.id || currentOutfit?.label) === outfitId
+        ? mapTodayOutfitToFavorite(currentOutfit, wardrobe)
+        : (() => {
+            const found = Object.values(outfits).find(
+              (o) => String(o.id || o.label) === outfitId,
+            )
+            return found ? mapTodayOutfitToFavorite(found, wardrobe) : undefined
+          })())
+
+    if (matchedSource) {
+      setFavoriteOutfits((prev) => {
+        if (exists) {
+          return prev.filter((o) => o.id !== outfitId && o.id !== matchedSource.id)
+        }
+        if (prev.some((o) => o.id === matchedSource.id)) return prev
+        return [matchedSource, ...prev]
+      })
+    }
+
+    showToast(
+      exists ? "Removed from Favorites" : "Outfit Favorited ❤️",
+      exists ? "Look removed from saved favorites." : "Look saved to your favorites.",
+      "info",
+    )
   }
 
   const saveOutfitFeedback = (outfitId: string, notes: string, reasons?: string[]) => {
@@ -2118,7 +2281,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         accessibleFont,
         setAccessibleFont,
         favoriteOutfitIds,
+        favoriteOutfits,
         toggleFavoriteOutfit,
+        saveFavoriteOutfit,
+        removeFavoriteOutfit,
+        activeTryOnOutfit,
+        setActiveTryOnOutfit,
+        requestedTab,
+        setRequestedTab,
         outfitFeedbackNotes,
         saveOutfitFeedback,
         garmentFeedbackNotes,
