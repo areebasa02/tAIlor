@@ -19,6 +19,7 @@ import io
 import json
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,7 @@ text_model_device = "cpu"
 vision_processor = None
 vision_model = None
 vision_model_device = "cpu"
+gpu_lock = threading.Lock()
 
 
 def _hf_kwargs() -> dict[str, Any]:
@@ -95,10 +97,11 @@ def load_models() -> None:
         "device_map": "auto",
         **_hf_kwargs(),
     }
+    text_common = dict(common)
     if QUANTIZE_MODELS and has_cuda:
         from transformers import BitsAndBytesConfig
 
-        common["quantization_config"] = BitsAndBytesConfig(
+        text_common["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.float16,
@@ -106,12 +109,12 @@ def load_models() -> None:
         )
     text_common = (
         {
-            **common,
+            **text_common,
             "device_map": {"": "cpu"},
             "torch_dtype": torch.float32,
         }
         if text_on_cpu
-        else common
+        else text_common
     )
     vision_common = common
     from transformers import (
@@ -177,6 +180,7 @@ def decode_image(image_b64: str) -> Image.Image:
         image = Image.open(io.BytesIO(data)).convert("RGB")
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Could not decode image: {exc}") from exc
+    image.thumbnail((768, 768))
     return image
 
 
@@ -250,23 +254,24 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def generate_text_only(messages: list[dict[str, Any]], max_tokens: int, temperature: float) -> str:
-    assert text_tokenizer is not None and text_model is not None
-    prompt = text_tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    inputs = text_tokenizer(prompt, return_tensors="pt").to(text_model.device)
-    with torch.inference_mode():
-        output = text_model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
-            pad_token_id=text_tokenizer.eos_token_id,
+    with gpu_lock:
+        assert text_tokenizer is not None and text_model is not None
+        prompt = text_tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
         )
-    generated = output[0][inputs["input_ids"].shape[1] :]
-    return text_tokenizer.decode(generated, skip_special_tokens=True).strip()
+        inputs = text_tokenizer(prompt, return_tensors="pt").to(text_model.device)
+        with torch.inference_mode():
+            output = text_model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=temperature > 0,
+                pad_token_id=text_tokenizer.eos_token_id,
+            )
+        generated = output[0][inputs["input_ids"].shape[1] :]
+        return text_tokenizer.decode(generated, skip_special_tokens=True).strip()
 
 
 def generate_vl(
@@ -275,33 +280,34 @@ def generate_vl(
     max_tokens: int,
     temperature: float,
 ) -> str:
-    assert vision_processor is not None and vision_model is not None
-    content: list[dict[str, Any]] = []
-    if image is not None:
-        content.append({"type": "image"})
-    content.append({"type": "text", "text": user_text})
-    messages = [{"role": "user", "content": content}]
-    prompt = vision_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    kwargs: dict[str, Any] = {"text": [prompt], "padding": True, "return_tensors": "pt"}
-    if image is not None:
-        kwargs["images"] = [image]
-    inputs = vision_processor(**kwargs)
-    inputs = {
-        key: value.to(vision_model.device) if hasattr(value, "to") else value
-        for key, value in inputs.items()
-    }
-    with torch.inference_mode():
-        output = vision_model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
-        )
-    trimmed = [out[len(inp) :] for inp, out in zip(inputs["input_ids"], output)]
-    text = vision_processor.batch_decode(
-        trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-    )[0]
-    return text.strip()
+    with gpu_lock:
+        assert vision_processor is not None and vision_model is not None
+        content: list[dict[str, Any]] = []
+        if image is not None:
+            content.append({"type": "image"})
+        content.append({"type": "text", "text": user_text})
+        messages = [{"role": "user", "content": content}]
+        prompt = vision_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        kwargs: dict[str, Any] = {"text": [prompt], "padding": True, "return_tensors": "pt"}
+        if image is not None:
+            kwargs["images"] = [image]
+        inputs = vision_processor(**kwargs)
+        inputs = {
+            key: value.to(vision_model.device) if hasattr(value, "to") else value
+            for key, value in inputs.items()
+        }
+        with torch.inference_mode():
+            output = vision_model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=temperature > 0,
+            )
+        trimmed = [out[len(inp) :] for inp, out in zip(inputs["input_ids"], output)]
+        text = vision_processor.batch_decode(
+            trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+        return text.strip()
 
 
 def flatten_message_content(content: Any) -> tuple[str, Image.Image | None]:
@@ -343,6 +349,8 @@ def health():
         },
         "text_device_config": TEXT_DEVICE,
         "quantized": QUANTIZE_MODELS and torch.cuda.is_available(),
+        "text_quantized": QUANTIZE_MODELS and torch.cuda.is_available(),
+        "vision_quantized": False,
         "endpoints": ["/health", "/v1/chat/completions", "/v1/wardrobe/scan"],
     }
 

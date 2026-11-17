@@ -52,9 +52,10 @@ demo data.
    ```
 
 6. Restart with `pnpm dev`. Wardrobe photo uploads call Colab
-   `POST /v1/wardrobe/scan`. Both models use 4-bit NF4 quantization on a CUDA
-   runtime so they can share the T4. If the tunnel drops, the Node proxy reports the
-   live scan failure; use the explicit mock path only for demos.
+   `POST /v1/wardrobe/scan`. The text model uses 4-bit NF4 quantization on a
+   CUDA runtime, while the vision model stays in float16 to avoid quantizing
+   its vision tower. If the tunnel drops, the Node proxy reports the live scan
+   failure; use the explicit mock path only for demos.
 
 ### Colab server contract
 
@@ -153,7 +154,8 @@ Cloudflare.
    curl http://127.0.0.1:8000/health
    ```
 
-   The response should show both models, `quantized: true`, and CUDA devices.
+   The response should show both models, `text_quantized: true`,
+   `vision_quantized: false`, and CUDA devices.
 
 #### Connect tAIlor to the GPU computer
 
@@ -184,9 +186,9 @@ The proxy should report `mock: false` and the configured vision model.
 #### Local GPU memory fallback
 
 If the GPU cannot hold both full-precision models, set `LLM_QUANTIZE=true` and
-install `bitsandbytes`; this enables the 4-bit NF4 configuration used by
-Colab. Alternatively set `LLM_TEXT_DEVICE=cpu`, but stylist responses will be
-slower.
+install `bitsandbytes`; this enables 4-bit NF4 quantization for the text model
+only. The vision model remains float16 for compatibility. Alternatively set
+`LLM_TEXT_DEVICE=cpu`, but stylist responses will be slower.
 
 #### Equivalent server configuration
 

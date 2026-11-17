@@ -11,7 +11,7 @@ No Hugging Face token is required for Qwen/Qwen2.5-VL-3B-Instruct.
 # !nvidia-smi
 
 # ### Step 2: Install dependencies
-# !pip install -q "torch" "transformers>=4.49.0" "accelerate" "fastapi" "uvicorn" "pillow"
+# !pip install -q "torch" "transformers>=4.49.0" "accelerate" "bitsandbytes" "fastapi" "uvicorn" "pillow"
 
 # ### Step 3: Start the VL server
 import os
