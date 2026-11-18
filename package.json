@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "host": ".venv\\Scripts\\pythonw.exe scripts/host_tray.py",
     "server": "node server/server.mjs",
     "build": "vite build",
     "preview": "vite preview",

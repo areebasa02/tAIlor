@@ -238,6 +238,26 @@ You can also use `npm install && npm run build` if you prefer npm.
 
 A minimal Blueprint is provided in [`render.yaml`](./render.yaml) so Render can pick up the same static-site settings from the repo.
 
+### Hosting local GPU models for teammates via Render + Tailscale Funnel
+
+When Render serves the static site (`dist/`), teammates can run all three AI features (Stylist, Wardrobe Photo Scanner, and SDXL Try-On) against your PC's GPU while your PC is running:
+
+1. Enable **Tailscale Funnel** on your tailnet and confirm `tailscale status` gives your machine's `https://<host>.<tailnet>.ts.net` URL.
+2. Set in your local `.env`:
+   ```text
+   AI_SERVER_HOST=127.0.0.1
+   HOST=127.0.0.1
+   ALLOWED_ORIGINS=https://your-site.onrender.com
+   TAILSCALE_FUNNEL_URL=https://your-host.your-tailnet.ts.net
+   RENDER_SITE_URL=https://your-site.onrender.com
+   WARDROBE_SCAN_MOCK=false
+   ```
+3. In your Render Static Site's **Environment** settings, set:
+   ```text
+   VITE_API_BASE_URL=https://your-host.your-tailnet.ts.net
+   ```
+4. Launch `tAIlor AI Host` from your Desktop shortcut (or `pnpm host` / `scripts/launch-host.ps1`), which starts `colab_server.py` (`:8000`), `server/server.mjs` (`:8787`), and `tailscale funnel 8787`, and minimizes to the Windows system tray with live logs.
+
 ## Cat-VTON virtual try-on
 
 The virtual try-on endpoint uses fal's `fal-ai/image-apps-v2/virtual-try-on`

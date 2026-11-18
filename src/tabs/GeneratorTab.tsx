@@ -10,6 +10,8 @@ import {
   type VoiceState,
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
+import { AiHostNoticeBanner } from "../components/AiHostStatus"
+import { formatAiErrorMessage, getApiUrl } from "../lib/aiHost"
 import { getSampleGarmentImage } from "../data/personaData"
 import {
   getOutfitItemSelectionTags,
@@ -279,9 +281,9 @@ export default function GeneratorTab() {
         (w) => w.status !== "dirty" && w.status !== "washing"
       )
       const availableWardrobe = cleanWardrobe.length >= 3 ? cleanWardrobe : wardrobe
-      const response = await fetch("/api/stylist", {
+      const response = await fetch(getApiUrl("/api/stylist"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           event: promptPayload,
           dresscode: dresscode || "Smart-casual",
@@ -296,6 +298,11 @@ export default function GeneratorTab() {
           })),
         }),
       })
+
+      const contentType = response.headers.get("content-type") || ""
+      if (!contentType.includes("application/json")) {
+        throw new Error("Host PC AI server is offline or unreachable.")
+      }
 
       const result = (await response.json()) as {
         advice?: string
@@ -343,8 +350,7 @@ export default function GeneratorTab() {
         "success"
       )
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Please try again."
+      const message = formatAiErrorMessage(error, "Please try again.")
       setServiceErrorMessage(message)
       setStep("error")
       showToast("Stylist unavailable", message, "warning")
@@ -443,6 +449,8 @@ export default function GeneratorTab() {
           Tell us where you&apos;re going.
         </p>
       </div>
+
+      <AiHostNoticeBanner featureName="AI Stylist" />
 
       {/* Input Form */}
       {step === "input" && (

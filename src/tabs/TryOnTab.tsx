@@ -38,6 +38,8 @@ import {
   getGarmentImageForTryOn,
 } from "../lib/garmentFlatLay"
 import { fileToBase64 } from "../lib/wardrobeScan"
+import { AiHostNoticeBanner } from "../components/AiHostStatus"
+import { formatAiErrorMessage, submitAndPollTryOnJob } from "../lib/aiHost"
 import {
   getReadableColorLabel,
   speakText,
@@ -385,6 +387,7 @@ export default function TryOnTab() {
 
   const [step, setStep] = useState<Step>("studio")
   const [processingStage, setProcessingStage] = useState(0)
+  const [queueStatusText, setQueueStatusText] = useState<string | null>(null)
   const [poseSnapshot, setPoseSnapshot] = useState<string | null>(null)
   const [barePoseSnapshot, setBarePoseSnapshot] = useState<string | null>(null)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
@@ -398,6 +401,7 @@ export default function TryOnTab() {
   const lastOpenposeRef = useRef<string | null>(null)
   const faceUploadInputRef = useRef<HTMLInputElement | null>(null)
   const intervalRef = useRef<number | null>(null)
+  const tryOnAbortRef = useRef<AbortController | null>(null)
 
   const clearTimers = () => {
     if (intervalRef.current !== null) {
@@ -406,9 +410,18 @@ export default function TryOnTab() {
     }
   }
 
+  const cancelInflightTryOn = () => {
+    clearTimers()
+    if (tryOnAbortRef.current) {
+      tryOnAbortRef.current.abort()
+      tryOnAbortRef.current = null
+    }
+    setQueueStatusText(null)
+  }
+
   useEffect(() => {
     return () => {
-      clearTimers()
+      cancelInflightTryOn()
       stopSpeaking()
     }
   }, [])
@@ -674,11 +687,15 @@ export default function TryOnTab() {
     setGeneratedImage(null)
     setGenerationError("")
     setProcessingStage(0)
+    setQueueStatusText("Submitting to host GPU queue…")
     setStep("processing")
 
     intervalRef.current = window.setInterval(() => {
       setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
     }, 850)
+
+    const abortController = new AbortController()
+    tryOnAbortRef.current = abortController
 
     try {
       const preparedGarments = selectedOutfit.items.map((g) => {
@@ -702,10 +719,8 @@ export default function TryOnTab() {
           ? "Custom Pose"
           : POSE_PRESETS[activePosePreset].label
 
-      const response = await fetch("/api/try-on", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const result = await submitAndPollTryOnJob(
+        {
           mannequinImage: bareSnapshot,
           openposeImage: openposeSnapshot,
           garments: preparedGarments,
@@ -720,15 +735,26 @@ export default function TryOnTab() {
             ? customization.faceImageData || defaultFacePortrait
             : undefined,
           seed: reuseSnapshot ? Math.floor(Math.random() * 2_000_000_000) : undefined,
-        }),
-      })
-      const result = (await response.json().catch(() => ({}))) as {
-        imageUrl?: string
-        error?: string
-      }
-      if (!response.ok || !result.imageUrl) {
-        throw new Error(result.error || "Virtual Try-On request failed.")
-      }
+        },
+        {
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            if (progress.status === "queued") {
+              const pos = progress.position ?? 1
+              setQueueStatusText(
+                pos > 1
+                  ? `Queued on host GPU (#${pos} in line)…`
+                  : "Queued — waiting for GPU slot…",
+              )
+            } else if (progress.status === "running") {
+              const secs = progress.elapsedMs
+                ? ` (${Math.max(1, Math.round(progress.elapsedMs / 1000))}s)`
+                : ""
+              setQueueStatusText(`Generating on host RTX GPU${secs}…`)
+            }
+          },
+        },
+      )
 
       setGeneratedImage(result.imageUrl)
       setResultView("ai")
@@ -739,11 +765,18 @@ export default function TryOnTab() {
         "success",
       )
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
       setGenerationError(
-        error instanceof Error ? error.message : "Virtual Try-On request failed.",
+        formatAiErrorMessage(error, "Virtual Try-On request failed."),
       )
       setStep("error")
     } finally {
+      if (tryOnAbortRef.current === abortController) {
+        tryOnAbortRef.current = null
+      }
+      setQueueStatusText(null)
       clearTimers()
     }
   }
@@ -837,6 +870,8 @@ export default function TryOnTab() {
           </button>
         )}
       </div>
+
+      <AiHostNoticeBanner featureName="AI Try-On Studio" />
 
       {/* Step 1: Select or Build an Outfit (collapses once selected) */}
       {step === "studio" && !outfitSelected && (
@@ -1647,14 +1682,14 @@ export default function TryOnTab() {
               />
             </div>
             <p className="text-xs font-semibold text-muted-foreground">
-              Applying {selectedOutfit.label} to your posed mannequin
+              {queueStatusText || `Applying ${selectedOutfit.label} to your posed mannequin`}
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => {
-              clearTimers()
+              cancelInflightTryOn()
               setStep("studio")
             }}
             className="min-h-[40px] text-xs py-2 px-5 rounded-xl font-extrabold border-2 border-border text-foreground bg-muted cursor-pointer"

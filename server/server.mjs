@@ -1,4 +1,5 @@
 import { createServer } from "node:http"
+import { randomUUID } from "node:crypto"
 import { createReadStream } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { readFileSync } from "node:fs"
@@ -18,6 +19,7 @@ try {
   // Production platforms provide environment variables directly.
 }
 const port = Number(process.env.PORT || 8787)
+const bindHost = process.env.HOST || "127.0.0.1"
 const textModel = process.env.LLM_TEXT_MODEL || "Qwen/Qwen2.5-3B-Instruct"
 const visionModel = process.env.LLM_VISION_MODEL || "Qwen/Qwen2.5-VL-3B-Instruct"
 const llmBaseUrl = (process.env.LLM_BASE_URL || "http://127.0.0.1:8000/v1").replace(/\/+$/, "")
@@ -105,9 +107,87 @@ const contentTypes = {
   ".webp": "image/webp",
 }
 
-function sendJson(response, status, body) {
-  const headers = { "Content-Type": "application/json; charset=utf-8" }
-  if (process.env.NODE_ENV !== "production") headers["Access-Control-Allow-Origin"] = "*"
+const MAX_TRYON_QUEUE = Math.max(1, Number(process.env.MAX_TRYON_QUEUE || 6))
+const MAX_LLM_INFLIGHT = Math.max(1, Number(process.env.MAX_LLM_INFLIGHT || 8))
+const TRYON_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.TRYON_RATE_LIMIT_PER_MIN || 10))
+const STYLIST_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.STYLIST_RATE_LIMIT_PER_MIN || 30))
+const SCAN_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.SCAN_RATE_LIMIT_PER_MIN || 30))
+
+const configuredAllowedOrigins = new Set(
+  (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean),
+)
+
+function isOriginAllowed(origin, request) {
+  if (!origin) return true
+  const normalized = origin.trim().replace(/\/+$/, "")
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized)) {
+    return true
+  }
+  if (configuredAllowedOrigins.has(normalized)) {
+    return true
+  }
+  const forwardedHost = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0].trim()
+  if (forwardedHost && (normalized === `https://${forwardedHost}` || normalized === `http://${forwardedHost}`)) {
+    return true
+  }
+  return false
+}
+
+function applyCorsHeaders(request, response) {
+  const origin = typeof request.headers.origin === "string" ? request.headers.origin.trim() : ""
+  if (!origin) return true
+  if (!isOriginAllowed(origin, request)) {
+    return false
+  }
+  response.setHeader("Access-Control-Allow-Origin", origin)
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept")
+  response.setHeader("Access-Control-Max-Age", "86400")
+  response.setHeader("Vary", "Origin")
+  return true
+}
+
+function getClientIp(request) {
+  const forwarded = request.headers["x-forwarded-for"]
+  if (typeof forwarded === "string" && forwarded.trim()) {
+    return forwarded.split(",")[0].trim()
+  }
+  return request.socket?.remoteAddress || "unknown"
+}
+
+const rateBuckets = new Map()
+function checkRateLimit(bucketName, clientIp, maxRequests, windowMs = 60_000) {
+  const now = Date.now()
+  const key = `${bucketName}:${clientIp}`
+  const cutoff = now - windowMs
+  const timestamps = (rateBuckets.get(key) || []).filter((ts) => ts > cutoff)
+  if (timestamps.length >= maxRequests) {
+    const oldest = timestamps[0] || now
+    const retryAfterSec = Math.max(1, Math.ceil((oldest + windowMs - now) / 1000))
+    rateBuckets.set(key, timestamps)
+    return { allowed: false, retryAfterSec }
+  }
+  timestamps.push(now)
+  rateBuckets.set(key, timestamps)
+  return { allowed: true, retryAfterSec: 0 }
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 120_000
+  for (const [key, timestamps] of rateBuckets.entries()) {
+    const active = timestamps.filter((ts) => ts > cutoff)
+    if (active.length === 0) rateBuckets.delete(key)
+    else rateBuckets.set(key, active)
+  }
+}, 60_000).unref()
+
+let llmInflightCount = 0
+
+function sendJson(response, status, body, extraHeaders = {}) {
+  const headers = { "Content-Type": "application/json; charset=utf-8", ...extraHeaders }
   response.writeHead(status, headers)
   response.end(JSON.stringify(body))
 }
@@ -180,8 +260,7 @@ async function readJsonBody(request, maxBytes = 10_000) {
 
 const tryOnUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/v1/try-on`
 
-async function handleTryOn(request, response) {
-  const body = await readJsonBody(request, 32 * 1024 * 1024)
+function parseTryOnPayload(body) {
   const garments = Array.isArray(body.garments)
     ? body.garments
         .filter((garment) => garment && (typeof garment.imageUrl === "string" || typeof garment.description === "string"))
@@ -203,22 +282,35 @@ async function handleTryOn(request, response) {
     typeof body.dressedImage === "string" ? body.dressedImage.trim() : ""
 
   if (!mannequinImage && !openposeImage && !dressedImage) {
-    sendJson(response, 400, {
-      error: "No pose image or skeleton was provided.",
-    })
-    return
+    return { error: "No pose image or skeleton was provided." }
   }
   if (garments.length === 0) {
-    sendJson(response, 400, {
-      error: "Select at least one outfit piece to generate a try-on.",
-    })
-    return
+    return { error: "Select at least one outfit piece to generate a try-on." }
   }
 
-  // Run local CUDA GPU model server on port 8000 (colab_server.py /v1/try-on)
+  return {
+    payload: {
+      mannequinImage: mannequinImage || openposeImage || dressedImage,
+      openposeImage: openposeImage || undefined,
+      dressedImage: dressedImage || undefined,
+      garments,
+      keypoints: body.keypoints && typeof body.keypoints === "object" ? body.keypoints : undefined,
+      cameraPreset: typeof body.cameraPreset === "string" ? body.cameraPreset : "front",
+      backdropPreset: typeof body.backdropPreset === "string" ? body.backdropPreset : "cyclorama",
+      includeMyFace: Boolean(body.includeMyFace),
+      faceImage: typeof body.faceImage === "string" ? body.faceImage : undefined,
+      poseLabel: typeof body.poseLabel === "string" ? body.poseLabel : undefined,
+      bodyPreset: typeof body.bodyPreset === "string" ? body.bodyPreset : undefined,
+      materialId: typeof body.materialId === "string" ? body.materialId : "porcelain",
+      seed: typeof body.seed === "number" ? body.seed : undefined,
+    },
+  }
+}
+
+async function executeTryOnOnGpu(payload) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 300_000)
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 300_000)
     const localResp = await fetch(tryOnUrl, {
       method: "POST",
       headers: {
@@ -227,43 +319,248 @@ async function handleTryOn(request, response) {
           ? { Authorization: `Bearer ${process.env.LLM_API_KEY}` }
           : {}),
       },
-      body: JSON.stringify({
-        mannequinImage: mannequinImage || openposeImage || dressedImage,
-        openposeImage: openposeImage || undefined,
-        dressedImage: dressedImage || undefined,
-        garments,
-        keypoints: body.keypoints && typeof body.keypoints === "object" ? body.keypoints : undefined,
-        cameraPreset: typeof body.cameraPreset === "string" ? body.cameraPreset : "front",
-        backdropPreset: typeof body.backdropPreset === "string" ? body.backdropPreset : "cyclorama",
-        includeMyFace: Boolean(body.includeMyFace),
-        faceImage: typeof body.faceImage === "string" ? body.faceImage : undefined,
-        poseLabel: typeof body.poseLabel === "string" ? body.poseLabel : undefined,
-        bodyPreset: typeof body.bodyPreset === "string" ? body.bodyPreset : undefined,
-        materialId: typeof body.materialId === "string" ? body.materialId : "porcelain",
-        seed: typeof body.seed === "number" ? body.seed : undefined,
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
-    }).finally(() => clearTimeout(timeout))
-
-    const payload = await localResp.json().catch(() => ({}))
-    if (!localResp.ok || !payload?.imageUrl) {
-      const detail = payload?.detail || payload?.error || `Local try-on model returned HTTP ${localResp.status}.`
-      sendJson(response, localResp.status >= 400 ? localResp.status : 502, { error: String(detail) })
-      return
-    }
-
-    sendJson(response, 200, {
-      imageUrl: payload.imageUrl,
-      model: payload.model || "RealVisXL-OpenPose-IPAdapter",
-      runs: payload.runs || garments.length,
     })
+    const result = await localResp.json().catch(() => ({}))
+    if (!localResp.ok || !result?.imageUrl) {
+      const detail = result?.detail || result?.error || `Local try-on model returned HTTP ${localResp.status}.`
+      const err = new Error(String(detail))
+      err.statusCode = localResp.status >= 400 ? localResp.status : 502
+      throw err
+    }
+    return {
+      imageUrl: result.imageUrl,
+      model: result.model || "RealVisXL-OpenPose-IPAdapter",
+      runs: result.runs || payload.garments.length,
+    }
   } catch (err) {
+    if (err && typeof err === "object" && "statusCode" in err) throw err
     const causeMsg = err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : ""
     const message =
       err instanceof Error ? `${err.message}${causeMsg}` : "Could not reach local GPU try-on server."
-    console.error("[try-on] Local GPU try-on error:", message)
-    sendJson(response, 502, {
-      error: `Local GPU try-on server unavailable (${message}). Ensure colab_server.py is running on ${visionBaseUrl}.`,
+    const wrapped = new Error(
+      `Local GPU try-on server unavailable (${message}). Ensure colab_server.py is running on ${visionBaseUrl}.`,
+    )
+    wrapped.statusCode = 502
+    throw wrapped
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+const tryOnJobs = new Map()
+const tryOnQueue = []
+let activeTryOnJobId = null
+
+function getTryOnQueuePosition(jobId) {
+  if (activeTryOnJobId === jobId) return 0
+  const idx = tryOnQueue.indexOf(jobId)
+  if (idx < 0) return 0
+  return idx + (activeTryOnJobId ? 2 : 1)
+}
+
+function pumpTryOnQueue() {
+  if (activeTryOnJobId !== null) return
+  while (tryOnQueue.length > 0) {
+    const nextId = tryOnQueue.shift()
+    const job = tryOnJobs.get(nextId)
+    if (!job || job.cancelled || job.status !== "queued") continue
+
+    activeTryOnJobId = job.id
+    job.status = "running"
+    job.startedAt = Date.now()
+    console.log(`[try-on:${job.id.slice(0, 8)}] running (${job.payload.garments.length} garments, queued=${tryOnQueue.length})`)
+
+    executeTryOnOnGpu(job.payload)
+      .then((result) => {
+        job.status = "completed"
+        job.result = result
+        job.finishedAt = Date.now()
+        job.resolveWaiters?.(result)
+        console.log(`[try-on:${job.id.slice(0, 8)}] completed in ${job.finishedAt - job.startedAt}ms`)
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        job.status = "failed"
+        job.error = message
+        job.statusCode = err?.statusCode || 502
+        job.finishedAt = Date.now()
+        job.rejectWaiters?.(err)
+        console.error(`[try-on:${job.id.slice(0, 8)}] failed: ${message}`)
+      })
+      .finally(() => {
+        activeTryOnJobId = null
+        pumpTryOnQueue()
+      })
+    return
+  }
+}
+
+function enqueueTryOnJob(payload, clientIp) {
+  if (tryOnQueue.length >= MAX_TRYON_QUEUE) {
+    const err = new Error(`Try-On GPU queue is full (${tryOnQueue.length} waiting). Please retry in a moment.`)
+    err.statusCode = 503
+    throw err
+  }
+  const jobId = randomUUID()
+  let resolveWaiters
+  let rejectWaiters
+  const donePromise = new Promise((resolve, reject) => {
+    resolveWaiters = resolve
+    rejectWaiters = reject
+  })
+  const job = {
+    id: jobId,
+    status: "queued",
+    payload,
+    clientIp,
+    createdAt: Date.now(),
+    startedAt: null,
+    finishedAt: null,
+    result: null,
+    error: null,
+    statusCode: 200,
+    cancelled: false,
+    donePromise,
+    resolveWaiters,
+    rejectWaiters,
+  }
+  tryOnJobs.set(jobId, job)
+  tryOnQueue.push(jobId)
+  const position = getTryOnQueuePosition(jobId)
+  console.log(`[try-on:${jobId.slice(0, 8)}] queued from ${clientIp} (position=${position})`)
+  pumpTryOnQueue()
+  return {
+    job,
+    position: getTryOnQueuePosition(jobId),
+    totalQueued: tryOnQueue.length + (activeTryOnJobId ? 1 : 0),
+  }
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60_000
+  for (const [jobId, job] of tryOnJobs.entries()) {
+    if ((job.status === "completed" || job.status === "failed") && (job.finishedAt || job.createdAt) < cutoff) {
+      tryOnJobs.delete(jobId)
+    }
+  }
+}, 60_000).unref()
+
+async function handleCreateTryOnJob(request, response) {
+  const clientIp = getClientIp(request)
+  const limit = checkRateLimit("try-on", clientIp, TRYON_RATE_LIMIT_PER_MIN)
+  if (!limit.allowed) {
+    sendJson(
+      response,
+      429,
+      { error: "Too many Try-On requests from your browser. Please wait a few seconds and retry." },
+      { "Retry-After": String(limit.retryAfterSec) },
+    )
+    return
+  }
+
+  const body = await readJsonBody(request, 32 * 1024 * 1024)
+  const parsed = parseTryOnPayload(body)
+  if (parsed.error) {
+    sendJson(response, 400, { error: parsed.error })
+    return
+  }
+
+  try {
+    const { job, position, totalQueued } = enqueueTryOnJob(parsed.payload, clientIp)
+    sendJson(response, 202, {
+      jobId: job.id,
+      status: job.status,
+      position,
+      totalQueued,
+      createdAt: job.createdAt,
+    })
+  } catch (err) {
+    sendJson(response, err?.statusCode || 503, {
+      error: err instanceof Error ? err.message : "Could not enqueue Try-On job.",
+    })
+  }
+}
+
+async function handleGetTryOnJob(jobId, response) {
+  const job = tryOnJobs.get(jobId)
+  if (!job) {
+    sendJson(response, 404, { error: "Try-On job not found or expired." })
+    return
+  }
+  if (job.status === "completed" && job.result) {
+    sendJson(response, 200, {
+      jobId: job.id,
+      status: "completed",
+      imageUrl: job.result.imageUrl,
+      model: job.result.model,
+      runs: job.result.runs,
+      elapsedMs: (job.finishedAt || Date.now()) - (job.startedAt || job.createdAt),
+    })
+    return
+  }
+  if (job.status === "failed") {
+    sendJson(response, 200, {
+      jobId: job.id,
+      status: "failed",
+      error: job.error || "Virtual Try-On generation failed.",
+    })
+    return
+  }
+  sendJson(response, 200, {
+    jobId: job.id,
+    status: job.status,
+    position: getTryOnQueuePosition(job.id),
+    totalQueued: tryOnQueue.length + (activeTryOnJobId ? 1 : 0),
+    elapsedMs: job.startedAt ? Date.now() - job.startedAt : 0,
+  })
+}
+
+async function handleCancelTryOnJob(jobId, response) {
+  const job = tryOnJobs.get(jobId)
+  if (!job) {
+    sendJson(response, 404, { error: "Try-On job not found." })
+    return
+  }
+  job.cancelled = true
+  const qIdx = tryOnQueue.indexOf(jobId)
+  if (qIdx >= 0) {
+    tryOnQueue.splice(qIdx, 1)
+    job.status = "failed"
+    job.error = "Cancelled by user."
+    job.finishedAt = Date.now()
+  }
+  sendJson(response, 200, { jobId, cancelled: true, status: job.status })
+}
+
+async function handleTryOn(request, response) {
+  const clientIp = getClientIp(request)
+  const limit = checkRateLimit("try-on", clientIp, TRYON_RATE_LIMIT_PER_MIN)
+  if (!limit.allowed) {
+    sendJson(
+      response,
+      429,
+      { error: "Too many Try-On requests from your browser. Please wait a few seconds and retry." },
+      { "Retry-After": String(limit.retryAfterSec) },
+    )
+    return
+  }
+
+  const body = await readJsonBody(request, 32 * 1024 * 1024)
+  const parsed = parseTryOnPayload(body)
+  if (parsed.error) {
+    sendJson(response, 400, { error: parsed.error })
+    return
+  }
+
+  try {
+    const { job } = enqueueTryOnJob(parsed.payload, clientIp)
+    const result = await job.donePromise
+    sendJson(response, 200, result)
+  } catch (err) {
+    sendJson(response, err?.statusCode || 502, {
+      error: err instanceof Error ? err.message : "Could not reach local GPU try-on server.",
     })
   }
 }
@@ -755,30 +1052,107 @@ async function serveStatic(pathname, response) {
 }
 
 const server = createServer(async (request, response) => {
+  const startedAt = Date.now()
   try {
+    const corsAllowed = applyCorsHeaders(request, response)
+
     if (request.method === "OPTIONS") {
-      response.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      })
+      if (!corsAllowed) {
+        response.writeHead(403)
+        response.end()
+        return
+      }
+      response.writeHead(204)
       response.end()
       return
     }
 
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`)
-    if (url.pathname === "/api/stylist" && request.method === "POST") {
-      await handleStylist(request, response)
+
+    if (!corsAllowed && url.pathname.startsWith("/api/")) {
+      console.warn(`[cors] Blocked ${request.method} ${url.pathname} from origin=${request.headers.origin}`)
+      sendJson(response, 403, { error: "Origin is not allowed by host CORS policy." })
       return
     }
+
+    if (url.pathname === "/api/stylist" && request.method === "POST") {
+      const clientIp = getClientIp(request)
+      const limit = checkRateLimit("stylist", clientIp, STYLIST_RATE_LIMIT_PER_MIN)
+      if (!limit.allowed) {
+        sendJson(
+          response,
+          429,
+          { error: "Too many stylist requests. Please wait a few seconds and retry." },
+          { "Retry-After": String(limit.retryAfterSec) },
+        )
+        return
+      }
+      if (llmInflightCount >= MAX_LLM_INFLIGHT) {
+        sendJson(response, 503, { error: "Host GPU queue is busy right now. Please retry in a moment." })
+        return
+      }
+      llmInflightCount += 1
+      try {
+        await handleStylist(request, response)
+      } finally {
+        llmInflightCount = Math.max(0, llmInflightCount - 1)
+        console.log(`[api] POST /api/stylist ip=${clientIp} status=${response.statusCode} (${Date.now() - startedAt}ms)`)
+      }
+      return
+    }
+
+    if (url.pathname === "/api/try-on/jobs" && request.method === "POST") {
+      await handleCreateTryOnJob(request, response)
+      return
+    }
+
+    if (url.pathname.startsWith("/api/try-on/jobs/")) {
+      const jobId = decodeURIComponent(url.pathname.slice("/api/try-on/jobs/".length)).trim()
+      if (!jobId) {
+        sendJson(response, 400, { error: "Missing job ID." })
+        return
+      }
+      if (request.method === "GET") {
+        await handleGetTryOnJob(jobId, response)
+        return
+      }
+      if (request.method === "DELETE") {
+        await handleCancelTryOnJob(jobId, response)
+        return
+      }
+    }
+
     if (url.pathname === "/api/try-on" && request.method === "POST") {
       await handleTryOn(request, response)
       return
     }
+
     if (url.pathname === "/api/wardrobe/scan" && request.method === "POST") {
-      await handleWardrobeScan(request, response)
+      const clientIp = getClientIp(request)
+      const limit = checkRateLimit("scan", clientIp, SCAN_RATE_LIMIT_PER_MIN)
+      if (!limit.allowed) {
+        sendJson(
+          response,
+          429,
+          { error: "Too many photo scan requests. Please wait a few seconds and retry." },
+          { "Retry-After": String(limit.retryAfterSec) },
+        )
+        return
+      }
+      if (llmInflightCount >= MAX_LLM_INFLIGHT) {
+        sendJson(response, 503, { error: "Host GPU queue is busy right now. Please retry in a moment." })
+        return
+      }
+      llmInflightCount += 1
+      try {
+        await handleWardrobeScan(request, response)
+      } finally {
+        llmInflightCount = Math.max(0, llmInflightCount - 1)
+        console.log(`[api] POST /api/wardrobe/scan ip=${clientIp} status=${response.statusCode} (${Date.now() - startedAt}ms)`)
+      }
       return
     }
+
     if (url.pathname === "/api/ai/health" && request.method === "GET") {
       const backendHealthUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/health`
       let backend = null
@@ -793,11 +1167,30 @@ const server = createServer(async (request, response) => {
       } catch (err) {
         backendError = err instanceof Error ? err.message : String(err)
       }
-      sendJson(response, backend ? 200 : 503, {
-        status: backend ? "ok" : "unavailable",
+      const backendStatus = backend?.status
+      const healthStatus = !backend
+        ? "unavailable"
+        : backendStatus === "loading"
+          ? "loading"
+          : backendStatus === "error"
+            ? "error"
+            : "ok"
+      const httpCode = healthStatus === "ok" || healthStatus === "loading" ? 200 : 503
+      sendJson(response, httpCode, {
+        status: healthStatus,
         proxyPort: port,
         backendUrl: backendHealthUrl,
         backend,
+        queue: {
+          tryOnRunning: activeTryOnJobId ? 1 : 0,
+          tryOnQueued: tryOnQueue.length,
+          maxQueue: MAX_TRYON_QUEUE,
+        },
+        features: {
+          stylist: true,
+          wardrobeScan: true,
+          tryOn: true,
+        },
         ...(backendError ? { error: backendError } : {}),
       })
       return
@@ -826,6 +1219,11 @@ const server = createServer(async (request, response) => {
   }
 })
 
-server.listen(port, () => {
-  console.log(`tAIlor server listening on http://localhost:${port}`)
+server.listen(port, bindHost, () => {
+  console.log(`tAIlor server listening on http://${bindHost}:${port}`)
+  if (configuredAllowedOrigins.size > 0) {
+    console.log(`CORS allowed origins: ${Array.from(configuredAllowedOrigins).join(", ")}`)
+  } else {
+    console.log("CORS allowed origins: localhost / 127.0.0.1 / same-host (set ALLOWED_ORIGINS for Render)")
+  }
 })

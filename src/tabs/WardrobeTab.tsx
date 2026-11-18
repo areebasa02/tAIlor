@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { ImageUploadWidget, type UploadState } from "../components/AIComponents"
+import { AiHostNoticeBanner } from "../components/AiHostStatus"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
 import {
@@ -755,6 +756,11 @@ export default function WardrobeTab() {
           </div>
 
           {/* Quick Demo Clothing Samples for Instant Testing */}
+          <AiHostNoticeBanner
+            featureName="AI Photo Scanner"
+            offlineHint="Live garment photo scanning requires Qwen2.5-VL running on the host PC. Quick Test Samples still work offline."
+          />
+
           {uploadState === "empty" && (
             <div className="space-y-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">

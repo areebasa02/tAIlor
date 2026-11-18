@@ -15,6 +15,7 @@ http://127.0.0.1:8000/v1 or the GPU computer's private address.
 from __future__ import annotations
 
 import base64
+from contextlib import asynccontextmanager, contextmanager
 import gc
 import io
 import json
@@ -51,6 +52,7 @@ os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 from tryon_sdxl import (  # noqa: E402
     TRYON_SDXL_MODEL,
     generate_sdxl_tryon,
+    is_tryon_loaded,
     render_openpose_from_keypoints,
 )
 
@@ -95,14 +97,6 @@ Return ONLY a single JSON object (no markdown fences, no extra text) with these 
 - confidence: 0-1 float for overall detection confidence
 """
 
-app = FastAPI(title="tAIlor Qwen Model Server", version="2.0.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 text_tokenizer = None
 text_model = None
 text_model_device = "unloaded"
@@ -110,6 +104,70 @@ vision_processor = None
 vision_model = None
 vision_model_device = "unloaded"
 gpu_lock = threading.Lock()
+state_lock = threading.Lock()
+model_load_state = "loading"
+model_load_stage = "Initializing model loader"
+model_load_error: str | None = None
+active_task: str | None = None
+queued_tasks = 0
+
+
+def _set_load_status(state: str, stage: str, error: str | None = None) -> None:
+    global model_load_state, model_load_stage, model_load_error
+    with state_lock:
+        model_load_state = state
+        model_load_stage = stage
+        model_load_error = error
+
+
+def _load_models_worker() -> None:
+    try:
+        load_models()
+        _set_load_status("ready", "Models ready")
+        print("[GPU] All configured Qwen models are ready.", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
+        _set_load_status("error", "Model initialization failed", str(exc))
+        print(f"[GPU] Model loading failed: {exc}", flush=True)
+
+
+@contextmanager
+def _gpu_task(task_name: str):
+    global active_task, queued_tasks
+    with state_lock:
+        queued_tasks += 1
+    try:
+        with gpu_lock:
+            with state_lock:
+                queued_tasks = max(0, queued_tasks - 1)
+                active_task = task_name
+            try:
+                yield
+            finally:
+                with state_lock:
+                    active_task = None
+    except BaseException:
+        with state_lock:
+            if active_task is None and queued_tasks > 0:
+                queued_tasks = max(0, queued_tasks - 1)
+        raise
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    threading.Thread(target=_load_models_worker, name="model-loader", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="tAIlor Qwen Model Server", version="2.0.0", lifespan=_lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _hf_kwargs() -> dict[str, Any]:
@@ -223,27 +281,28 @@ def load_models() -> None:
     )
 
     if LOAD_MODE in {"both", "text"}:
+        _set_load_status("loading", f"Loading text model {TEXT_MODEL_ID}")
         print(f"Loading text model {TEXT_MODEL_ID}…", flush=True)
-        text_tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_ID, **_hf_kwargs())
-        text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_ID, **text_common)
-        if not use_quant:
-            text_model.to("cpu" if text_on_cpu or not has_cuda else "cuda:0")
-        text_model_device = _current_device_str(text_model)
+        with gpu_lock:
+            text_tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_ID, **_hf_kwargs())
+            text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_ID, **text_common)
+            if not use_quant:
+                text_model.to("cpu" if text_on_cpu or not has_cuda else "cuda:0")
+            text_model_device = _current_device_str(text_model)
         print(f"Text model ready on {text_model_device} (dtype={dtype}, quantize={use_quant})", flush=True)
 
     if LOAD_MODE in {"both", "vision"}:
+        _set_load_status("loading", f"Loading vision model {VISION_MODEL_ID}")
         print(f"Loading vision model {VISION_MODEL_ID}…", flush=True)
-        vision_processor = AutoProcessor.from_pretrained(VISION_MODEL_ID, **_hf_kwargs())
-        vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            VISION_MODEL_ID, **vision_common
-        )
-        if has_cuda:
-            vision_model.to("cuda:0")
-        vision_model_device = _current_device_str(vision_model)
+        with gpu_lock:
+            vision_processor = AutoProcessor.from_pretrained(VISION_MODEL_ID, **_hf_kwargs())
+            vision_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                VISION_MODEL_ID, **vision_common
+            )
+            if has_cuda:
+                vision_model.to("cuda:0")
+            vision_model_device = _current_device_str(vision_model)
         print(f"Vision model ready on {vision_model_device} (dtype={dtype})", flush=True)
-
-
-load_models()
 
 
 class Message(BaseModel):
@@ -403,12 +462,22 @@ def _ensure_vision_device() -> torch.device:
 
 
 def generate_text_only(messages: list[dict[str, Any]], max_tokens: int, temperature: float) -> str:
+    if model_load_state == "loading" and text_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Host PC models are still loading ({model_load_stage}). Try again shortly.",
+        )
+    if model_load_state == "error" and text_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Host PC text model failed to load: {model_load_error or 'unknown error'}.",
+        )
     if text_tokenizer is None or text_model is None:
         raise HTTPException(
             status_code=503,
             detail=f"Text model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
-    with gpu_lock:
+    with _gpu_task("stylist"):
         target_device = _ensure_text_device()
         prompt = text_tokenizer.apply_chat_template(
             messages,
@@ -437,12 +506,22 @@ def generate_vl(
     max_tokens: int,
     temperature: float,
 ) -> str:
+    if model_load_state == "loading" and vision_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Host PC models are still loading ({model_load_stage}). Try again shortly.",
+        )
+    if model_load_state == "error" and vision_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Host PC vision model failed to load: {model_load_error or 'unknown error'}.",
+        )
     if vision_processor is None or vision_model is None:
         raise HTTPException(
             status_code=503,
             detail=f"Vision model is not loaded (LLM_LOAD_MODE={LOAD_MODE}).",
         )
-    with gpu_lock:
+    with _gpu_task("wardrobe-scan"):
         target_device = _ensure_vision_device()
         content: list[dict[str, Any]] = []
         if image is not None:
@@ -511,9 +590,21 @@ def health():
         and text_model is not None
         and TEXT_DEVICE != "cpu"
     )
+    with state_lock:
+        load_state = model_load_state
+        load_stage = model_load_stage
+        load_err = model_load_error
+        cur_task = active_task
+        queued = queued_tasks
+    health_status = "ok" if load_state == "ready" else ("error" if load_state == "error" else "loading")
     return {
-        "status": "ok",
+        "status": health_status,
+        "load_state": load_state,
+        "loading_stage": load_stage,
+        "load_error": load_err,
         "load_mode": LOAD_MODE,
+        "active_task": cur_task,
+        "queued_tasks": queued,
         "models": {
             "text": TEXT_MODEL_ID,
             "vision": VISION_MODEL_ID,
@@ -522,6 +613,7 @@ def health():
         "loaded": {
             "text": text_model is not None,
             "vision": vision_model is not None,
+            "tryon": is_tryon_loaded(),
         },
         "devices": {
             "text": _current_device_str(text_model),
@@ -693,6 +785,11 @@ def load_garment_rgba(garment: TryOnGarmentInput) -> tuple[np.ndarray, np.ndarra
 @app.post("/v1/try-on")
 def virtual_try_on(request: TryOnRequest):
     """Local RTX GPU try-on studio generator (SDXL + OpenPose ControlNet + IP-Adapter)."""
+    if model_load_state == "loading":
+        raise HTTPException(
+            status_code=503,
+            detail=f"Host PC is still loading startup models ({model_load_stage}). Try again in a moment.",
+        )
     if request.openpose_image:
         openpose_img = decode_image_fullres(request.openpose_image)
     elif request.keypoints:
@@ -712,7 +809,7 @@ def virtual_try_on(request: TryOnRequest):
         else None
     )
 
-    with gpu_lock:
+    with _gpu_task("try-on"):
         # Offload Qwen text/vision weights to system RAM before running SDXL + ControlNet + IP-Adapter
         # so diffusion stays well inside 24 GB VRAM without OOM.
         _free_cuda_vram(offload_text=True, offload_vision=True)
@@ -753,4 +850,6 @@ def virtual_try_on(request: TryOnRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    bind_host = os.environ.get("AI_SERVER_HOST", "127.0.0.1")
+    bind_port = int(os.environ.get("AI_SERVER_PORT", "8000"))
+    uvicorn.run(app, host=bind_host, port=bind_port)

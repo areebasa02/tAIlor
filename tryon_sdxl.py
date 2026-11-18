@@ -62,6 +62,10 @@ def _get_tryon_config() -> dict[str, str]:
 
 _sdxl_pipe: Any = None
 
+
+def is_tryon_loaded() -> bool:
+    return _sdxl_pipe is not None
+
 _MATERIAL_PROMPTS: dict[str, str] = {
     "porcelain": "matte white porcelain mannequin dummy",
     "bisque": "matte blush bisque mannequin dummy",

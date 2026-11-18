@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
 import { AppProvider, useApp } from "./context/AppContext"
+import { AiHostProvider } from "./context/AiHostContext"
+import { AiHostHeaderPill } from "./components/AiHostStatus"
 import { getContrastTextColor } from "./types"
 import {
   getReadableColorLabel,
@@ -196,41 +198,45 @@ function MainApp() {
           ))}
         </div>
 
-        {/* Mobile Header (Brand + Assist + Aa + Theme + Account) */}
-        <header className="flex items-center justify-between gap-2 py-2 min-[380px]:py-2.5 shrink-0 border-b-2 border-border relative z-40 mb-1.5">
-          {/* Brand Wordmark */}
-          <button
-            type="button"
-            onClick={() => {
-              setTab("home")
-              setUserMenuOpen(false)
-              setFontMenuOpen(false)
-            }}
-            className="flex items-center text-left transition-transform active:scale-95 min-h-[40px] px-1 rounded-xl shrink-0 cursor-pointer"
-            aria-label="tAIlor — Return to Today home"
-          >
-            <span
-              aria-hidden="true"
-              className="text-2xl italic font-black leading-none text-pink"
-              style={{ fontFamily: "Nunito, sans-serif" }}
+        {/* Mobile Header (Brand + AI Status + Assist + Aa + Theme + Account) */}
+        <header className="flex items-center justify-between gap-1.5 min-[380px]:gap-2 py-2 min-[380px]:py-2.5 shrink-0 border-b-2 border-border relative z-40 mb-1.5">
+          {/* Brand Wordmark + Live AI Host Pill */}
+          <div className="flex items-center gap-1.5 min-[380px]:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                setTab("home")
+                setUserMenuOpen(false)
+                setFontMenuOpen(false)
+              }}
+              className="flex items-center text-left transition-transform active:scale-95 min-h-[40px] px-1 rounded-xl shrink-0 cursor-pointer"
+              aria-label="tAIlor — Return to Today home"
             >
-              t
-            </span>
-            <span
-              aria-hidden="true"
-              className="text-2xl font-black leading-none text-turquoise"
-              style={{ fontFamily: "Nunito, sans-serif" }}
-            >
-              AI
-            </span>
-            <span
-              aria-hidden="true"
-              className="text-2xl italic font-black leading-none text-pink"
-              style={{ fontFamily: "Nunito, sans-serif" }}
-            >
-              lor
-            </span>
-          </button>
+              <span
+                aria-hidden="true"
+                className="text-2xl italic font-black leading-none text-pink"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                t
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-2xl font-black leading-none text-turquoise"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                AI
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-2xl italic font-black leading-none text-pink"
+                style={{ fontFamily: "Nunito, sans-serif" }}
+              >
+                lor
+              </span>
+            </button>
+
+            <AiHostHeaderPill />
+          </div>
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-1.5 min-[360px]:gap-2 shrink-0">
@@ -880,7 +886,9 @@ function MainApp() {
 export default function App() {
   return (
     <AppProvider>
-      <MainApp />
+      <AiHostProvider>
+        <MainApp />
+      </AiHostProvider>
     </AppProvider>
   )
 }

@@ -46,12 +46,9 @@ const venvPython = process.platform === "win32"
   : join(root, ".venv", "bin", "python")
 
 const viteBin = join(root, "node_modules", "vite", "bin", "vite.js")
+const serverAlreadyUp = await isPortListening(Number(env.PORT || 8787))
 
 const coreProcesses = [
-  spawn(process.execPath, ["server/server.mjs"], {
-    cwd: root,
-    stdio: "inherit",
-  }),
   existsSync(viteBin)
     ? spawn(process.execPath, [viteBin], {
         cwd: root,
@@ -63,6 +60,17 @@ const coreProcesses = [
         shell: process.platform === "win32",
       }),
 ]
+
+if (serverAlreadyUp) {
+  console.log(`Node API server (server/server.mjs) is already listening on http://127.0.0.1:${env.PORT || 8787}.`)
+} else {
+  coreProcesses.unshift(
+    spawn(process.execPath, ["server/server.mjs"], {
+      cwd: root,
+      stdio: "inherit",
+    }),
+  )
+}
 
 const allProcesses = [...coreProcesses]
 
