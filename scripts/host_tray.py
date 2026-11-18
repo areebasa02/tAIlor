@@ -779,7 +779,9 @@ class HostTrayApp:
 
         threading.Thread(target=_listen, daemon=True).start()
 
-    def _on_unmap(self, _event) -> None:
+    def _on_unmap(self, event) -> None:
+        if event.widget is not self.root:
+            return
         if not self.quitting and self.root.state() == "iconic":
             self.root.after(10, self.hide_to_tray)
 
