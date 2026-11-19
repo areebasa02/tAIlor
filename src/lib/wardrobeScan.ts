@@ -23,7 +23,11 @@ export type WardrobeScanResponse = {
   error?: string
 }
 
-export type MockSampleId = "teal-trench" | "magenta-blouse" | "gold-cardigan"
+export type MockSampleId =
+  | "teal-trench"
+  | "magenta-blouse"
+  | "gold-cardigan"
+  | "burgundy-dress"
 
 const MAX_BYTES = 10 * 1024 * 1024
 
@@ -86,6 +90,19 @@ const LOCAL_MOCK_SAMPLES: Record<MockSampleId, WardrobeScanItem> = {
     cost: "$48",
     confidence: 0.89,
     imageData: "/wardrobe/gold-knit-cardigan.png",
+  },
+  "burgundy-dress": {
+    name: "Burgundy velvet wrap dress",
+    category: "Full Body",
+    color: "#6A1A32",
+    colorName: "Deep Burgundy",
+    material: "Soft silk-touch velvet",
+    careInstructions: "Cold delicate wash · hang dry",
+    storageLocation: "Closet · Dress Hanger",
+    sentimentalValue: "High",
+    cost: "$95",
+    confidence: 0.93,
+    imageData: "/wardrobe/burgundy-velvet-wrap-dress.png",
   },
 }
 

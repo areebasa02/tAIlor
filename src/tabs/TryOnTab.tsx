@@ -37,6 +37,11 @@ import {
   getDefaultFacePortraitDataUrl,
   getGarmentImageForTryOn,
 } from "../lib/garmentFlatLay"
+import {
+  getGarmentEmoji,
+  normalizeGarmentSlot,
+  type TryOnSlot,
+} from "../lib/garmentCategories"
 import { fileToBase64 } from "../lib/wardrobeScan"
 import { AiHostNoticeBanner } from "../components/AiHostStatus"
 import { formatAiErrorMessage, submitAndPollTryOnJob } from "../lib/aiHost"
@@ -69,21 +74,27 @@ const STAGES = [
   "Refining cloth drape, seams & studio lighting…",
 ]
 
-function getPieceEmoji(typeOrCat: string, fallback = "👕"): string {
-  const v = typeOrCat.toLowerCase()
-  if (v.includes("outer") || v.includes("coat") || v.includes("jacket")) return "🧥"
-  if (v.includes("bottom") || v.includes("pant") || v.includes("jean") || v.includes("skirt")) return "👖"
-  if (v.includes("shoe") || v.includes("sneaker") || v.includes("loafer")) return "👟"
-  if (v.includes("access")) return "💍"
-  return fallback
+type BuilderSlot = "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes"
+type BuilderMode = "separates" | "full_body"
+
+function getPieceEmoji(
+  typeOrCat: string,
+  fallback = "👕",
+  itemName = "",
+): string {
+  return getGarmentEmoji(typeOrCat, itemName, fallback)
 }
 
-function normalizeSlotType(category: string): "Top" | "Bottom" | "Shoes" | "Outerwear" {
-  const c = category.toLowerCase()
-  if (c.includes("bottom") || c.includes("pant") || c.includes("jean") || c.includes("skirt")) return "Bottom"
-  if (c.includes("shoe") || c.includes("sneaker") || c.includes("loafer") || c.includes("boot")) return "Shoes"
-  if (c.includes("outer") || c.includes("coat") || c.includes("jacket")) return "Outerwear"
-  return "Top"
+function normalizeSlotType(category: string, itemName = ""): TryOnSlot {
+  return normalizeGarmentSlot(category, itemName)
+}
+
+function outfitUsesFullBody(outfit?: FavoriteOutfit | null): boolean {
+  return Boolean(
+    outfit?.items?.some(
+      (i) => normalizeSlotType(i.type, i.name) === "Full Body",
+    ),
+  )
 }
 
 function mapOutfitToTryOn(outfit: Outfit, wardrobe: WardrobeItem[]): FavoriteOutfit {
@@ -91,11 +102,12 @@ function mapOutfitToTryOn(outfit: Outfit, wardrobe: WardrobeItem[]): FavoriteOut
     const match = wardrobe.find(
       (w) => w.name.trim().toLowerCase() === piece.desc.trim().toLowerCase(),
     )
+    const slot = normalizeSlotType(piece.type, piece.desc)
     return {
-      type: normalizeSlotType(piece.type),
+      type: slot,
       name: piece.desc,
       color: piece.color,
-      emoji: getPieceEmoji(piece.type, piece.emoji),
+      emoji: getPieceEmoji(piece.type, piece.emoji, piece.desc),
       imageData:
         match?.imageData || getSampleGarmentImage(piece.desc, piece.type),
       wardrobeItemId: match?.id,
@@ -119,22 +131,31 @@ function buildFallbackWardrobeOutfit(wardrobe: WardrobeItem[]): FavoriteOutfit {
   const bottom =
     pool.find((w) => w.id === 13) ||
     pool.find((w) => w.category === "Bottoms")
+  const fullBody = pool.find((w) => w.category === "Full Body")
   const shoes = pool.find((w) => w.category === "Shoes")
 
-  const picked = [top, bottom, shoes].filter(Boolean) as WardrobeItem[]
+  const picked =
+    top && bottom
+      ? ([top, bottom, shoes].filter(Boolean) as WardrobeItem[])
+      : fullBody
+        ? ([fullBody, shoes].filter(Boolean) as WardrobeItem[])
+        : ([top || bottom, shoes].filter(Boolean) as WardrobeItem[])
+
   return {
     id: "custom-builder-look",
     label:
-      picked.length >= 2
-        ? `${picked[0].name} & ${picked[1].name}`
-        : "Custom Closet Outfit",
+      fullBody && !(top && bottom)
+        ? fullBody.name
+        : picked.length >= 2
+          ? `${picked[0].name} & ${picked[1].name}`
+          : picked[0]?.name || "Custom Closet Outfit",
     tagline: "Custom mix from your closet",
     colors: picked.map((p) => p.color).slice(0, 3),
     items: picked.map((w) => ({
-      type: normalizeSlotType(w.category),
+      type: normalizeSlotType(w.category, w.name),
       name: w.name,
       color: w.color,
-      emoji: getPieceEmoji(w.category),
+      emoji: getPieceEmoji(w.category, "👕", w.name),
       imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
       wardrobeItemId: w.id,
     })),
@@ -282,6 +303,7 @@ export default function TryOnTab() {
     removeFavoriteOutfit,
     activeTryOnOutfit,
     setActiveTryOnOutfit,
+    setRequestedTab,
   } = useApp()
 
   const storageKey = `tailor_mannequin_studio_${user.id}`
@@ -373,6 +395,9 @@ export default function TryOnTab() {
     if (outfitList[0]) return mapOutfitToTryOn(outfitList[0], wardrobe)
     return buildFallbackWardrobeOutfit(wardrobe)
   })
+  const [builderMode, setBuilderMode] = useState<BuilderMode>(() =>
+    outfitUsesFullBody(selectedOutfit) ? "full_body" : "separates",
+  )
 
   // Start with mannequin studio collapsed until the user selects/confirms an outfit
   const [outfitSelected, setOutfitSelected] = useState<boolean>(
@@ -383,7 +408,7 @@ export default function TryOnTab() {
   const [builderOpen, setBuilderOpen] = useState(
     () => favoriteOutfits.length === 0,
   )
-  const [swapSlot, setSwapSlot] = useState<"Top" | "Bottom" | "Outerwear" | "Shoes" | null>(null)
+  const [swapSlot, setSwapSlot] = useState<BuilderSlot | null>(null)
 
   const [step, setStep] = useState<Step>("studio")
   const [processingStage, setProcessingStage] = useState(0)
@@ -430,6 +455,7 @@ export default function TryOnTab() {
   useEffect(() => {
     if (!activeTryOnOutfit) return
     setSelectedOutfit(activeTryOnOutfit)
+    setBuilderMode(outfitUsesFullBody(activeTryOnOutfit) ? "full_body" : "separates")
     setOutfitSelected(true)
     setBuilderOpen(false)
     setGeneratedImage(null)
@@ -523,6 +549,7 @@ export default function TryOnTab() {
       setRecIndex(nextIdx)
       const next = mapOutfitToTryOn(outfitList[nextIdx], wardrobe)
       setSelectedOutfit(next)
+      setBuilderMode(outfitUsesFullBody(next) ? "full_body" : "separates")
       showToast(
         "Quick Look Loaded",
         `Loaded "${next.label}" onto your studio.`,
@@ -532,28 +559,160 @@ export default function TryOnTab() {
     }
     const fallback = buildFallbackWardrobeOutfit(wardrobe)
     setSelectedOutfit(fallback)
+    setBuilderMode(outfitUsesFullBody(fallback) ? "full_body" : "separates")
   }
 
-  const handleSwapSlotItem = (slot: "Top" | "Bottom" | "Outerwear" | "Shoes", w: WardrobeItem) => {
-    const piece: FavoriteOutfitItem = {
-      type: slot,
-      name: w.name,
-      color: w.color,
-      emoji: getPieceEmoji(w.category),
-      imageData: w.imageData,
-      wardrobeItemId: w.id,
-    }
+  const handleSwitchBuilderMode = (mode: BuilderMode) => {
+    setBuilderMode(mode)
     setSelectedOutfit((prev) => {
-      const filtered = prev.items.filter((i) => normalizeSlotType(i.type) !== slot)
-      const nextItems = [...filtered, piece]
+      const clean = wardrobe.filter((w) => (w.status || "clean") === "clean")
+      const pool = clean.length > 0 ? clean : wardrobe
+      if (mode === "full_body") {
+        const retained = prev.items.filter((i) => {
+          const s = normalizeSlotType(i.type, i.name)
+          return s !== "Top" && s !== "Bottom" && s !== "Full Body"
+        })
+        const existingFull = prev.items.find(
+          (i) => normalizeSlotType(i.type, i.name) === "Full Body",
+        )
+        const pickedFull =
+          existingFull ||
+          (() => {
+            const w = pool.find((item) => item.category === "Full Body")
+            if (!w) return undefined
+            return {
+              type: "Full Body",
+              name: w.name,
+              color: w.color,
+              emoji: getPieceEmoji(w.category, "👗", w.name),
+              imageData:
+                w.imageData || getSampleGarmentImage(w.name, w.category),
+              wardrobeItemId: w.id,
+            } satisfies FavoriteOutfitItem
+          })()
+        const nextItems = pickedFull ? [pickedFull, ...retained] : retained
+        const outer = nextItems.find(
+          (i) => normalizeSlotType(i.type, i.name) === "Outerwear",
+        )
+        return {
+          ...prev,
+          id: `custom-${Date.now()}`,
+          label: pickedFull
+            ? outer
+              ? `${pickedFull.name} & ${outer.name}`
+              : pickedFull.name
+            : "Dress / Full Body Look",
+          tagline: `Manual mix · ${nextItems.length} piece${nextItems.length === 1 ? "" : "s"}`,
+          items: nextItems,
+          colors: nextItems.map((i) => i.color).slice(0, 3),
+        }
+      }
+
+      const retained = prev.items.filter(
+        (i) => normalizeSlotType(i.type, i.name) !== "Full Body",
+      )
+      const hasTop = retained.some(
+        (i) => normalizeSlotType(i.type, i.name) === "Top",
+      )
+      const hasBottom = retained.some(
+        (i) => normalizeSlotType(i.type, i.name) === "Bottom",
+      )
+      const extras: FavoriteOutfitItem[] = []
+      if (!hasTop) {
+        const w = pool.find((item) => item.id === 14) || pool.find((item) => item.category === "Tops")
+        if (w) {
+          extras.push({
+            type: "Top",
+            name: w.name,
+            color: w.color,
+            emoji: getPieceEmoji(w.category, "👕", w.name),
+            imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
+            wardrobeItemId: w.id,
+          })
+        }
+      }
+      if (!hasBottom) {
+        const w = pool.find((item) => item.id === 13) || pool.find((item) => item.category === "Bottoms")
+        if (w) {
+          extras.push({
+            type: "Bottom",
+            name: w.name,
+            color: w.color,
+            emoji: getPieceEmoji(w.category, "👖", w.name),
+            imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
+            wardrobeItemId: w.id,
+          })
+        }
+      }
+      const nextItems = [...extras, ...retained]
       const topOrOuter =
-        nextItems.find((i) => i.type === "Top" || i.type === "Outerwear") || nextItems[0]
-      const bottom = nextItems.find((i) => i.type === "Bottom")
+        nextItems.find((i) => {
+          const s = normalizeSlotType(i.type, i.name)
+          return s === "Top" || s === "Outerwear"
+        }) || nextItems[0]
+      const bottom = nextItems.find(
+        (i) => normalizeSlotType(i.type, i.name) === "Bottom",
+      )
       return {
         ...prev,
         id: `custom-${Date.now()}`,
         label:
           topOrOuter && bottom
+            ? `${topOrOuter.name} & ${bottom.name}`
+            : prev.label,
+        tagline: `Manual mix · ${nextItems.length} pieces`,
+        items: nextItems,
+        colors: nextItems.map((i) => i.color).slice(0, 3),
+      }
+    })
+  }
+
+  const handleSwapSlotItem = (slot: BuilderSlot, w: WardrobeItem) => {
+    const piece: FavoriteOutfitItem = {
+      type: slot,
+      name: w.name,
+      color: w.color,
+      emoji: getPieceEmoji(w.category, "👕", w.name),
+      imageData: w.imageData,
+      wardrobeItemId: w.id,
+    }
+    if (slot === "Full Body") {
+      setBuilderMode("full_body")
+    } else if (slot === "Top" || slot === "Bottom") {
+      setBuilderMode("separates")
+    }
+    setSelectedOutfit((prev) => {
+      const conflicts = (item: FavoriteOutfitItem) => {
+        const s = normalizeSlotType(item.type, item.name)
+        if (s === slot) return true
+        if (slot === "Full Body") return s === "Top" || s === "Bottom"
+        if (slot === "Top" || slot === "Bottom") return s === "Full Body"
+        return false
+      }
+      const filtered = prev.items.filter((i) => !conflicts(i))
+      const nextItems = [...filtered, piece]
+      const fullBody = nextItems.find(
+        (i) => normalizeSlotType(i.type, i.name) === "Full Body",
+      )
+      const topOrOuter =
+        nextItems.find((i) => {
+          const s = normalizeSlotType(i.type, i.name)
+          return s === "Top" || s === "Outerwear"
+        }) || nextItems[0]
+      const bottom = nextItems.find(
+        (i) => normalizeSlotType(i.type, i.name) === "Bottom",
+      )
+      const outer = nextItems.find(
+        (i) => normalizeSlotType(i.type, i.name) === "Outerwear",
+      )
+      return {
+        ...prev,
+        id: `custom-${Date.now()}`,
+        label: fullBody
+          ? outer
+            ? `${fullBody.name} & ${outer.name}`
+            : fullBody.name
+          : topOrOuter && bottom
             ? `${topOrOuter.name} & ${bottom.name}`
             : prev.label,
         tagline: `Manual mix · ${nextItems.length} pieces`,
@@ -567,7 +726,9 @@ export default function TryOnTab() {
 
   const handleRemoveSlot = (slot: "Outerwear" | "Shoes") => {
     setSelectedOutfit((prev) => {
-      const nextItems = prev.items.filter((i) => normalizeSlotType(i.type) !== slot)
+      const nextItems = prev.items.filter(
+        (i) => normalizeSlotType(i.type, i.name) !== slot,
+      )
       return {
         ...prev,
         items: nextItems,
@@ -634,8 +795,9 @@ export default function TryOnTab() {
 
     const garments = selectedOutfit.items
       .filter((item) => {
-        const slot = normalizeSlotType(item.type)
+        const slot = normalizeSlotType(item.type, item.name)
         return (
+          slot === "Full Body" ||
           slot === "Top" ||
           slot === "Bottom" ||
           slot === "Outerwear" ||
@@ -643,20 +805,31 @@ export default function TryOnTab() {
         )
       })
       .sort((a, b) => {
-        const rank = (t: string) => {
-          const s = normalizeSlotType(t)
-          if (s === "Top") return 0
+        const rank = (t: string, n: string) => {
+          const s = normalizeSlotType(t, n)
+          if (s === "Full Body") return 0
           if (s === "Outerwear") return 1
-          if (s === "Bottom") return 2
-          return 3
+          if (s === "Top") return 2
+          if (s === "Bottom") return 3
+          return 4
         }
-        return rank(a.type) - rank(b.type)
+        return rank(a.type, a.name) - rank(b.type, b.name)
       })
 
-    if (garments.length === 0) {
+    const hasPrimaryGarment = garments.some((g) => {
+      const s = normalizeSlotType(g.type, g.name)
+      return (
+        s === "Full Body" ||
+        s === "Top" ||
+        s === "Outerwear" ||
+        s === "Bottom"
+      )
+    })
+
+    if (!hasPrimaryGarment) {
       showToast(
-        "Add a Top or Bottom",
-        "Select at least one Top, Outerwear, or Bottom to generate a try-on.",
+        "Add a Garment First",
+        "Select a Dress / Full Body piece or a Top, Outerwear, or Bottom to generate a try-on.",
         "warning",
       )
       return
@@ -698,7 +871,7 @@ export default function TryOnTab() {
     tryOnAbortRef.current = abortController
 
     try {
-      const preparedGarments = selectedOutfit.items.map((g) => {
+      const preparedGarments = garments.map((g) => {
         const match = wardrobe.find(
           (w) =>
             w.id === g.wardrobeItemId ||
@@ -707,7 +880,7 @@ export default function TryOnTab() {
         return {
           imageUrl: getGarmentImageForTryOn(g, wardrobe),
           description: g.name,
-          type: g.type,
+          type: normalizeSlotType(g.type, g.name),
           color: g.color,
           colorName: match?.colorName || "",
           material: match?.material || "",
@@ -834,11 +1007,13 @@ export default function TryOnTab() {
 
   const currentJointPoint = pose[selectedJoint] || DEFAULT_POSE[selectedJoint]
   const swapPool = swapSlot
-    ? wardrobe.filter((w) => normalizeSlotType(w.category) === swapSlot)
+    ? wardrobe.filter((w) => normalizeSlotType(w.category, w.name) === swapSlot)
     : []
 
-  const getSlotItem = (slot: "Top" | "Bottom" | "Outerwear" | "Shoes") =>
-    selectedOutfit.items.find((i) => normalizeSlotType(i.type) === slot)
+  const getSlotItem = (slot: BuilderSlot) =>
+    selectedOutfit.items.find(
+      (i) => normalizeSlotType(i.type, i.name) === slot,
+    )
 
   return (
     <div className="pt-1 pb-4 space-y-2.5">
@@ -912,6 +1087,7 @@ export default function TryOnTab() {
                       type="button"
                       onClick={() => {
                         setSelectedOutfit(fav)
+                        setBuilderMode(outfitUsesFullBody(fav) ? "full_body" : "separates")
                         setOutfitSelected(true)
                         setBuilderOpen(false)
                       }}
@@ -1004,15 +1180,54 @@ export default function TryOnTab() {
                 </div>
               )}
 
-              {/* 4 Garment Slots */}
+              {/* Silhouette Mode Toggle: Separates vs Dress / Full Body */}
+              <div
+                role="group"
+                aria-label="Outfit structure mode"
+                className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-muted border border-border"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSwitchBuilderMode("separates")}
+                  aria-pressed={builderMode === "separates"}
+                  className={`min-h-[34px] px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                    builderMode === "separates"
+                      ? "bg-card text-foreground border border-turquoise shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  👕 Top + Bottom
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchBuilderMode("full_body")}
+                  aria-pressed={builderMode === "full_body"}
+                  className={`min-h-[34px] px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                    builderMode === "full_body"
+                      ? "bg-card text-foreground border border-pink shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  👗 Dress / Full Body
+                </button>
+              </div>
+
+              {/* Garment Slots */}
               <div className="grid grid-cols-2 gap-1.5">
-                {(["Top", "Bottom", "Outerwear", "Shoes"] as const).map((slot) => {
+                {(builderMode === "full_body"
+                  ? (["Full Body", "Outerwear", "Shoes"] as const)
+                  : (["Top", "Bottom", "Outerwear", "Shoes"] as const)
+                ).map((slot) => {
                   const item = getSlotItem(slot)
                   const isOptional = slot === "Outerwear" || slot === "Shoes"
+                  const slotLabel =
+                    slot === "Full Body" ? "Dress / Full Body" : slot
                   return (
                     <div
                       key={slot}
-                      className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-muted border border-border min-w-0"
+                      className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-muted border border-border min-w-0 ${
+                        slot === "Full Body" ? "col-span-2" : ""
+                      }`}
                     >
                       <button
                         type="button"
@@ -1031,15 +1246,19 @@ export default function TryOnTab() {
                             className="w-7 h-7 rounded-md flex items-center justify-center border border-border text-xs shrink-0"
                             style={{ background: item ? `${item.color}28` : undefined }}
                           >
-                            {getPieceEmoji(slot)}
+                            {getPieceEmoji(
+                              slot,
+                              slot === "Full Body" ? "👗" : "👕",
+                              item?.name,
+                            )}
                           </span>
                         )}
                         <div className="min-w-0">
                           <p className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground leading-none">
-                            {slot}
+                            {slotLabel}
                           </p>
                           <p className="text-xs font-bold text-foreground truncate mt-0.5">
-                            {item ? item.name : `Pick ${slot}…`}
+                            {item ? item.name : `Pick ${slotLabel}…`}
                           </p>
                         </div>
                       </button>
@@ -1047,7 +1266,7 @@ export default function TryOnTab() {
                         <button
                           type="button"
                           onClick={() => handleRemoveSlot(slot)}
-                          aria-label={`Remove ${slot}`}
+                          aria-label={`Remove ${slotLabel}`}
                           className="text-[11px] font-bold text-muted-foreground hover:text-red px-1 cursor-pointer"
                         >
                           ✕
@@ -1871,7 +2090,7 @@ export default function TryOnTab() {
                 id="tryon-slot-picker-title"
                 className="text-sm font-black text-foreground"
               >
-                Choose {swapSlot} from Closet
+                Choose {swapSlot === "Full Body" ? "Dress / Full Body" : swapSlot} from Closet
               </h2>
               <button
                 type="button"
@@ -1885,9 +2104,23 @@ export default function TryOnTab() {
 
             <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
               {swapPool.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">
-                  No pieces found in the {swapSlot} category yet.
-                </p>
+                <div className="py-5 text-center space-y-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    No pieces found in the{" "}
+                    {swapSlot === "Full Body" ? "Dresses / Full Body" : swapSlot}{" "}
+                    category yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSwapSlot(null)
+                      setRequestedTab("wardrobe")
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-black bg-turquoise/15 text-turquoise border border-turquoise/40 hover:bg-turquoise/25 cursor-pointer"
+                  >
+                    + Add one in Closet →
+                  </button>
+                </div>
               ) : (
                 swapPool.map((w) => (
                   <button
@@ -1908,7 +2141,7 @@ export default function TryOnTab() {
                         className="w-9 h-9 rounded-lg flex items-center justify-center border border-border text-base shrink-0"
                         style={{ background: `${w.color}28` }}
                       >
-                        {getPieceEmoji(w.category)}
+                        {getPieceEmoji(w.category, "👕", w.name)}
                       </div>
                     )}
                     <div className="min-w-0 flex-1">

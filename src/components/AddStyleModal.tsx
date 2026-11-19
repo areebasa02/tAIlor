@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react"
 import { useApp } from "../context/AppContext"
 import type { AddCustomStyleInput } from "../context/AppContext"
+import { categoryToOutfitType, getGarmentEmoji } from "../lib/garmentCategories"
 import type { OutfitItem } from "../types"
 
 interface AddStyleModalProps {
@@ -26,14 +27,19 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
     (i) => i.category === "Tops" || i.category === "Outerwear"
   )
   const bottoms = wardrobe.filter((i) => i.category === "Bottoms")
+  const fullBodyItems = wardrobe.filter((i) => i.category === "Full Body")
   const shoes = wardrobe.filter((i) => i.category === "Shoes")
 
   const [label, setLabel] = useState("")
   const [tagline, setTagline] = useState("")
   const [selectedAccent, setSelectedAccent] = useState(ACCENT_COLORS[0].value)
+  const [styleMode, setStyleMode] = useState<"separates" | "full_body">("separates")
   const [selectedTopId, setSelectedTopId] = useState<number>(tops[0]?.id || 0)
   const [selectedBottomId, setSelectedBottomId] = useState<number>(
     bottoms[0]?.id || 0
+  )
+  const [selectedFullBodyId, setSelectedFullBodyId] = useState<number>(
+    fullBodyItems[0]?.id || 0
   )
   const [selectedShoeId, setSelectedShoeId] = useState<number>(shoes[0]?.id || 0)
   const [customRationale, setCustomRationale] = useState("")
@@ -51,13 +57,21 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
   if (!isOpen) return null
 
   const handleAutoPick = () => {
-    if (tops.length > 0) {
-      const randomTop = tops[Math.floor(Math.random() * tops.length)]
-      setSelectedTopId(randomTop.id)
-    }
-    if (bottoms.length > 0) {
-      const randomBottom = bottoms[Math.floor(Math.random() * bottoms.length)]
-      setSelectedBottomId(randomBottom.id)
+    if (styleMode === "full_body") {
+      if (fullBodyItems.length > 0) {
+        const randomFullBody =
+          fullBodyItems[Math.floor(Math.random() * fullBodyItems.length)]
+        setSelectedFullBodyId(randomFullBody.id)
+      }
+    } else {
+      if (tops.length > 0) {
+        const randomTop = tops[Math.floor(Math.random() * tops.length)]
+        setSelectedTopId(randomTop.id)
+      }
+      if (bottoms.length > 0) {
+        const randomBottom = bottoms[Math.floor(Math.random() * bottoms.length)]
+        setSelectedBottomId(randomBottom.id)
+      }
     }
     if (shoes.length > 0) {
       const randomShoe = shoes[Math.floor(Math.random() * shoes.length)]
@@ -74,10 +88,55 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
       return
     }
 
+    const shoeItem = wardrobe.find((i) => i.id === selectedShoeId) || shoes[0]
+
+    if (styleMode === "full_body") {
+      const fullBodyItem =
+        wardrobe.find((i) => i.id === selectedFullBodyId) || fullBodyItems[0]
+      if (!fullBodyItem || !shoeItem) {
+        setError("Please make sure a Dress / Full-Body piece and Shoes are selected.")
+        return
+      }
+      const items: OutfitItem[] = [
+        {
+          type: "Full Body",
+          desc: fullBodyItem.name,
+          color: fullBodyItem.color,
+          emoji: getGarmentEmoji(fullBodyItem.category, fullBodyItem.name),
+          reason: `Selected for ${fullBodyItem.material || fullBodyItem.colorName}.`,
+        },
+        {
+          type: "Shoes",
+          desc: shoeItem.name,
+          color: shoeItem.color,
+          emoji: "👟",
+          reason: `Selected for ${shoeItem.name}.`,
+        },
+      ]
+      addCustomStyle({
+        label: label.trim(),
+        tagline: tagline.trim() || "Custom curated full-body look",
+        accent: selectedAccent,
+        items,
+        rationale:
+          customRationale.trim() ||
+          `Custom look curated for "${label.trim()}". Pairs ${fullBodyItem.name} with ${shoeItem.name} for effortless one-piece styling.`,
+        whyDetails: {
+          weatherReason: "Calibrated for comfortable wear in today's weather.",
+          colorHarmony: `Custom harmony between ${fullBodyItem.colorName} and ${shoeItem.colorName}.`,
+          wearFrequency:
+            "Personalized recommendation added to your daily stylist rotation.",
+          sensoryComfort:
+            "Selected specifically to meet your tactile and fit preferences.",
+        },
+      })
+      onClose()
+      return
+    }
+
     const topItem = wardrobe.find((i) => i.id === selectedTopId) || tops[0]
     const bottomItem =
       wardrobe.find((i) => i.id === selectedBottomId) || bottoms[0]
-    const shoeItem = wardrobe.find((i) => i.id === selectedShoeId) || shoes[0]
 
     if (!topItem || !bottomItem || !shoeItem) {
       setError("Please make sure Top, Bottom, and Shoes are selected.")
@@ -86,10 +145,10 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
 
     const items: OutfitItem[] = [
       {
-        type: topItem.category.slice(0, -1) || "Top",
+        type: categoryToOutfitType(topItem.category),
         desc: topItem.name,
         color: topItem.color,
-        emoji: topItem.category === "Outerwear" ? "🧥" : "👚",
+        emoji: getGarmentEmoji(topItem.category, topItem.name),
         reason: `Selected for ${topItem.material || topItem.colorName}.`,
       },
       {
@@ -301,57 +360,116 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
               </button>
             </div>
 
-            {/* Top */}
-            <div>
-              <label
-                htmlFor="custom-style-top"
-                className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+            {/* Garment Layout Switcher */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-muted border border-border">
+              <button
+                type="button"
+                onClick={() => setStyleMode("separates")}
+                className={`min-h-[34px] rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                  styleMode === "separates"
+                    ? "bg-card text-foreground border border-pink shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                Top / Outerwear
-              </label>
-              <select
-                id="custom-style-top"
-                value={selectedTopId}
-                onChange={(e) => setSelectedTopId(Number(e.target.value))}
-                className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
+                👕 Top + Bottom
+              </button>
+              <button
+                type="button"
+                onClick={() => setStyleMode("full_body")}
+                className={`min-h-[34px] rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                  styleMode === "full_body"
+                    ? "bg-card text-foreground border border-pink shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                {tops.map((item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                    className="bg-card text-foreground"
-                  >
-                    {item.name} ({item.colorName})
-                  </option>
-                ))}
-              </select>
+                👗 Dress / Full Body
+              </button>
             </div>
 
-            {/* Bottom */}
-            <div>
-              <label
-                htmlFor="custom-style-bottom"
-                className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
-              >
-                Bottom
-              </label>
-              <select
-                id="custom-style-bottom"
-                value={selectedBottomId}
-                onChange={(e) => setSelectedBottomId(Number(e.target.value))}
-                className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
-              >
-                {bottoms.map((item) => (
-                  <option
-                    key={item.id}
-                    value={item.id}
-                    className="bg-card text-foreground"
+            {styleMode === "full_body" ? (
+              <div>
+                <label
+                  htmlFor="custom-style-fullbody"
+                  className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+                >
+                  Dress / Full Body
+                </label>
+                <select
+                  id="custom-style-fullbody"
+                  value={selectedFullBodyId}
+                  onChange={(e) => setSelectedFullBodyId(Number(e.target.value))}
+                  className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
+                >
+                  {fullBodyItems.length === 0 ? (
+                    <option value={0}>No dresses or full-body pieces in closet</option>
+                  ) : (
+                    fullBodyItems.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                        className="bg-card text-foreground"
+                      >
+                        {item.name} ({item.colorName})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            ) : (
+              <>
+                {/* Top */}
+                <div>
+                  <label
+                    htmlFor="custom-style-top"
+                    className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
                   >
-                    {item.name} ({item.colorName})
-                  </option>
-                ))}
-              </select>
-            </div>
+                    Top / Outerwear
+                  </label>
+                  <select
+                    id="custom-style-top"
+                    value={selectedTopId}
+                    onChange={(e) => setSelectedTopId(Number(e.target.value))}
+                    className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
+                  >
+                    {tops.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                        className="bg-card text-foreground"
+                      >
+                        {item.name} ({item.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bottom */}
+                <div>
+                  <label
+                    htmlFor="custom-style-bottom"
+                    className="text-[10px] uppercase font-bold text-muted-foreground block mb-1"
+                  >
+                    Bottom
+                  </label>
+                  <select
+                    id="custom-style-bottom"
+                    value={selectedBottomId}
+                    onChange={(e) => setSelectedBottomId(Number(e.target.value))}
+                    className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-muted border border-border text-foreground text-xs focus:outline-none focus:border-pink"
+                  >
+                    {bottoms.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                        className="bg-card text-foreground"
+                      >
+                        {item.name} ({item.colorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
 
             {/* Shoes */}
             <div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { CATEGORY_LABELS, WARDROBE_CATEGORIES } from "../lib/garmentCategories"
 import type { WardrobeScanItem } from "../lib/wardrobeScan"
 import type { Category } from "../types"
 import { THEME_COLORS } from "../types/theme"
@@ -870,13 +871,7 @@ export function UserControlBar({
   )
 }
 
-const SCAN_CATEGORIES: Category[] = [
-  "Tops",
-  "Bottoms",
-  "Shoes",
-  "Outerwear",
-  "Accessories",
-]
+const SCAN_CATEGORIES: Category[] = WARDROBE_CATEGORIES
 
 export function WardrobeScanCorrectionModal({
   isOpen,
@@ -1087,7 +1082,7 @@ export function WardrobeScanCorrectionModal({
               >
                 {SCAN_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {CATEGORY_LABELS[c]}
                   </option>
                 ))}
               </select>

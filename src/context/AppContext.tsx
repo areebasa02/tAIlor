@@ -25,6 +25,11 @@ import {
   getRecentLooksForPersona,
   getSampleGarmentImage,
 } from "../data/personaData"
+import {
+  categoryToOutfitType,
+  getGarmentEmoji,
+  isFullBodyGarment,
+} from "../lib/garmentCategories"
 import { fetchAiWeatherAdvice, fetchLiveWeather } from "../services/weatherService"
 import { useOptionalAiHost } from "./AiHostContext"
 
@@ -361,6 +366,38 @@ export const INITIAL_ITEMS: WardrobeItem[] = [
     careInstructions: "Machine wash cold · hang dry",
     sentimentalValue: "Low",
     cost: "$35",
+    status: "clean",
+  },
+  {
+    id: 15,
+    name: "Black belted midi dress",
+    category: "Full Body",
+    color: "#1A1A2E",
+    colorName: "Midnight Black",
+    imageData: "/wardrobe/black-belted-midi-dress.png",
+    worn: 0,
+    favorite: false,
+    material: "Fluid Tagless Viscose",
+    storageLocation: "Closet · Dress Hanger",
+    careInstructions: "Cold gentle cycle · hang dry",
+    sentimentalValue: "Low",
+    cost: "$68",
+    status: "clean",
+  },
+  {
+    id: 16,
+    name: "Olive utility jumpsuit",
+    category: "Full Body",
+    color: "#556B2F",
+    colorName: "Forest Olive",
+    imageData: "/wardrobe/olive-utility-jumpsuit.png",
+    worn: 0,
+    favorite: false,
+    material: "Soft Washed Cotton Twill",
+    storageLocation: "Closet · Full-Length Hanger",
+    careInstructions: "Machine wash cold · tumble low",
+    sentimentalValue: "Low",
+    cost: "$82",
     status: "clean",
   },
 ]
@@ -1408,25 +1445,10 @@ function buildDefaultFavoriteOutfits(
     w: WardrobeItem,
     slotOverride?: string,
   ): FavoriteOutfitItem => ({
-    type:
-      slotOverride ||
-      (w.category === "Accessories"
-        ? "Accessory"
-        : w.category === "Outerwear"
-          ? "Outerwear"
-          : w.category.slice(0, -1)),
+    type: slotOverride || categoryToOutfitType(w.category),
     name: w.name,
     color: w.color,
-    emoji:
-      w.category === "Outerwear"
-        ? "🧥"
-        : w.category === "Bottoms"
-          ? "👖"
-          : w.category === "Shoes"
-            ? "👟"
-            : w.category === "Accessories"
-              ? "💍"
-              : "👕",
+    emoji: getGarmentEmoji(w.category, w.name),
     imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
     wardrobeItemId: w.id,
   })
@@ -1444,7 +1466,8 @@ function buildDefaultFavoriteOutfits(
         ),
       )
       .filter(Boolean) as WardrobeItem[]
-    if (matched.length < 2) return
+    const hasFullBody = matched.some((m) => isFullBodyGarment(m.category, m.name))
+    if (matched.length === 0 || (!hasFullBody && matched.length < 2)) return
     outfits.push({
       id,
       label,
@@ -1462,6 +1485,10 @@ function buildDefaultFavoriteOutfits(
       "Black wide-leg trousers",
       "Black lug-sole Mary Janes",
     ])
+    makeLook("fav-eliora-dress", "Burgundy Velvet Wrap Dress", "One-piece soft velvet · lug-sole Mary Janes", [
+      "Burgundy velvet wrap dress",
+      "Black lug-sole Mary Janes",
+    ])
     makeLook("fav-eliora-soft", "Sensory Soft Studio", "Seamless burgundy tee · platform sneakers", [
       "Burgundy soft scoop tee",
       "Black wide-leg trousers",
@@ -1474,6 +1501,10 @@ function buildDefaultFavoriteOutfits(
       "Camel wide trousers",
       "Tan leather loafers",
     ])
+    makeLook("fav-ethan-boilersuit", "Tailored Charcoal Boilersuit", "Full-body cotton twill · crisp white sneakers", [
+      "Charcoal tailored boilersuit",
+      "White leather sneakers",
+    ])
     makeLook("fav-ethan-office", "Business Casual Oxford", "Crisp white Oxford · tailored navy chinos", [
       "Crisp white Oxford shirt",
       "Navy tailored chinos",
@@ -1485,6 +1516,10 @@ function buildDefaultFavoriteOutfits(
       "Olive relaxed chinos",
       "Tan suede desert boots",
     ])
+    makeLook("fav-jordan-jumpsuit", "Zero-Decision Utility Jumpsuit", "One-piece forest olive · white leather sneakers", [
+      "Olive relaxed utility jumpsuit",
+      "White leather sneakers",
+    ])
     makeLook("fav-jordan-zero", "Zero-Fatigue Daily", "Navy Pima tee · slim indigo jeans", [
       "Navy relaxed crew tee",
       "Slim medium jeans",
@@ -1495,6 +1530,10 @@ function buildDefaultFavoriteOutfits(
       "Crisp white cotton tee",
       "Black wide-leg trousers",
       "White leather sneakers",
+    ])
+    makeLook("fav-josephine-dress", "High-Contrast Wrap Midi Dress", "Onyx & ivory piping · cushioned ballet loafers", [
+      "Black & white wrap midi dress",
+      "Black cushioned ballet loafers",
     ])
     makeLook("fav-josephine-gold", "Warm Gold & Burgundy", "Soft scoop tee · bamboo-knit cardigan", [
       "Burgundy soft scoop tee",
@@ -1508,6 +1547,10 @@ function buildDefaultFavoriteOutfits(
       "Teal trench coat",
       "Camel wide trousers",
       "Tan leather loafers",
+    ])
+    makeLook("fav-areeba-dress", "Emerald Satin Midi Dress", "Fluid satin one-piece · pointed ankle boots", [
+      "Emerald satin midi dress",
+      "Black pointed-toe ankle boots",
     ])
     makeLook("fav-areeba-snoopy", "Snoopy Studio Creative", "Vintage graphic tee · tailored cream blazer", [
       "Snoopy graphic studio tee",
@@ -1931,6 +1974,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const regenerateOutfit = (reasonConstraint?: string) => {
     setOutfitHistory((prev) => [currentOutfit, ...prev])
     setWornToday(false)
+    const hasFullBody = currentOutfit?.items?.some((item) =>
+      isFullBodyGarment(item.type, item.desc),
+    )
+    if (hasFullBody) {
+      const fullBodyPool = wardrobe.filter(
+        (w) => w.category === "Full Body" && (w.status || "clean") === "clean",
+      )
+      const currentFullBody = currentOutfit.items.find((i) =>
+        isFullBodyGarment(i.type, i.desc),
+      )
+      const alternatives = fullBodyPool.filter(
+        (w) => w.name.toLowerCase() !== (currentFullBody?.desc || "").toLowerCase(),
+      )
+      const picked =
+        alternatives[Math.floor(Math.random() * alternatives.length)] ||
+        fullBodyPool[0]
+      if (picked) {
+        const nextPrimary: OutfitItem = {
+          type: "Full Body",
+          desc: picked.name,
+          color: picked.color,
+          emoji: "👗",
+          reason: `Full-body variation in ${picked.colorName}.`,
+        }
+        setOutfits((prev) => {
+          const target = prev[selectedDirection]
+          const rest = target.items.filter(
+            (i) => !isFullBodyGarment(i.type, i.desc),
+          )
+          return {
+            ...prev,
+            [selectedDirection]: {
+              ...target,
+              rationale: reasonConstraint
+                ? `Restyled for "${reasonConstraint}". Updated palette with ${picked.name}.`
+                : `Refreshed full-body look with ${picked.name}.`,
+              items: [nextPrimary, ...rest],
+            },
+          }
+        })
+        showToast(
+          "Outfit Restyled",
+          reasonConstraint ? `Adjusted for: ${reasonConstraint}` : "New stylist variation loaded.",
+          "info",
+        )
+        return
+      }
+    }
     const alternateTops: OutfitItem[] = [
       { type: "Top", desc: "Cream linen blouse", color: "#F5EFD8", emoji: "👚", reason: "Crisp light layer with gentle drape." },
       { type: "Top", desc: "Teal trench coat", color: THEME_COLORS.darkTeal, emoji: "🧥", reason: "Polished statement top layer." },
@@ -1948,7 +2039,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           rationale: reasonConstraint
             ? `Restyled for "${reasonConstraint}". Updated palette with ${randomTop.desc}.`
             : `Refreshed styling with ${randomTop.desc} for balanced wardrobe rotation.`,
-          items: [randomTop, target.items[1], target.items[2]],
+          items: [randomTop, ...target.items.slice(1)],
         },
       }
     })
@@ -1961,15 +2052,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const target = prev[selectedDirection]
       const updated = [...target.items]
       updated[index] = {
-        type: replacementItem.category.slice(0, -1) || "Piece",
+        type: categoryToOutfitType(replacementItem.category),
         desc: replacementItem.name,
         color: replacementItem.color,
-        emoji:
-          replacementItem.category === "Tops"
-            ? "👚"
-            : replacementItem.category === "Bottoms"
-              ? "👖"
-              : "👟",
+        emoji: getGarmentEmoji(replacementItem.category, replacementItem.name),
         reason: `Manually swapped for ${replacementItem.colorName}.`,
       }
       return {

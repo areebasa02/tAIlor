@@ -6,6 +6,11 @@ import {
 } from "../components/AIComponents"
 import { useApp } from "../context/AppContext"
 import { getSampleGarmentImage } from "../data/personaData"
+import {
+  CATEGORY_EMOJIS,
+  categoryToOutfitType,
+  isFullBodyGarment,
+} from "../lib/garmentCategories"
 import { THEME_COLORS } from "../types/theme"
 
 export type { UploadState }
@@ -214,16 +219,7 @@ export default function ColorsTab() {
           colorName: w.colorName,
           category: w.category,
           imageData: w.imageData || getSampleGarmentImage(w.name, w.category),
-          emoji:
-            w.category === "Outerwear"
-              ? "🧥"
-              : w.category === "Bottoms"
-                ? "👖"
-                : w.category === "Shoes"
-                  ? "👟"
-                  : w.category === "Accessories"
-                    ? "💍"
-                    : "👕",
+          emoji: CATEGORY_EMOJIS[w.category] || "👕",
           description: `${w.colorName} · ${w.material || w.category}`,
         }))
       : SAMPLE_ITEMS
@@ -684,61 +680,126 @@ export default function ColorsTab() {
                         }
                   }
 
-                  const topPiece =
-                    [compareA, compareB].find(
-                      (p) =>
-                        p.category === "Tops" || p.category === "Outerwear"
-                    ) ||
-                    findFallback(["Tops"], "White silk-blend shell", "#F5F2EB")
-                  const bottomPiece =
-                    [compareA, compareB].find(
-                      (p) => p.category === "Bottoms"
-                    ) ||
-                    findFallback(
-                      ["Bottoms"],
-                      "Tailored navy trousers",
-                      "#1D2842"
-                    )
-                  const shoePiece =
-                    [compareA, compareB].find((p) => p.category === "Shoes") ||
-                    findFallback(["Shoes"], "Black leather loafers", "#161822")
-
+                  const fullBodyPiece = [compareA, compareB].find((p) =>
+                    isFullBodyGarment(p.category || "", p.name)
+                  )
                   const shortA = compareA.name.split(" ").slice(0, 2).join(" ")
                   const shortB = compareB.name.split(" ").slice(0, 2).join(" ")
                   const lookLabel = `${shortA} + ${shortB}`
 
-                  addCustomStyle({
-                    label: lookLabel,
-                    tagline: `Saved color pairing (${evaluation.score}% match)`,
-                    accent: topPiece.color || "#C4005F",
-                    items: [
+                  if (fullBodyPiece) {
+                    const outerPiece = [compareA, compareB].find(
+                      (p) => p.category === "Outerwear"
+                    )
+                    const shoePiece =
+                      [compareA, compareB].find((p) => p.category === "Shoes") ||
+                      findFallback(["Shoes"], "Black leather loafers", "#161822")
+                    const accessoryPiece = [compareA, compareB].find(
+                      (p) => p.category === "Accessories"
+                    )
+                    const outfitItems = [
                       {
-                        type:
-                          topPiece.category === "Outerwear"
-                            ? "Outerwear"
-                            : "Top",
-                        desc: topPiece.name,
-                        color: topPiece.color,
-                        emoji: topPiece.category === "Outerwear" ? "🧥" : "👕",
+                        type: categoryToOutfitType("Full Body"),
+                        desc: fullBodyPiece.name,
+                        color: fullBodyPiece.color,
+                        emoji: CATEGORY_EMOJIS["Full Body"],
                         reason: "Selected from Color Matcher pairing",
                       },
-                      {
-                        type: "Bottom",
-                        desc: bottomPiece.name,
-                        color: bottomPiece.color,
-                        emoji: "👖",
-                        reason: "Harmonious tonal anchor",
-                      },
+                      ...(outerPiece
+                        ? [
+                            {
+                              type: "Outerwear",
+                              desc: outerPiece.name,
+                              color: outerPiece.color,
+                              emoji: CATEGORY_EMOJIS.Outerwear,
+                              reason: "Selected from Color Matcher pairing",
+                            },
+                          ]
+                        : []),
                       {
                         type: "Shoes",
                         desc: shoePiece.name,
                         color: shoePiece.color,
-                        emoji: "👟",
-                        reason: "Completes full daily look",
+                        emoji: CATEGORY_EMOJIS.Shoes,
+                        reason:
+                          shoePiece.name === compareA.name ||
+                          shoePiece.name === compareB.name
+                            ? "Selected from Color Matcher pairing"
+                            : "Completes full daily look",
                       },
-                    ],
-                    rationale: evaluation.explanation,
-                  })
+                      ...(accessoryPiece
+                        ? [
+                            {
+                              type: "Accessory",
+                              desc: accessoryPiece.name,
+                              color: accessoryPiece.color,
+                              emoji: CATEGORY_EMOJIS.Accessories,
+                              reason: "Selected from Color Matcher pairing",
+                            },
+                          ]
+                        : []),
+                    ]
+
+                    addCustomStyle({
+                      label: lookLabel,
+                      tagline: `Saved color pairing (${evaluation.score}% match)`,
+                      accent: fullBodyPiece.color || "#C4005F",
+                      items: outfitItems,
+                      rationale: evaluation.explanation,
+                    })
+                  } else {
+                    const topPiece =
+                      [compareA, compareB].find(
+                        (p) =>
+                          p.category === "Tops" || p.category === "Outerwear"
+                      ) ||
+                      findFallback(["Tops"], "White silk-blend shell", "#F5F2EB")
+                    const bottomPiece =
+                      [compareA, compareB].find(
+                        (p) => p.category === "Bottoms"
+                      ) ||
+                      findFallback(
+                        ["Bottoms"],
+                        "Tailored navy trousers",
+                        "#1D2842"
+                      )
+                    const shoePiece =
+                      [compareA, compareB].find((p) => p.category === "Shoes") ||
+                      findFallback(["Shoes"], "Black leather loafers", "#161822")
+
+                    addCustomStyle({
+                      label: lookLabel,
+                      tagline: `Saved color pairing (${evaluation.score}% match)`,
+                      accent: topPiece.color || "#C4005F",
+                      items: [
+                        {
+                          type:
+                            topPiece.category === "Outerwear"
+                              ? "Outerwear"
+                              : "Top",
+                          desc: topPiece.name,
+                          color: topPiece.color,
+                          emoji: topPiece.category === "Outerwear" ? "🧥" : "👕",
+                          reason: "Selected from Color Matcher pairing",
+                        },
+                        {
+                          type: "Bottom",
+                          desc: bottomPiece.name,
+                          color: bottomPiece.color,
+                          emoji: "👖",
+                          reason: "Harmonious tonal anchor",
+                        },
+                        {
+                          type: "Shoes",
+                          desc: shoePiece.name,
+                          color: shoePiece.color,
+                          emoji: "👟",
+                          reason: "Completes full daily look",
+                        },
+                      ],
+                      rationale: evaluation.explanation,
+                    })
+                  }
 
                   showToast(
                     "Combination Saved!",

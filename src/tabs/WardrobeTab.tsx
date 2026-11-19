@@ -10,6 +10,14 @@ import { AiHostNoticeBanner } from "../components/AiHostStatus"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
 import {
+  CATEGORY_EMOJIS,
+  CATEGORY_LABELS,
+  WARDROBE_CATEGORIES,
+  categoryToOutfitType,
+  getGarmentEmoji,
+  isFullBodyGarment,
+} from "../lib/garmentCategories"
+import {
   fileToBase64,
   scanWardrobePhoto,
   type MockSampleId,
@@ -24,22 +32,9 @@ import {
 import type { Category, FavoriteOutfit, FavoriteOutfitItem, WardrobeItem } from "../types"
 import { THEME_COLORS } from "../types/theme"
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  Tops: "👕",
-  Bottoms: "👖",
-  Shoes: "👟",
-  Outerwear: "🧥",
-  Accessories: "💍",
-}
+const CATEGORY_EMOJI: Record<string, string> = CATEGORY_EMOJIS
 
-const CATS: (Category | "All")[] = [
-  "All",
-  "Tops",
-  "Bottoms",
-  "Shoes",
-  "Outerwear",
-  "Accessories",
-]
+const CATS: (Category | "All")[] = ["All", ...WARDROBE_CATEGORIES]
 
 type AddStep = "closed" | "photo" | "manual"
 type SortMode = "most_worn" | "least_worn" | "name" | "newest"
@@ -71,9 +66,11 @@ export default function WardrobeTab() {
 
   // Favorite Outfit Builder state
   const [builderOpen, setBuilderOpen] = useState(false)
+  const [favMode, setFavMode] = useState<"separates" | "full_body">("separates")
   const [favLabel, setFavLabel] = useState("")
   const [favTopId, setFavTopId] = useState<number | "">("")
   const [favBottomId, setFavBottomId] = useState<number | "">("")
+  const [favFullBodyId, setFavFullBodyId] = useState<number | "">("")
   const [favShoesId, setFavShoesId] = useState<number | "">("")
   const [favOuterId, setFavOuterId] = useState<number | "">("")
 
@@ -135,6 +132,14 @@ export default function WardrobeTab() {
       colorName: "Warm Gold",
       category: "Tops",
       imageData: "/wardrobe/gold-knit-cardigan.png",
+    },
+    {
+      id: "burgundy-dress",
+      name: "Burgundy velvet wrap dress",
+      color: "#6A1A32",
+      colorName: "Deep Burgundy",
+      category: "Full Body",
+      imageData: "/wardrobe/burgundy-velvet-wrap-dress.png",
     },
   ]
 
@@ -321,6 +326,7 @@ export default function WardrobeTab() {
 
   const topsPool = wardrobe.filter((w) => w.category === "Tops")
   const bottomsPool = wardrobe.filter((w) => w.category === "Bottoms")
+  const fullBodyPool = wardrobe.filter((w) => w.category === "Full Body")
   const shoesPool = wardrobe.filter((w) => w.category === "Shoes")
   const outerPool = wardrobe.filter((w) => w.category === "Outerwear")
 
@@ -330,6 +336,7 @@ export default function WardrobeTab() {
       if (next) {
         if (favTopId === "" && topsPool[0]) setFavTopId(topsPool[0].id)
         if (favBottomId === "" && bottomsPool[0]) setFavBottomId(bottomsPool[0].id)
+        if (favFullBodyId === "" && fullBodyPool[0]) setFavFullBodyId(fullBodyPool[0].id)
         if (favShoesId === "" && shoesPool[0]) setFavShoesId(shoesPool[0].id)
       }
       return next
@@ -338,34 +345,45 @@ export default function WardrobeTab() {
 
   const buildFavoriteFromForm = (): FavoriteOutfit | null => {
     const picked: WardrobeItem[] = []
-    const top = topsPool.find((i) => i.id === favTopId)
-    const bottom = bottomsPool.find((i) => i.id === favBottomId)
     const outer = outerPool.find((i) => i.id === favOuterId)
     const shoes = shoesPool.find((i) => i.id === favShoesId)
-    if (top) picked.push(top)
-    if (outer) picked.push(outer)
-    if (bottom) picked.push(bottom)
-    if (shoes) picked.push(shoes)
 
-    if (picked.length < 2) {
-      showToast(
-        "Pick at least 2 pieces",
-        "Select at least two wardrobe pieces (such as a Top and Bottom) to build an outfit.",
-        "warning",
-      )
-      return null
+    if (favMode === "full_body") {
+      const fullBody = fullBodyPool.find((i) => i.id === favFullBodyId)
+      if (fullBody) picked.push(fullBody)
+      if (outer) picked.push(outer)
+      if (shoes) picked.push(shoes)
+      if (!fullBody) {
+        showToast(
+          "Pick a Dress or Full-Body piece",
+          "Select a dress, jumpsuit, or full-body piece to build this outfit.",
+          "warning",
+        )
+        return null
+      }
+    } else {
+      const top = topsPool.find((i) => i.id === favTopId)
+      const bottom = bottomsPool.find((i) => i.id === favBottomId)
+      if (top) picked.push(top)
+      if (outer) picked.push(outer)
+      if (bottom) picked.push(bottom)
+      if (shoes) picked.push(shoes)
+
+      if (picked.length < 2) {
+        showToast(
+          "Pick at least 2 pieces",
+          "Select at least two wardrobe pieces (such as a Top and Bottom) to build an outfit.",
+          "warning",
+        )
+        return null
+      }
     }
 
     const items: FavoriteOutfitItem[] = picked.map((w) => ({
-      type:
-        w.category === "Accessories"
-          ? "Accessory"
-          : w.category === "Outerwear"
-            ? "Outerwear"
-            : w.category.slice(0, -1),
+      type: categoryToOutfitType(w.category),
       name: w.name,
       color: w.color,
-      emoji: CATEGORY_EMOJI[w.category] || "👕",
+      emoji: getGarmentEmoji(w.category, w.name),
       imageData: w.imageData,
       wardrobeItemId: w.id,
     }))
@@ -379,11 +397,77 @@ export default function WardrobeTab() {
     return {
       id: `fav-${Date.now()}`,
       label: favLabel.trim() || autoLabel,
-      tagline: `Built from ${picked.length} closet pieces`,
+      tagline:
+        favMode === "full_body"
+          ? `Full-body look · ${picked.length} closet piece${picked.length === 1 ? "" : "s"}`
+          : `Built from ${picked.length} closet pieces`,
       colors: picked.slice(0, 3).map((p) => p.color),
       items,
       createdAt: new Date().toISOString(),
     }
+  }
+
+  const handleTryOnWardrobePiece = (piece: WardrobeItem) => {
+    const cleanPool = wardrobe.filter((w) => (w.status || "clean") === "clean")
+    const pool = cleanPool.length > 0 ? cleanPool : wardrobe
+    const picked: WardrobeItem[] = []
+    const defaultShoes = pool.find((w) => w.category === "Shoes")
+
+    if (isFullBodyGarment(piece.category, piece.name)) {
+      picked.push(piece)
+      if (defaultShoes) picked.push(defaultShoes)
+    } else if (piece.category === "Tops") {
+      picked.push(piece)
+      const b = pool.find((w) => w.category === "Bottoms")
+      if (b) picked.push(b)
+      if (defaultShoes) picked.push(defaultShoes)
+    } else if (piece.category === "Bottoms") {
+      const t = pool.find((w) => w.category === "Tops")
+      if (t) picked.push(t)
+      picked.push(piece)
+      if (defaultShoes) picked.push(defaultShoes)
+    } else if (piece.category === "Outerwear") {
+      const t = pool.find((w) => w.category === "Tops")
+      const b = pool.find((w) => w.category === "Bottoms")
+      if (t) picked.push(t)
+      picked.push(piece)
+      if (b) picked.push(b)
+      if (defaultShoes) picked.push(defaultShoes)
+    } else if (piece.category === "Shoes") {
+      const t = pool.find((w) => w.category === "Tops")
+      const b = pool.find((w) => w.category === "Bottoms")
+      if (t) picked.push(t)
+      if (b) picked.push(b)
+      picked.push(piece)
+    } else {
+      const t = pool.find((w) => w.category === "Tops")
+      const b = pool.find((w) => w.category === "Bottoms")
+      if (t) picked.push(t)
+      if (b) picked.push(b)
+      if (defaultShoes) picked.push(defaultShoes)
+      picked.push(piece)
+    }
+
+    const items: FavoriteOutfitItem[] = picked.map((w) => ({
+      type: categoryToOutfitType(w.category),
+      name: w.name,
+      color: w.color,
+      emoji: getGarmentEmoji(w.category, w.name),
+      imageData: w.imageData,
+      wardrobeItemId: w.id,
+    }))
+
+    stopSpeaking()
+    setSpeakingItem(false)
+    setSelectedItem(null)
+    setActiveTryOnOutfit({
+      id: `piece-tryon-${piece.id}`,
+      label: piece.name,
+      tagline: `${CATEGORY_LABELS[piece.category]} · Virtual Try-On`,
+      colors: picked.slice(0, 3).map((p) => p.color),
+      items,
+    })
+    setRequestedTab("tryon")
   }
 
   const showListen = Boolean(
@@ -517,59 +601,127 @@ export default function WardrobeTab() {
                   id="fav-outfit-label"
                   value={favLabel}
                   onChange={(e) => setFavLabel(e.target.value)}
-                  placeholder="e.g. Weekend Blue Denim Look"
+                  placeholder={
+                    favMode === "full_body"
+                      ? "e.g. Evening Velvet Wrap Dress"
+                      : "e.g. Weekend Blue Denim Look"
+                  }
                   className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label
-                    htmlFor="fav-top-select"
-                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
-                  >
-                    Top
-                  </label>
-                  <select
-                    id="fav-top-select"
-                    value={favTopId}
-                    onChange={(e) =>
-                      setFavTopId(e.target.value ? Number(e.target.value) : "")
+              <div
+                role="group"
+                aria-label="Outfit layout type"
+                className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-muted border border-border"
+              >
+                <button
+                  type="button"
+                  aria-pressed={favMode === "separates"}
+                  onClick={() => setFavMode("separates")}
+                  className={`min-h-[34px] rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                    favMode === "separates"
+                      ? "bg-card text-foreground border-2 border-turquoise shadow-2xs"
+                      : "text-muted-foreground border-2 border-transparent hover:text-foreground"
+                  }`}
+                >
+                  👕 Top + Bottom
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={favMode === "full_body"}
+                  onClick={() => {
+                    setFavMode("full_body")
+                    if (favFullBodyId === "" && fullBodyPool[0]) {
+                      setFavFullBodyId(fullBodyPool[0].id)
                     }
-                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
-                  >
-                    <option value="">None</option>
-                    {topsPool.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.colorName})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  }}
+                  className={`min-h-[34px] rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                    favMode === "full_body"
+                      ? "bg-card text-foreground border-2 border-pink shadow-2xs"
+                      : "text-muted-foreground border-2 border-transparent hover:text-foreground"
+                  }`}
+                >
+                  👗 Dress / Full Body
+                </button>
+              </div>
 
-                <div>
-                  <label
-                    htmlFor="fav-bottom-select"
-                    className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
-                  >
-                    Bottom
-                  </label>
-                  <select
-                    id="fav-bottom-select"
-                    value={favBottomId}
-                    onChange={(e) =>
-                      setFavBottomId(e.target.value ? Number(e.target.value) : "")
-                    }
-                    className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
-                  >
-                    <option value="">None</option>
-                    {bottomsPool.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.colorName})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {favMode === "full_body" ? (
+                  <div className="sm:col-span-2">
+                    <label
+                      htmlFor="fav-fullbody-select"
+                      className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                    >
+                      Dress / Full Body
+                    </label>
+                    <select
+                      id="fav-fullbody-select"
+                      value={favFullBodyId}
+                      onChange={(e) =>
+                        setFavFullBodyId(e.target.value ? Number(e.target.value) : "")
+                      }
+                      className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                    >
+                      <option value="">None</option>
+                      {fullBodyPool.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} ({w.colorName})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label
+                        htmlFor="fav-top-select"
+                        className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                      >
+                        Top
+                      </label>
+                      <select
+                        id="fav-top-select"
+                        value={favTopId}
+                        onChange={(e) =>
+                          setFavTopId(e.target.value ? Number(e.target.value) : "")
+                        }
+                        className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                      >
+                        <option value="">None</option>
+                        {topsPool.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.colorName})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="fav-bottom-select"
+                        className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1"
+                      >
+                        Bottom
+                      </label>
+                      <select
+                        id="fav-bottom-select"
+                        value={favBottomId}
+                        onChange={(e) =>
+                          setFavBottomId(e.target.value ? Number(e.target.value) : "")
+                        }
+                        className="w-full min-h-[40px] rounded-xl px-2.5 py-2 text-xs font-semibold outline-none bg-muted text-foreground border-2 border-border focus:border-turquoise"
+                      >
+                        <option value="">None</option>
+                        {bottomsPool.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.colorName})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label
@@ -807,7 +959,7 @@ export default function WardrobeTab() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-turquoise">
                 Quick Test Samples:
               </span>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 min-[400px]:grid-cols-4 gap-2">
                 {QUICK_SAMPLES.map((sample) => (
                   <button
                     key={sample.id}
@@ -824,7 +976,7 @@ export default function WardrobeTab() {
                       {sample.name}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {sample.category}
+                      {CATEGORY_LABELS[sample.category]}
                     </p>
                   </button>
                 ))}
@@ -1026,11 +1178,11 @@ export default function WardrobeTab() {
                 onChange={(e) => setManualCat(e.target.value as Category)}
                 className="w-full rounded-xl px-3 py-2 text-xs outline-none bg-muted text-foreground border border-border focus:border-pink transition-colors"
               >
-                <option value="Tops">Tops</option>
-                <option value="Bottoms">Bottoms</option>
-                <option value="Shoes">Shoes</option>
-                <option value="Outerwear">Outerwear</option>
-                <option value="Accessories">Accessories</option>
+                {WARDROBE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORY_LABELS[c]}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1259,7 +1411,7 @@ export default function WardrobeTab() {
                     {CATEGORY_EMOJI[c]}
                   </span>
                 )}
-                {c}
+                {c === "All" ? "All" : CATEGORY_LABELS[c]}
               </button>
             )
           })}
@@ -1534,6 +1686,14 @@ export default function WardrobeTab() {
 
             {/* Action buttons */}
             <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleTryOnWardrobePiece(selectedItem)}
+                className="col-span-2 min-h-[44px] py-2.5 rounded-xl text-xs font-black text-white bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-md shadow-pink/20 transition-all cursor-pointer"
+              >
+                🪞 Try On Piece in Studio →
+              </button>
+
               <button
                 type="button"
                 onClick={() => {

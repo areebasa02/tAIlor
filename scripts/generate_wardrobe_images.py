@@ -132,6 +132,20 @@ GARMENTS: list[dict[str, str]] = [
     {"name": "Brushed gold cuff bracelet", "category": "Accessories", "color": "#FFCB44", "material": "warm brushed gold minimalist cuff bracelet"},
     {"name": "Gold hoop earrings & Snoopy pin", "category": "Accessories", "color": "#FFCB44", "material": "warm 18k gold hoop earrings with cute enamel pin"},
     {"name": "Gold hoop earrings", "category": "Accessories", "color": "#FFCB44", "material": "warm 18k gold polished hoop earrings"},
+
+    # Full Body (Dresses, Jumpsuits, Boilersuits, Coveralls)
+    {"name": "Black belted midi dress", "category": "Full Body", "color": "#1A1A2E", "material": "midnight black fluid viscose belted midi dress"},
+    {"name": "Olive utility jumpsuit", "category": "Full Body", "color": "#556B2F", "material": "forest olive soft washed cotton twill utility jumpsuit"},
+    {"name": "Burgundy velvet wrap dress", "category": "Full Body", "color": "#6A1A32", "material": "deep burgundy soft silk-touch velvet wrap midi dress"},
+    {"name": "Black belted jumpsuit", "category": "Full Body", "color": "#1A1A2E", "material": "midnight black fluid crepe wide-leg belted jumpsuit"},
+    {"name": "Charcoal tailored boilersuit", "category": "Full Body", "color": "#2E323D", "material": "deep charcoal brushed cotton twill tailored boilersuit"},
+    {"name": "Navy utility coveralls", "category": "Full Body", "color": "#1B2A4A", "material": "executive navy stretch cotton gabardine utility coveralls"},
+    {"name": "Olive relaxed utility jumpsuit", "category": "Full Body", "color": "#556B2F", "material": "forest olive washed organic cotton relaxed jumpsuit"},
+    {"name": "Oatmeal linen coveralls", "category": "Full Body", "color": "#D6C7B2", "material": "warm oatmeal washed flax linen coveralls"},
+    {"name": "Black & white wrap midi dress", "category": "Full Body", "color": "#11131C", "material": "high-contrast onyx black seamless bamboo-modal wrap midi dress with ivory piping"},
+    {"name": "Emerald bamboo knit jumpsuit", "category": "Full Body", "color": "#0F766E", "material": "rich emerald teal tagless bamboo viscose knit jumpsuit"},
+    {"name": "Emerald satin midi dress", "category": "Full Body", "color": "#0F766E", "material": "rich emerald teal fluid silk-touch satin midi dress"},
+    {"name": "Tailored navy utility jumpsuit", "category": "Full Body", "color": "#1B2A4A", "material": "deep navy structured linen-cotton belted utility jumpsuit"},
 ]
 
 
@@ -169,10 +183,13 @@ def apply_studio_3d_lighting_and_folds(
     volume_h = (1.0 - (1.0 - norm_d) ** 2.2) * 18.0
 
     # 2. Cloth drapery folds & garment-specific height relief
-    fold_freq = 0.024 if category in ("Tops", "Outerwear", "Bottoms") else 0.014
-    fold_amp = 3.2 if category in ("Tops", "Bottoms") else (2.4 if category == "Outerwear" else 1.2)
+    fold_freq = 0.024 if category in ("Tops", "Outerwear", "Bottoms", "Full Body") else 0.014
+    fold_amp = 3.2 if category in ("Tops", "Bottoms", "Full Body") else (2.4 if category == "Outerwear" else 1.2)
     if "pleat" in lower or "skirt" in lower:
         fold_wave = np.sin((xx - w * 0.5) * 0.095) * 4.8
+    elif category == "Full Body" and any(k in lower for k in ("dress", "gown")):
+        skirt_t = np.clip((yy - h * 0.42) / (h * 0.48), 0.0, 1.0)
+        fold_wave = np.sin((xx - w * 0.5) * 0.068) * (2.2 + 3.4 * skirt_t)
     elif "cable" in lower:
         fold_wave = np.sin(xx * 0.08) * np.cos(yy * 0.065 + np.sin(xx * 0.08)) * 3.6
     elif "ribbed" in lower:
@@ -195,7 +212,7 @@ def apply_studio_3d_lighting_and_folds(
         grain = 0.55 * np.sin((xx + yy) * 0.65)
     elif "linen" in lower:
         grain = 0.38 * (np.sin(xx * 0.72) + np.sin(yy * 0.72))
-    elif category in ("Tops", "Outerwear", "Bottoms"):
+    elif category in ("Tops", "Outerwear", "Bottoms", "Full Body"):
         grain = 0.16 * (np.sin(xx * 0.82) + np.sin(yy * 0.82))
 
     heightfield = volume_h + fold_wave + grain
@@ -706,11 +723,174 @@ def draw_accessory(name: str, rgb: tuple[int, int, int]) -> tuple[Image.Image, I
     return garment, mask
 
 
+def draw_full_body(name: str, rgb: tuple[int, int, int]) -> tuple[Image.Image, Image.Image]:
+    D = DRAW_SIZE
+    mask = Image.new("L", (D, D), 0)
+    garment = Image.new("RGB", (D, D), BG_HEX)
+    md = ImageDraw.Draw(mask)
+    gd = ImageDraw.Draw(garment)
+
+    lower = name.lower()
+    is_jumpsuit = any(k in lower for k in ["jumpsuit", "boilersuit", "coverall", "overall", "romper"])
+    is_romper = "romper" in lower
+    is_wrap = "wrap" in lower
+    is_belted = "belt" in lower or "wrap" in lower or is_jumpsuit
+    is_utility = any(k in lower for k in ["utility", "boilersuit", "coverall"])
+    is_high_contrast_piping = "black & white" in lower or "contrast" in lower
+    is_sleeveless = any(k in lower for k in ["satin", "slip", "camisole", "tank"]) and not is_jumpsuit
+
+    base = rgb
+    dark = shade(rgb, -32)
+    darker = shade(rgb, -54)
+    light = shade(rgb, 28)
+    lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255.0
+    seam = (242, 240, 236) if is_high_contrast_piping else (shade(rgb, 44) if lum < 0.2 else darker)
+
+    top_y = 84
+    waist_y = 308
+    bot_y = 486 if is_romper else 686
+
+    if is_jumpsuit:
+        sh_l, sh_r = 252, 516
+        sl_end_y = 342 if "short" in lower else 402
+        leg_out = 236
+        cuff_out = 212 if "wide" in lower or "relaxed" in lower or "belted" in lower else 234
+        cuff_in = 352 if "wide" in lower or "belted" in lower else 360
+
+        poly = SP([
+            (322, top_y),
+            (384, top_y + 26),
+            (446, top_y),
+            (sh_r, top_y + 34),
+            (652, sl_end_y),
+            (592, sl_end_y + 22),
+            (504, top_y + 170),
+            (474, waist_y),
+            (768 - leg_out, 412),
+            (768 - cuff_out, bot_y),
+            (768 - cuff_in, bot_y),
+            (394, 446),
+            (384, 434),
+            (374, 446),
+            (cuff_in, bot_y),
+            (cuff_out, bot_y),
+            (leg_out, 412),
+            (294, waist_y),
+            (264, top_y + 170),
+            (176, sl_end_y + 22),
+            (116, sl_end_y),
+            (sh_l, top_y + 34),
+        ])
+        md.polygon(poly, fill=255)
+        gd.polygon(poly, fill=base)
+        gd.line(poly + [poly[0]], fill=seam, width=S(3))
+
+        # Collar & front placket / zip
+        gd.polygon(SP([(322, top_y), (384, top_y + 84), (446, top_y), (384, top_y + 20)]), fill=darker)
+        for side in (-1, 1):
+            lapel = SP([
+                (384 + side * 62, top_y + 2),
+                (384 + side * 82, top_y + 72),
+                (384 + side * 12, top_y + 62),
+            ])
+            gd.polygon(lapel, fill=mix(base, light, 0.28), outline=seam, width=S(2))
+        gd.line(SP([(384, top_y + 78), (384, 434)]), fill=seam, width=S(3))
+
+        if is_utility:
+            # Chest utility pockets & buttons
+            for px in (290, 416):
+                gd.rectangle((S(px), S(top_y + 92), S(px + 62), S(top_y + 158)), fill=mix(base, light, 0.14), outline=seam, width=S(2))
+            for by in range(top_y + 98, waist_y - 12, 46):
+                gd.ellipse((S(379), S(by - 5), S(389), S(by + 5)), fill=(228, 224, 214), outline=seam, width=S(1.5))
+
+        # Waistband / sash belt
+        gd.rectangle((S(292), S(waist_y - 14), S(476), S(waist_y + 16)), fill=dark, outline=seam, width=S(2))
+        gd.rectangle((S(368), S(waist_y - 17), S(400), S(waist_y + 19)), outline=(205, 188, 152), width=S(3))
+        if "belted" in lower:
+            gd.polygon(SP([(386, waist_y + 14), (424, waist_y + 96), (402, waist_y + 104), (374, waist_y + 18)]), fill=mix(base, light, 0.16), outline=seam, width=S(2))
+
+        # Trouser pleats / center creases
+        for side in (-1, 1):
+            gd.line(SP([(384 + side * 66, waist_y + 42), (384 + side * 74, bot_y - 12)]), fill=light, width=S(2))
+    else:
+        # Dress silhouette (Wrap / A-line / Midi / Slip)
+        sh_l, sh_r = (284, 484) if is_sleeveless else (256, 512)
+        hem_l, hem_r = 166, 602
+        waist_l, waist_r = 298, 470
+
+        if is_sleeveless:
+            poly = SP([
+                (308, top_y + 6),
+                (334, top_y + 8),
+                (344, top_y + 96),
+                (384, top_y + 124),
+                (424, top_y + 96),
+                (434, top_y + 8),
+                (460, top_y + 6),
+                (482, top_y + 150),
+                (waist_r, waist_y),
+                (hem_r, bot_y - 16),
+                (384, bot_y + 10),
+                (hem_l, bot_y - 16),
+                (waist_l, waist_y),
+                (286, top_y + 150),
+            ])
+        else:
+            sl_end_y = 334 if "wrap" in lower or "midi" in lower else 258
+            poly = SP([
+                (322, top_y),
+                (384, top_y + 34),
+                (446, top_y),
+                (sh_r, top_y + 34),
+                (630, sl_end_y),
+                (572, sl_end_y + 20),
+                (496, top_y + 165),
+                (waist_r, waist_y),
+                (hem_r, bot_y - 16),
+                (384, bot_y + 10),
+                (hem_l, bot_y - 16),
+                (waist_l, waist_y),
+                (272, top_y + 165),
+                (196, sl_end_y + 20),
+                (138, sl_end_y),
+                (sh_l, top_y + 34),
+            ])
+
+        md.polygon(poly, fill=255)
+        gd.polygon(poly, fill=base)
+        gd.line(poly + [poly[0]], fill=seam, width=S(3))
+
+        if is_wrap:
+            # Wrap V-neck surplice crossover & drape overlap
+            gd.polygon(SP([(322, top_y), (384, top_y + 132), (446, top_y), (384, top_y + 28)]), fill=darker)
+            gd.line(SP([(326, top_y + 8), (438, waist_y - 6)]), fill=seam, width=S(3.5))
+            gd.line(SP([(442, top_y + 8), (330, waist_y - 6)]), fill=seam, width=S(3.5))
+            gd.line(SP([(418, waist_y + 12), (464, bot_y - 12)]), fill=seam, width=S(2.5))
+        elif not is_sleeveless:
+            gd.pieslice((S(320), S(top_y - 14), S(448), S(top_y + 64)), 0, 180, fill=darker, outline=seam, width=S(3))
+
+        if is_belted:
+            gd.rectangle((S(waist_l - 2), S(waist_y - 13), S(waist_r + 2), S(waist_y + 14)), fill=dark, outline=seam, width=S(2))
+            gd.polygon(SP([(428, waist_y + 12), (474, waist_y + 114), (448, waist_y + 122), (412, waist_y + 14)]), fill=mix(base, light, 0.2), outline=seam, width=S(2))
+            gd.polygon(SP([(410, waist_y + 12), (438, waist_y + 88), (416, waist_y + 94), (398, waist_y + 14)]), fill=mix(base, light, 0.12), outline=seam, width=S(2))
+
+        # Subtle skirt drape folds
+        for i in range(1, 7):
+            t = i / 7.0
+            tx = waist_l + t * (waist_r - waist_l)
+            bx = hem_l + t * (hem_r - hem_l)
+            gd.line(SP([(tx, waist_y + 22), (bx, bot_y - 14)]), fill=seam if i % 2 == 0 else light, width=S(2))
+
+    return garment, mask
+
+
 def build_base_flatlay(item: dict[str, str]) -> tuple[Image.Image, Image.Image]:
     rgb = hex_to_rgb(item["color"])
     cat = item["category"]
     if cat in ("Tops", "Outerwear"):
         return draw_top_or_outerwear(item["name"], rgb, is_outer=(cat == "Outerwear"))
+    if cat == "Full Body":
+        return draw_full_body(item["name"], rgb)
     if cat == "Bottoms":
         return draw_bottom(item["name"], rgb)
     if cat == "Shoes":
@@ -719,6 +899,9 @@ def build_base_flatlay(item: dict[str, str]) -> tuple[Image.Image, Image.Image]:
 
 
 def main() -> None:
+    import sys
+
+    missing_only = "--missing-only" in sys.argv
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
     unique_items: list[dict[str, str]] = []
@@ -728,10 +911,12 @@ def main() -> None:
             seen.add(sl)
             unique_items.append(item)
 
-    print(f"Generating {len(unique_items)} studio wardrobe product images in {OUT_DIR}...")
+    print(f"Generating {len(unique_items)} studio wardrobe product images in {OUT_DIR} (missing_only={missing_only})...")
     for idx, item in enumerate(unique_items, 1):
         sl = slugify(item["name"])
         out_path = OUT_DIR / f"{sl}.png"
+        if missing_only and out_path.exists():
+            continue
         rgb = hex_to_rgb(item["color"])
         garment_img, mask_img = build_base_flatlay(item)
         final_img = apply_studio_3d_lighting_and_folds(

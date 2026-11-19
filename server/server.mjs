@@ -81,6 +81,19 @@ const MOCK_WARDROBE_SAMPLES = {
     confidence: 0.89,
     imageData: "/wardrobe/gold-knit-cardigan.png",
   },
+  "burgundy-dress": {
+    name: "Burgundy velvet wrap dress",
+    category: "Full Body",
+    color: "#7E1D39",
+    colorName: "Deep Burgundy",
+    material: "Stretch silk velvet",
+    careInstructions: "Dry clean or cold delicate wash · hang dry",
+    storageLocation: "Closet · Padded Hanger",
+    sentimentalValue: "High",
+    cost: "$145",
+    confidence: 0.93,
+    imageData: "/wardrobe/burgundy-velvet-wrap-dress.png",
+  },
   default: {
     name: "Detected Cotton Tee",
     category: "Tops",
@@ -230,13 +243,37 @@ function titleForFinalItems(label, index, items) {
 
   if (labelMatchesFinalItems) return candidate
 
-  const top = items.find((item) => item.type === "top") || items[0]
-  const fallbackName = top?.desc?.trim()
+  const anchor =
+    items.find(
+      (item) =>
+        item.type === "Full Body" ||
+        item.type === "full_body" ||
+        item.type === "top",
+    ) || items[0]
+  const fallbackName = anchor?.desc?.trim()
   return fallbackName ? `${fallbackName} Look` : candidate
 }
 
 function categoryKey(item) {
-  const category = String(item.category || "").toLowerCase()
+  const category = String(item?.category || "").toLowerCase().trim()
+  const name = String(item?.name || "").toLowerCase().trim()
+  const combined = `${category} ${name}`
+
+  // Protect compound "dress ..." pieces that are NOT full-body dresses
+  if (/(dress\s+shirt|dress\s+blouse|dress\s+top)/.test(combined)) return "tops"
+  if (/(dress\s+trouser|dress\s+pant|dress\s+slack)/.test(combined)) return "bottoms"
+  if (/(dress\s+oxford|dress\s+shoe|dress\s+boot|dress\s+loafer)/.test(combined)) return "shoes"
+  if (/(dress\s+coat|dress\s+jacket)/.test(combined)) return "outerwear"
+
+  if (
+    category === "full body" ||
+    category === "full_body" ||
+    category === "full-body" ||
+    /\b(dress|dresses|gown|jumpsuit|romper|boilersuit|coverall|coveralls|overalls|one-piece|one piece)\b/.test(category) ||
+    (!category && /\b(dress|gown|jumpsuit|romper|boilersuit|coverall|coveralls|overalls|one-piece)\b/.test(name))
+  ) {
+    return "full_body"
+  }
   if (category.includes("top") || category.includes("shirt") || category.includes("blouse")) return "tops"
   if (category.includes("bottom") || category.includes("pant") || category.includes("jean") || category.includes("skirt")) return "bottoms"
   if (category.includes("shoe") || category.includes("boot") || category.includes("sneaker") || category.includes("loafer")) return "shoes"
@@ -247,7 +284,26 @@ function categoryKey(item) {
 
 function itemType(item) {
   const category = categoryKey(item)
-  return category === "accessories" ? "accessory" : category.replace(/s$/, "")
+  if (category === "full_body") return "Full Body"
+  if (category === "accessories") return "accessory"
+  return category.replace(/s$/, "")
+}
+
+function emojiForCategoryKey(category) {
+  switch (category) {
+    case "full_body":
+      return "👗"
+    case "bottoms":
+      return "👖"
+    case "shoes":
+      return "👟"
+    case "outerwear":
+      return "🧥"
+    case "accessories":
+      return "💍"
+    default:
+      return "👕"
+  }
 }
 
 async function readJsonBody(request, maxBytes = 10_000) {
@@ -567,7 +623,7 @@ async function handleTryOn(request, response) {
 }
 
 function normalizeWardrobeScanItem(raw = {}) {
-  const categories = new Set(["Tops", "Bottoms", "Shoes", "Outerwear", "Accessories"])
+  const categories = new Set(["Tops", "Bottoms", "Full Body", "Shoes", "Outerwear", "Accessories"])
   const categoryAliases = {
     top: "Tops",
     tops: "Tops",
@@ -578,6 +634,21 @@ function normalizeWardrobeScanItem(raw = {}) {
     pants: "Bottoms",
     jeans: "Bottoms",
     skirt: "Bottoms",
+    "full body": "Full Body",
+    full_body: "Full Body",
+    "full-body": "Full Body",
+    "dresses / full body": "Full Body",
+    dress: "Full Body",
+    dresses: "Full Body",
+    gown: "Full Body",
+    jumpsuit: "Full Body",
+    romper: "Full Body",
+    boilersuit: "Full Body",
+    coverall: "Full Body",
+    coveralls: "Full Body",
+    overalls: "Full Body",
+    "one-piece": "Full Body",
+    "one piece": "Full Body",
     shoe: "Shoes",
     shoes: "Shoes",
     outerwear: "Outerwear",
@@ -586,9 +657,17 @@ function normalizeWardrobeScanItem(raw = {}) {
     accessory: "Accessories",
     accessories: "Accessories",
   }
+  const name = String(raw.name || "Detected garment").trim().slice(0, 80) || "Detected garment"
   let category = String(raw.category || "Tops").trim()
   category = categoryAliases[category.toLowerCase()] || category
   if (!categories.has(category)) category = "Tops"
+  if (
+    category === "Tops" &&
+    !/(dress\s+shirt|dress\s+blouse|dress\s+top|dress\s+trouser|dress\s+pant|dress\s+oxford|dress\s+shoe|dress\s+coat)/i.test(name) &&
+    /\b(dress|gown|jumpsuit|romper|boilersuit|coverall|coveralls|overalls|one-piece)\b/i.test(name)
+  ) {
+    category = "Full Body"
+  }
 
   let color = String(raw.color || "#888888").trim()
   if (!/^#[0-9A-Fa-f]{6}$/.test(color)) color = "#888888"
@@ -802,8 +881,13 @@ function parseOutfitResponse(raw) {
 
   const items = []
   for (const line of raw.split(/\r?\n/)) {
-    const match = line.match(/^\s*(TOP|BOTTOM|SHOES?|OUTERWEAR|ACCESSOR(?:Y|IES))\s*:\s*(.+?)\s*$/i)
-    if (match) items.push({ type: match[1], desc: match[2].replace(/^[-*]\s*/, "").trim() })
+    const match = line.match(/^\s*(FULL[\s_-]*BODY|DRESS|ONE[\s_-]*PIECE|JUMPSUIT|TOP|BOTTOM|SHOES?|OUTERWEAR|ACCESSOR(?:Y|IES))\s*:\s*(.+?)\s*$/i)
+    if (match) {
+      const desc = match[2].replace(/^[-*]\s*/, "").trim()
+      if (desc && !/^(none|n\/a|na|not applicable|optional|omit|skip|-+)$/i.test(desc)) {
+        items.push({ type: match[1], desc })
+      }
+    }
   }
   const label = raw.match(/^\s*(?:LABEL|OUTFIT)\s*:\s*(.+?)\s*$/im)?.[1]?.trim()
   return items.length ? { label, items } : null
@@ -849,12 +933,13 @@ async function handleStylist(request, response) {
     wardrobe ? `Available wardrobe: ${wardrobe}. Use only these items.` : "",
     "Return ONLY these labeled lines, with no markdown or extra text:",
     "LABEL: short outfit name",
-    "TOP: exact wardrobe item name",
-    "BOTTOM: exact wardrobe item name",
+    "FULL BODY: exact wardrobe item name (optional — use instead of TOP and BOTTOM for a dress, gown, jumpsuit, romper, or overalls)",
+    "TOP: exact wardrobe item name (omit if using FULL BODY)",
+    "BOTTOM: exact wardrobe item name (omit if using FULL BODY)",
     "SHOES: exact wardrobe item name",
     "OUTERWEAR: exact wardrobe item name (optional)",
     "ACCESSORY: exact wardrobe item name (optional)",
-    "Copy item names exactly from the available wardrobe. Select exactly one top, one bottom, and one pair of shoes when those categories are available; optionally add at most one outerwear item and one accessory. Never include two items from the same category.",
+    "Copy item names exactly from the available wardrobe. Either select ONE Full Body item OR select ONE top and ONE bottom (never stack a dress/full-body item with a top or bottom), plus one pair of shoes when available; optionally add at most one outerwear item and one accessory. Never include two items from the same category.",
     "Do not describe the outfit in prose. Do not return category objects, colors, multiple JSON objects, or keys other than label and items.",
   ]
     .filter(Boolean)
@@ -923,8 +1008,23 @@ async function handleStylist(request, response) {
         (item, itemIndex, items) =>
           items.findIndex((candidate) => candidate.name === item.name) === itemIndex,
       )
+      const modelChoseFullBody = candidates.some(
+        (item) => categoryKey(item) === "full_body",
+      )
+      const hasFullBodyInCloset = wardrobeItems.some(
+        (item) => categoryKey(item) === "full_body",
+      )
+      const hasSeparatesInCloset =
+        wardrobeItems.some((item) => categoryKey(item) === "tops") &&
+        wardrobeItems.some((item) => categoryKey(item) === "bottoms")
+      const useFullBody =
+        modelChoseFullBody || (hasFullBodyInCloset && !hasSeparatesInCloset)
+
+      const requiredCategories = useFullBody
+        ? ["full_body", "shoes"]
+        : ["tops", "bottoms", "shoes"]
       const selectedWardrobe = []
-      for (const requiredCategory of ["tops", "bottoms", "shoes"]) {
+      for (const requiredCategory of requiredCategories) {
         const categoryCandidates = allCandidates.filter(
           (item) => categoryKey(item) === requiredCategory,
         )
@@ -959,6 +1059,8 @@ async function handleStylist(request, response) {
       })) {
         const category = categoryKey(item)
         if (selectedWardrobe.length >= 6 || usedCategories.has(category)) continue
+        if (useFullBody && (category === "tops" || category === "bottoms")) continue
+        if (!useFullBody && category === "full_body") continue
         selectedWardrobe.push(item)
         usedCategories.add(category)
       }
@@ -967,7 +1069,7 @@ async function handleStylist(request, response) {
         type: itemType(selected),
         desc: selected.name,
         color: selected.color || "#6B7280",
-        emoji: "👕",
+        emoji: emojiForCategoryKey(categoryKey(selected)),
       }))
       const finalItems = items
       if (index === 0) {

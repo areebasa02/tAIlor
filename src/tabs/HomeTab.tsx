@@ -11,6 +11,10 @@ import { AddStyleModal } from "../components/AddStyleModal";
 import { useApp } from "../context/AppContext";
 import { getSampleGarmentImage } from "../data/personaData";
 import {
+  getGarmentEmoji,
+  swapMatchesCategory,
+} from "../lib/garmentCategories";
+import {
   getOutfitItemSelectionTags,
   getReadableColorLabel,
   speakText,
@@ -26,50 +30,8 @@ const GENERATION_STEPS = [
   "Finalizing personalized stylist notes…",
 ];
 
-function getPieceEmoji(typeOrCategory: string): string {
-  const v = typeOrCategory.toLowerCase();
-  if (
-    v.includes("top") ||
-    v.includes("shirt") ||
-    v.includes("blouse") ||
-    v.includes("sweater")
-  ) {
-    return "👕";
-  }
-  if (
-    v.includes("bottom") ||
-    v.includes("pant") ||
-    v.includes("jean") ||
-    v.includes("skirt")
-  ) {
-    return "👖";
-  }
-  if (
-    v.includes("outer") ||
-    v.includes("jacket") ||
-    v.includes("coat") ||
-    v.includes("blazer")
-  ) {
-    return "🧥";
-  }
-  if (
-    v.includes("shoe") ||
-    v.includes("boot") ||
-    v.includes("sneaker") ||
-    v.includes("heel") ||
-    v.includes("loafer")
-  ) {
-    return "👟";
-  }
-  if (
-    v.includes("access") ||
-    v.includes("bag") ||
-    v.includes("belt") ||
-    v.includes("scarf")
-  ) {
-    return "💍";
-  }
-  return "👗";
+function getPieceEmoji(typeOrCategory: string, itemName = ""): string {
+  return getGarmentEmoji(typeOrCategory, itemName, "👗");
 }
 
 export default function HomeTab() {
@@ -936,22 +898,12 @@ export default function HomeTab() {
 
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {wardrobe
-                .filter((item) => {
-                  const targetType =
-                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase() ||
-                    "";
-                  if (targetType.includes("top"))
-                    return item.category === "Tops";
-                  if (targetType.includes("outer"))
-                    return item.category === "Outerwear";
-                  if (targetType.includes("bottom"))
-                    return item.category === "Bottoms";
-                  if (targetType.includes("shoe"))
-                    return item.category === "Shoes";
-                  if (targetType.includes("accessor"))
-                    return item.category === "Accessories";
-                  return true;
-                })
+                .filter((item) =>
+                  swapMatchesCategory(
+                    currentOutfit.items[swapTargetIndex]?.type || "",
+                    item.category,
+                  ),
+                )
                 .map((wItem) => (
                   <button
                     key={wItem.id}

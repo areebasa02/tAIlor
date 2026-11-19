@@ -14,6 +14,11 @@ import { AiHostNoticeBanner } from "../components/AiHostStatus"
 import { formatAiErrorMessage, getApiUrl } from "../lib/aiHost"
 import { getSampleGarmentImage } from "../data/personaData"
 import {
+  getGarmentEmoji,
+  normalizeGarmentSlot,
+  swapMatchesCategory,
+} from "../lib/garmentCategories"
+import {
   getOutfitItemSelectionTags,
   getReadableColorLabel,
   getSensoryInfo,
@@ -54,24 +59,12 @@ const GENERATION_STEPS = [
   "Synthesizing tailored styling suggestions…",
 ]
 
-function getPieceEmoji(typeOrCategory: string, fallback = "👗"): string {
-  const v = typeOrCategory.toLowerCase()
-  if (v.includes("top") || v.includes("shirt") || v.includes("blouse") || v.includes("sweater")) {
-    return "👕"
-  }
-  if (v.includes("bottom") || v.includes("pant") || v.includes("jean") || v.includes("skirt")) {
-    return "👖"
-  }
-  if (v.includes("outer") || v.includes("jacket") || v.includes("coat") || v.includes("blazer")) {
-    return "🧥"
-  }
-  if (v.includes("shoe") || v.includes("boot") || v.includes("sneaker") || v.includes("heel") || v.includes("loafer")) {
-    return "👟"
-  }
-  if (v.includes("access") || v.includes("bag") || v.includes("belt") || v.includes("scarf")) {
-    return "💍"
-  }
-  return fallback
+function getPieceEmoji(
+  typeOrCategory: string,
+  fallback = "👗",
+  itemName = "",
+): string {
+  return getGarmentEmoji(typeOrCategory, itemName, fallback)
 }
 
 function buildLocalRestyle(
@@ -152,23 +145,26 @@ function buildLocalRestyle(
     }
 
     updatedItems = updatedItems.map((item) => {
-      const t = item.type.toLowerCase()
-      const category: WardrobeItem["category"] = t.includes("outer")
-        ? "Outerwear"
-        : t.includes("bottom")
-          ? "Bottoms"
-          : t.includes("shoe")
-            ? "Shoes"
-            : t.includes("access")
-              ? "Accessories"
-              : "Tops"
+      const slot = normalizeGarmentSlot(item.type, item.desc)
+      const category: WardrobeItem["category"] =
+        slot === "Full Body"
+          ? "Full Body"
+          : slot === "Outerwear"
+            ? "Outerwear"
+            : slot === "Bottom"
+              ? "Bottoms"
+              : slot === "Shoes"
+                ? "Shoes"
+                : slot === "Accessory"
+                  ? "Accessories"
+                  : "Tops"
       const next = pickReplacement(category, item.desc)
       if (!next) return item
       return {
         ...item,
         desc: next.name,
         color: next.color,
-        emoji: getPieceEmoji(category, item.emoji),
+        emoji: getPieceEmoji(category, item.emoji, next.name),
       }
     })
   }
@@ -1223,17 +1219,9 @@ export default function GeneratorTab() {
             </div>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {wardrobe
-                .filter((wItem) => {
-                  const t = swapTarget.itemType.toLowerCase()
-                  if (t.includes("top")) return wItem.category === "Tops"
-                  if (t.includes("outer")) return wItem.category === "Outerwear"
-                  if (t.includes("bottom")) return wItem.category === "Bottoms"
-                  if (t.includes("shoe")) return wItem.category === "Shoes"
-                  if (t.includes("accessor")) {
-                    return wItem.category === "Accessories"
-                  }
-                  return true
-                })
+                .filter((wItem) =>
+                  swapMatchesCategory(swapTarget.itemType, wItem.category),
+                )
                 .map((wItem) => (
                   <button
                     key={wItem.id}

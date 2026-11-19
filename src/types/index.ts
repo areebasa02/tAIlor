@@ -71,7 +71,13 @@ export interface UserProfile {
   quizProfile?: QuizResult
 }
 
-export type Category = "Tops" | "Bottoms" | "Shoes" | "Outerwear" | "Accessories"
+export type Category =
+  | "Tops"
+  | "Bottoms"
+  | "Full Body"
+  | "Shoes"
+  | "Outerwear"
+  | "Accessories"
 
 export interface WardrobeItem {
   id: number

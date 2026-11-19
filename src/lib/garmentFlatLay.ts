@@ -1,4 +1,5 @@
 import type { WardrobeItem } from "../types"
+import { normalizeGarmentSlot } from "./garmentCategories"
 
 function parseHexColor(hex: string, fallback = "#4A6FA5"): [number, number, number] {
   const clean = (hex || "").trim().replace("#", "")
@@ -256,6 +257,132 @@ function drawBottomGarment(
   }
 }
 
+function drawFullBodyGarment(
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  rgb: [number, number, number],
+) {
+  const lower = name.toLowerCase()
+  const isJumpsuit =
+    lower.includes("jumpsuit") ||
+    lower.includes("boilersuit") ||
+    lower.includes("coverall") ||
+    lower.includes("overall") ||
+    lower.includes("romper")
+  const isRomper = lower.includes("romper")
+  const isWrap = lower.includes("wrap")
+  const isSleeveless =
+    !isJumpsuit &&
+    (lower.includes("slip") ||
+      lower.includes("tank") ||
+      lower.includes("satin") ||
+      lower.includes("sundress"))
+
+  const base = adjustRgb(rgb, 0)
+  const light = adjustRgb(rgb, 24)
+  const shade = adjustRgb(rgb, -28)
+  const stroke = adjustRgb(rgb, -46)
+
+  const grad = ctx.createLinearGradient(180, 100, 588, 920)
+  grad.addColorStop(0, light)
+  grad.addColorStop(0.5, base)
+  grad.addColorStop(1, shade)
+
+  const topY = 112
+  const waistY = 408
+  const botY = isRomper ? 650 : 922
+
+  ctx.save()
+  ctx.shadowColor = "rgba(18, 22, 34, 0.14)"
+  ctx.shadowBlur = 28
+  ctx.shadowOffsetY = 14
+  ctx.fillStyle = grad
+  ctx.beginPath()
+
+  if (isJumpsuit) {
+    const legOut = 236
+    const cuffOut = 216
+    const cuffIn = 354
+    ctx.moveTo(322, topY)
+    ctx.quadraticCurveTo(384, topY + 34, 446, topY)
+    ctx.lineTo(516, topY + 46)
+    ctx.lineTo(650, 535)
+    ctx.lineTo(590, 560)
+    ctx.lineTo(504, 336)
+    ctx.lineTo(474, waistY)
+    ctx.lineTo(768 - legOut, 548)
+    ctx.lineTo(768 - cuffOut, botY)
+    ctx.lineTo(768 - cuffIn, botY)
+    ctx.lineTo(394, 594)
+    ctx.lineTo(384, 578)
+    ctx.lineTo(374, 594)
+    ctx.lineTo(cuffIn, botY)
+    ctx.lineTo(cuffOut, botY)
+    ctx.lineTo(legOut, 548)
+    ctx.lineTo(294, waistY)
+    ctx.lineTo(264, 336)
+    ctx.lineTo(178, 560)
+    ctx.lineTo(118, 535)
+    ctx.lineTo(252, topY + 46)
+  } else {
+    const waistL = 296
+    const waistR = 472
+    const hemL = 166
+    const hemR = 602
+    if (isSleeveless) {
+      ctx.moveTo(308, topY + 8)
+      ctx.lineTo(334, topY + 10)
+      ctx.lineTo(344, topY + 128)
+      ctx.quadraticCurveTo(384, topY + 165, 424, topY + 128)
+      ctx.lineTo(434, topY + 10)
+      ctx.lineTo(460, topY + 8)
+      ctx.lineTo(482, 310)
+    } else {
+      ctx.moveTo(322, topY)
+      ctx.quadraticCurveTo(384, topY + 45, 446, topY)
+      ctx.lineTo(512, topY + 46)
+      ctx.lineTo(630, 445)
+      ctx.lineTo(572, 472)
+      ctx.lineTo(496, 330)
+    }
+    ctx.lineTo(waistR, waistY)
+    ctx.quadraticCurveTo(560, 680, hemR, botY - 18)
+    ctx.quadraticCurveTo(384, botY + 18, hemL, botY - 18)
+    ctx.quadraticCurveTo(208, 680, waistL, waistY)
+    if (isSleeveless) {
+      ctx.lineTo(286, 310)
+    } else {
+      ctx.lineTo(272, 330)
+      ctx.lineTo(196, 472)
+      ctx.lineTo(138, 445)
+      ctx.lineTo(256, topY + 46)
+    }
+  }
+
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = 4
+  ctx.lineJoin = "round"
+  ctx.stroke()
+
+  // Waistline belt / seam
+  ctx.fillStyle = shade
+  ctx.fillRect(294, waistY - 14, 180, 28)
+  ctx.strokeRect(294, waistY - 14, 180, 28)
+
+  if (isWrap && !isJumpsuit) {
+    ctx.beginPath()
+    ctx.moveTo(324, topY + 8)
+    ctx.lineTo(436, waistY - 14)
+    ctx.moveTo(444, topY + 8)
+    ctx.lineTo(332, waistY - 14)
+    ctx.stroke()
+  }
+}
+
 function renderGarmentFlatLayDataUrl(item: {
   type: string
   name: string
@@ -272,11 +399,13 @@ function renderGarmentFlatLayDataUrl(item: {
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   const rgb = parseHexColor(item.color)
-  const lowerType = item.type.toLowerCase()
-  if (lowerType.includes("bottom")) {
+  const slot = normalizeGarmentSlot(item.type, item.name)
+  if (slot === "Full Body") {
+    drawFullBodyGarment(ctx, item.name, rgb)
+  } else if (slot === "Bottom") {
     drawBottomGarment(ctx, item.name, rgb)
   } else {
-    drawTopGarment(ctx, item.name, rgb, lowerType.includes("outer"))
+    drawTopGarment(ctx, item.name, rgb, slot === "Outerwear")
   }
 
   return canvas.toDataURL("image/png")

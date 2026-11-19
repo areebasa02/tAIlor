@@ -82,11 +82,11 @@ TRYON_IP_ADAPTER_FACE_WEIGHT = os.environ.get(
 # Optional — Qwen & RealVisXL weights download anonymously; only set if your mirror requires it.
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("HF_API_KEY") or None
 
-WARDROBE_CATEGORIES = ("Tops", "Bottoms", "Shoes", "Outerwear", "Accessories")
+WARDROBE_CATEGORIES = ("Tops", "Bottoms", "Full Body", "Shoes", "Outerwear", "Accessories")
 WARDROBE_SCAN_PROMPT = """Analyze this clothing item photo for a digital wardrobe app.
 Return ONLY a single JSON object (no markdown fences, no extra text) with these keys:
 - name: short garment name (string)
-- category: one of Tops, Bottoms, Shoes, Outerwear, Accessories
+- category: one of Tops, Bottoms, Full Body, Shoes, Outerwear, Accessories (use Full Body for dresses, gowns, jumpsuits, rompers, boilersuits, coveralls, and overalls)
 - color: dominant hue as #RRGGBB hex
 - colorName: human color label (string)
 - material: fabric / texture guess (string)
@@ -385,6 +385,7 @@ def extract_json_object(text: str) -> dict[str, Any]:
 
 
 def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
+    name = str(raw.get("name") or "Detected garment").strip()[:80] or "Detected garment"
     category = str(raw.get("category") or "Tops").strip()
     category_map = {
         "top": "Tops",
@@ -396,6 +397,21 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
         "pants": "Bottoms",
         "jeans": "Bottoms",
         "skirt": "Bottoms",
+        "full body": "Full Body",
+        "full_body": "Full Body",
+        "full-body": "Full Body",
+        "dresses / full body": "Full Body",
+        "dress": "Full Body",
+        "dresses": "Full Body",
+        "gown": "Full Body",
+        "jumpsuit": "Full Body",
+        "romper": "Full Body",
+        "boilersuit": "Full Body",
+        "coverall": "Full Body",
+        "coveralls": "Full Body",
+        "overalls": "Full Body",
+        "one-piece": "Full Body",
+        "one piece": "Full Body",
         "shoe": "Shoes",
         "shoes": "Shoes",
         "outerwear": "Outerwear",
@@ -407,6 +423,18 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
     category = category_map.get(category.lower(), category)
     if category not in WARDROBE_CATEGORIES:
         category = "Tops"
+
+    # Guard against vision model putting dresses/jumpsuits into Tops
+    name_lower = name.lower()
+    if category == "Tops" and not any(
+        guard in name_lower
+        for guard in ("dress shirt", "dress blouse", "dress top", "dress trouser", "dress pant", "dress oxford", "dress shoe", "dress coat")
+    ):
+        if any(
+            kw in name_lower
+            for kw in ("dress", "gown", "jumpsuit", "romper", "boilersuit", "coverall", "overalls")
+        ):
+            category = "Full Body"
 
     color = str(raw.get("color") or "#888888").strip()
     if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
@@ -422,9 +450,8 @@ def normalize_wardrobe_entry(raw: dict[str, Any]) -> dict[str, Any]:
         confidence = 0.75
     confidence = max(0.0, min(1.0, confidence))
 
-    name = str(raw.get("name") or "Detected garment").strip() or "Detected garment"
     return {
-        "name": name[:80],
+        "name": name,
         "category": category,
         "color": color.upper() if color.startswith("#") else color,
         "colorName": str(raw.get("colorName") or raw.get("color_name") or "Unknown").strip()[:40],

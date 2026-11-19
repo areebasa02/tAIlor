@@ -144,14 +144,74 @@ def hex_to_color_hint(hex_str: str) -> str:
 
 
 def normalize_slot_name(g_type: str, description: str) -> str:
-    v = f"{g_type} {description}".lower()
+    t = (g_type or "").strip().lower()
+    d = (description or "").strip().lower()
+    v = f"{t} {d}"
+
+    # Explicit slot types take priority
+    if any(
+        k in t
+        for k in (
+            "full body",
+            "full_body",
+            "full-body",
+            "one-piece",
+            "one piece",
+            "dress",
+            "gown",
+            "jumpsuit",
+            "romper",
+            "boilersuit",
+            "coverall",
+            "overalls",
+        )
+    ):
+        return "FullBody"
+    if any(k in t for k in ("outer", "coat", "jacket", "blazer", "trench", "cardigan")):
+        return "Outerwear"
+    if any(k in t for k in ("bottom", "pant", "jean", "trouser", "skirt")):
+        return "Bottom"
+    if any(k in t for k in ("shoe", "boot", "sneaker", "loafer", "oxford")):
+        return "Shoes"
+    if any(k in t for k in ("access", "watch", "belt", "bag", "jewelry")):
+        return "Accessory"
+
+    # Protect compound "dress ..." garment names that are NOT full-body dresses
+    if any(k in v for k in ("dress shirt", "dress blouse", "dress top")):
+        return "Top"
+    if any(k in v for k in ("dress trouser", "dress pant", "dress slack")):
+        return "Bottom"
+    if any(k in v for k in ("dress oxford", "dress shoe", "dress boot", "dress loafer")):
+        return "Shoes"
+    if any(k in v for k in ("dress coat", "dress jacket")):
+        return "Outerwear"
+
+    if any(
+        k in v
+        for k in (
+            "full body",
+            "full_body",
+            "full-body",
+            "one-piece",
+            "one piece",
+            "dress",
+            "gown",
+            "jumpsuit",
+            "romper",
+            "boilersuit",
+            "coverall",
+            "overalls",
+            "kaftan",
+        )
+    ):
+        return "FullBody"
     if any(k in v for k in ("outer", "trench", "coat", "blazer", "jacket", "cardigan", "hoodie", "bomber")):
         return "Outerwear"
     if any(k in v for k in ("bottom", "pant", "jean", "trouser", "chino", "skirt")):
         return "Bottom"
-    if any(k in v for k in ("shoe", "sneaker", "loafer", "boot", "oxford", "mary jane")):
+    if any(k in v for k in ("shoe", "sneaker", "loafer", "boot", "oxford", "mary jane", "heel", "flat", "pump")):
         return "Shoes"
-    if any(k in v for k in ("access", "watch", "belt", "cuff", "earring", "choker", "pendant", "tote")):
+    if any(k in v for k in ("access", "watch", "belt", "cuff", "earring", "choker", "pendant", "tote", "bag")):
         return "Accessory"
     return "Top"
 
@@ -268,15 +328,17 @@ def build_garment_collage(
     garments: list[Any],
     load_rgba_fn: Callable[[Any], tuple[np.ndarray, np.ndarray] | None],
 ) -> Image.Image:
-    """Create a focused clothing reference for IP-Adapter (upper/lower garments only, avoiding corner shoe/collage artifacts)."""
-    slot_rank = {"Outerwear": 0, "Top": 1, "Bottom": 2}
+    """Create a focused clothing reference for IP-Adapter (upper/lower/full-body garments only, avoiding corner shoe/collage artifacts)."""
+    slot_rank = {"FullBody": 0, "Outerwear": 1, "Top": 2, "Bottom": 3}
     ordered = sorted(
         (g for g in garments if normalize_slot_name(g.type, g.description) in slot_rank),
         key=lambda g: slot_rank.get(normalize_slot_name(g.type, g.description), 4),
     )
     tiles: list[Image.Image] = []
+    tile_slots: list[str] = []
 
     for g in ordered:
+        slot = normalize_slot_name(g.type, g.description)
         loaded = load_rgba_fn(g)
         if loaded is not None:
             rgb, alpha = loaded
@@ -289,6 +351,7 @@ def build_garment_collage(
                 bg_tile = np.full_like(crop_rgb, 240.0 / 255.0)
                 blended = np.clip(crop_rgb * crop_a + bg_tile * (1.0 - crop_a), 0.0, 1.0)
                 tiles.append(Image.fromarray((blended * 255).astype(np.uint8), mode="RGB"))
+                tile_slots.append(slot)
                 if len(tiles) >= 3:
                     break
                 continue
@@ -304,6 +367,7 @@ def build_garment_collage(
             except ValueError:
                 pass
         tiles.append(swatch)
+        tile_slots.append(slot)
         if len(tiles) >= 3:
             break
 
@@ -319,17 +383,29 @@ def build_garment_collage(
         resized = img.resize((nw, nh), Image.Resampling.LANCZOS)
         canvas.paste(resized, (bx0 + (bw - nw) // 2, by0 + (bh - nh) // 2))
 
+    has_full_body = "FullBody" in tile_slots
     if len(tiles) == 1:
         paste_fit(tiles[0], (24, 24, 488, 488))
     elif len(tiles) == 2:
-        # Stack upper garment above bottom vertically matching natural full-body layout
-        paste_fit(tiles[0], (56, 16, 456, 260))
-        paste_fit(tiles[1], (56, 264, 456, 496))
+        if has_full_body:
+            # Place full-length dress/jumpsuit & layering piece side-by-side at full height
+            paste_fit(tiles[0], (16, 20, 252, 492))
+            paste_fit(tiles[1], (260, 20, 496, 492))
+        else:
+            # Stack upper garment above bottom vertically matching natural full-body layout
+            paste_fit(tiles[0], (56, 16, 456, 260))
+            paste_fit(tiles[1], (56, 264, 456, 496))
     else:
-        # Three-piece layered look: outerwear + top side-by-side above trousers/skirt
-        paste_fit(tiles[0], (16, 16, 250, 256))
-        paste_fit(tiles[1], (262, 16, 496, 256))
-        paste_fit(tiles[2], (56, 264, 456, 496))
+        if has_full_body:
+            # Full-height hero panel for dress/jumpsuit alongside stacked accents
+            paste_fit(tiles[0], (16, 20, 276, 492))
+            paste_fit(tiles[1], (288, 20, 496, 252))
+            paste_fit(tiles[2], (288, 260, 496, 492))
+        else:
+            # Three-piece layered look: outerwear + top side-by-side above trousers/skirt
+            paste_fit(tiles[0], (16, 16, 250, 256))
+            paste_fit(tiles[1], (262, 16, 496, 256))
+            paste_fit(tiles[2], (56, 264, 456, 496))
 
     return canvas
 
@@ -352,10 +428,29 @@ def build_tryon_prompts(
     )
     body_desc = _BODY_PROMPTS.get((body_preset or "standard").lower(), _BODY_PROMPTS["standard"])
 
-    slot_rank = {"Outerwear": 0, "Top": 1, "Bottom": 2, "Shoes": 3, "Accessory": 4}
+    slot_rank = {
+        "FullBody": 0,
+        "Outerwear": 1,
+        "Top": 2,
+        "Bottom": 3,
+        "Shoes": 4,
+        "Accessory": 5,
+    }
     ordered = sorted(
         garments,
-        key=lambda g: slot_rank.get(normalize_slot_name(g.type, g.description), 4),
+        key=lambda g: slot_rank.get(normalize_slot_name(g.type, g.description), 5),
+    )
+
+    full_body_items = [
+        g for g in ordered if normalize_slot_name(g.type, g.description) == "FullBody"
+    ]
+    has_full_body = bool(full_body_items)
+    has_skirted_dress = any(
+        not any(
+            k in (g.description or "").lower()
+            for k in ("jumpsuit", "boilersuit", "coverall", "overalls", "romper")
+        )
+        for g in full_body_items
     )
 
     garment_clauses: list[str] = []
@@ -364,9 +459,17 @@ def build_tryon_prompts(
         if not desc:
             continue
         desc_lower = desc.lower()
+        slot = normalize_slot_name(g.type, desc)
         color_word = (g.color_name or "").strip().lower() or hex_to_color_hint(g.color)
         mat_word = (g.material or "").strip().lower()
         parts: list[str] = []
+        if (
+            has_full_body
+            and slot == "Outerwear"
+            and any(k in desc_lower for k in ("coat", "trench", "blazer", "jacket", "cardigan"))
+            and not any(k in desc_lower for k in ("open", "unbuttoned", "cropped"))
+        ):
+            parts.append("open")
         if color_word and not any(w in desc_lower for w in color_word.split()):
             parts.append(color_word)
         # Keep material hints short so full prompt stays safely inside 77 CLIP tokens
@@ -379,12 +482,14 @@ def build_tryon_prompts(
 
     outfit_desc = ", ".join(garment_clauses) if garment_clauses else "tailored contemporary outfit"
     pose_part = f", {pose_label.lower()} pose" if pose_label and pose_label.lower() != "custom pose" else ""
+    dress_neg_suffix = ", pants, trousers, jeans, two-piece" if has_skirted_dress else ""
 
     if include_my_face:
         head_clause = "sculpted studio mannequin with realistic portrait face matching reference"
         negative = (
             "uncanny face, distorted features, naked torso, bare chest, blurry, lowres, "
             "cropped head, cropped shoes, floating shoes, spare shoes, extra limbs, fused fingers, flat-lay collage, text, watermark"
+            f"{dress_neg_suffix}"
         )
         positive = (
             f"studio full-body catalog photo, {cam_desc}, {head_clause}, {body_desc}{pose_part}, "
@@ -396,6 +501,7 @@ def build_tryon_prompts(
             "human, real person, face, facial features, eyes, eyebrows, eyelashes, nose, mouth, lips, hair, wig, "
             "ears, skin pores, blurry, lowres, cropped head, cropped shoes, floating shoes, spare shoes, extra shoes, "
             "extra limbs, extra arms, flat-lay collage, white border, text, watermark"
+            f"{dress_neg_suffix}"
         )
         positive = (
             f"studio catalog mannequin photo, {head_clause}, {cam_desc}, {body_desc}{pose_part}, "
