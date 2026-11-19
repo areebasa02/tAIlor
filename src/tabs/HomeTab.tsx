@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 import {
   AnimatedStepProgress,
   UserControlBar,
@@ -6,44 +6,70 @@ import {
   OutfitFeedbackModal,
   GarmentFeedbackModal,
   type ControlMode,
-} from "../components/AIComponents"
-import { AddStyleModal } from "../components/AddStyleModal"
-import { useApp } from "../context/AppContext"
-import { getSampleGarmentImage } from "../data/personaData"
+} from "../components/AIComponents";
+import { AddStyleModal } from "../components/AddStyleModal";
+import { useApp } from "../context/AppContext";
+import { getSampleGarmentImage } from "../data/personaData";
 import {
   getOutfitItemSelectionTags,
   getReadableColorLabel,
   speakText,
   stopSpeaking,
-} from "../services/accessibilityHelpers"
-import type { OutfitItem } from "../types"
-import { THEME_COLORS } from "../types/theme"
+} from "../services/accessibilityHelpers";
+import type { OutfitItem } from "../types";
+import { THEME_COLORS } from "../types/theme";
 
 const GENERATION_STEPS = [
   "Reading digital wardrobe & local forecast…",
   "Analyzing wear history & color theory rules…",
   "Synthesizing accessible outfit options…",
   "Finalizing personalized stylist notes…",
-]
+];
 
 function getPieceEmoji(typeOrCategory: string): string {
-  const v = typeOrCategory.toLowerCase()
-  if (v.includes("top") || v.includes("shirt") || v.includes("blouse") || v.includes("sweater")) {
-    return "👕"
+  const v = typeOrCategory.toLowerCase();
+  if (
+    v.includes("top") ||
+    v.includes("shirt") ||
+    v.includes("blouse") ||
+    v.includes("sweater")
+  ) {
+    return "👕";
   }
-  if (v.includes("bottom") || v.includes("pant") || v.includes("jean") || v.includes("skirt")) {
-    return "👖"
+  if (
+    v.includes("bottom") ||
+    v.includes("pant") ||
+    v.includes("jean") ||
+    v.includes("skirt")
+  ) {
+    return "👖";
   }
-  if (v.includes("outer") || v.includes("jacket") || v.includes("coat") || v.includes("blazer")) {
-    return "🧥"
+  if (
+    v.includes("outer") ||
+    v.includes("jacket") ||
+    v.includes("coat") ||
+    v.includes("blazer")
+  ) {
+    return "🧥";
   }
-  if (v.includes("shoe") || v.includes("boot") || v.includes("sneaker") || v.includes("heel") || v.includes("loafer")) {
-    return "👟"
+  if (
+    v.includes("shoe") ||
+    v.includes("boot") ||
+    v.includes("sneaker") ||
+    v.includes("heel") ||
+    v.includes("loafer")
+  ) {
+    return "👟";
   }
-  if (v.includes("access") || v.includes("bag") || v.includes("belt") || v.includes("scarf")) {
-    return "💍"
+  if (
+    v.includes("access") ||
+    v.includes("bag") ||
+    v.includes("belt") ||
+    v.includes("scarf")
+  ) {
+    return "💍";
   }
-  return "👗"
+  return "👗";
 }
 
 export default function HomeTab() {
@@ -64,71 +90,72 @@ export default function HomeTab() {
     regenerateOutfit,
     swapOutfitItem,
     weather,
+    weatherAdviceLoading,
     refreshWeather,
     showToast,
     favoriteOutfitIds,
     toggleFavoriteOutfit,
     saveOutfitFeedback,
     saveGarmentFeedback,
-  } = useApp()
+  } = useApp();
 
-  const [loading, setLoading] = useState(false)
-  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default")
-  const [whyModalOpen, setWhyModalOpen] = useState(false)
-  const [rejectModalOpen, setRejectModalOpen] = useState(false)
-  const [customRejectReason, setCustomRejectReason] = useState("")
-  const [swapModalOpen, setSwapModalOpen] = useState(false)
-  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null)
-  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false)
-  const [speakingOutfit, setSpeakingOutfit] = useState(false)
-  const [showRecentHistory, setShowRecentHistory] = useState(false)
-  const [outfitFeedbackModalOpen, setOutfitFeedbackModalOpen] = useState(false)
+  const [loading, setLoading] = useState(false);
+  const [ctrlMode, setCtrlMode] = useState<ControlMode>("default");
+  const [whyModalOpen, setWhyModalOpen] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [customRejectReason, setCustomRejectReason] = useState("");
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null);
+  const [addStyleModalOpen, setAddStyleModalOpen] = useState(false);
+  const [speakingOutfit, setSpeakingOutfit] = useState(false);
+  const [showRecentHistory, setShowRecentHistory] = useState(false);
+  const [outfitFeedbackModalOpen, setOutfitFeedbackModalOpen] = useState(false);
   const [garmentFeedbackTarget, setGarmentFeedbackTarget] = useState<{
-    item: OutfitItem
-    index: number
-  } | null>(null)
+    item: OutfitItem;
+    index: number;
+  } | null>(null);
 
-  useEffect(() => () => stopSpeaking(), [])
+  useEffect(() => () => stopSpeaking(), []);
 
   const showListen = Boolean(
-    user.accessibility.visionImpairment || user.accessibility.voiceNarration
-  )
+    user.accessibility.visionImpairment || user.accessibility.voiceNarration,
+  );
 
   const handleToggleListen = () => {
     if (speakingOutfit) {
-      stopSpeaking()
-      setSpeakingOutfit(false)
-      return
+      stopSpeaking();
+      setSpeakingOutfit(false);
+      return;
     }
-    if (!currentOutfit) return
+    if (!currentOutfit) return;
     const pieces = currentOutfit.items
       .map(
         (item) =>
-          `${item.type}: ${item.desc}, color ${getReadableColorLabel(item.color, item.desc, wardrobe)}`
+          `${item.type}: ${item.desc}, color ${getReadableColorLabel(item.color, item.desc, wardrobe)}`,
       )
-      .join(". ")
-    const speech = `Today's recommended outfit is ${currentOutfit.label}: ${currentOutfit.tagline}. Weather in ${weather.city.split(",")[0]} is ${weather.temp}. Pieces: ${pieces}. Stylist note: ${currentOutfit.rationale}`
-    const started = speakText(speech, () => setSpeakingOutfit(false))
+      .join(". ");
+    const speech = `Today's recommended outfit is ${currentOutfit.label}: ${currentOutfit.tagline}. Weather in ${weather.city.split(",")[0]} is ${weather.temp}. Pieces: ${pieces}. Stylist note: ${currentOutfit.rationale}`;
+    const started = speakText(speech, () => setSpeakingOutfit(false));
     if (started) {
-      setSpeakingOutfit(true)
+      setSpeakingOutfit(true);
     } else {
       showToast(
         "Audio Unavailable",
         "Voice narration is not supported in this browser.",
-        "warning"
-      )
+        "warning",
+      );
     }
-  }
+  };
 
   const handleRegenerate = (reasonConstraint?: string) => {
-    setLoading(true)
-    setCtrlMode("regenerating")
+    setLoading(true);
+    setCtrlMode("regenerating");
     setTimeout(() => {
-      regenerateOutfit(reasonConstraint)
-      setLoading(false)
-      setCtrlMode("default")
-    }, 650)
-  }
+      regenerateOutfit(reasonConstraint);
+      setLoading(false);
+      setCtrlMode("default");
+    }, 650);
+  };
 
   const handleApprove = () => {
     logOutfitWorn({
@@ -136,17 +163,17 @@ export default function HomeTab() {
       items: currentOutfit.items.map((i) => i.desc),
       color: currentOutfit.items[0]?.color || THEME_COLORS.pink,
       direction: currentOutfit.label,
-    })
-    setWornToday(true)
-    setCtrlMode("default")
-  }
+    });
+    setWornToday(true);
+    setCtrlMode("default");
+  };
 
   const handleSwapItem = (replacementItem: (typeof wardrobe)[0]) => {
-    if (swapTargetIndex === null) return
-    swapOutfitItem(swapTargetIndex, replacementItem)
-    setSwapModalOpen(false)
-    setSwapTargetIndex(null)
-  }
+    if (swapTargetIndex === null) return;
+    swapOutfitItem(swapTargetIndex, replacementItem);
+    setSwapModalOpen(false);
+    setSwapTargetIndex(null);
+  };
 
   return (
     <div className="pt-1 pb-4 space-y-3">
@@ -200,21 +227,48 @@ export default function HomeTab() {
         {/* AI Climate Tip */}
         <div className="rounded-xl px-3 py-2 flex items-center justify-between text-xs bg-turquoise/10 border-2 border-turquoise/45">
           <div className="flex items-center gap-2 min-w-0">
-            <span aria-hidden="true" className="text-sm shrink-0 text-turquoise font-bold">
+            <span
+              aria-hidden="true"
+              className="text-sm shrink-0 text-turquoise font-bold"
+            >
               ✦
             </span>
-            <p className="text-xs min-[380px]:text-[13px] font-semibold text-foreground leading-snug">
-              {weather.advice}
-            </p>
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-black uppercase tracking-wider text-turquoise">
+                  {weatherAdviceLoading
+                    ? "Asking local AI…"
+                    : weather.adviceSource === "ai"
+                      ? "AI Climate Tip"
+                      : "Climate Tip"}
+                </span>
+                {weather.adviceSource === "ai" && !weatherAdviceLoading && (
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    · Tailored to your preferences
+                  </span>
+                )}
+              </div>
+              <p className="text-xs min-[380px]:text-[13px] font-semibold text-foreground leading-snug">
+                {weather.advice}
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={() => void refreshWeather()}
-            className="text-xs font-black text-foreground hover:text-pink shrink-0 ml-2 w-8 h-8 rounded-lg border-2 border-border bg-card flex items-center justify-center cursor-pointer"
-            title="Refresh weather"
+            disabled={weatherAdviceLoading}
+            className="text-xs font-black text-foreground hover:text-pink shrink-0 ml-2 w-8 h-8 rounded-lg border-2 border-border bg-card flex items-center justify-center cursor-pointer disabled:opacity-60"
+            title="Refresh live weather and AI advice"
             aria-label="Refresh weather advice"
           >
-            <span aria-hidden="true">↻</span>
+            <span
+              aria-hidden="true"
+              className={
+                weatherAdviceLoading ? "inline-block animate-spin" : ""
+              }
+            >
+              ↻
+            </span>
           </button>
         </div>
       </div>
@@ -253,19 +307,22 @@ export default function HomeTab() {
           className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 items-center"
         >
           {Object.entries(outfits).map(([dirKey, o]) => {
-            const active = selectedDirection === dirKey
-            const isDefaultPick = dirKey === defaultDirection
+            const active = selectedDirection === dirKey;
+            const isDefaultPick = dirKey === defaultDirection;
 
             return (
-              <div key={dirKey} className="relative group flex items-center shrink-0">
+              <div
+                key={dirKey}
+                className="relative group flex items-center shrink-0"
+              >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={active}
                   onClick={() => {
-                    setSelectedDirection(dirKey)
-                    setCtrlMode("default")
-                    setWornToday(false)
+                    setSelectedDirection(dirKey);
+                    setCtrlMode("default");
+                    setWornToday(false);
                   }}
                   className={`shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold tracking-wide transition-all duration-200 flex items-center gap-1 cursor-pointer border-2 ${
                     active
@@ -294,8 +351,8 @@ export default function HomeTab() {
                   <button
                     type="button"
                     onClick={(e) => {
-                      e.stopPropagation()
-                      removeCustomStyle(dirKey)
+                      e.stopPropagation();
+                      removeCustomStyle(dirKey);
                     }}
                     aria-label={`Remove custom preset ${o.label}`}
                     className="ml-1 w-7 h-7 rounded-full bg-muted hover:bg-red/20 text-foreground hover:text-red flex items-center justify-center text-xs font-bold transition-colors cursor-pointer border-2 border-border shrink-0"
@@ -305,7 +362,7 @@ export default function HomeTab() {
                   </button>
                 )}
               </div>
-            )
+            );
           })}
 
           <button
@@ -315,7 +372,10 @@ export default function HomeTab() {
             className="shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs font-extrabold tracking-wide flex items-center gap-1 border-2 border-dashed border-border text-foreground hover:border-pink hover:bg-pink/5 transition-all duration-200 cursor-pointer"
             title="Save a custom style preset"
           >
-            <span aria-hidden="true" className="text-sm leading-none font-black text-pink">
+            <span
+              aria-hidden="true"
+              className="text-sm leading-none font-black text-pink"
+            >
               +
             </span>
             <span>Style</span>
@@ -331,7 +391,9 @@ export default function HomeTab() {
               borderColor: "var(--border)",
             }}
           >
-            <p className="text-xs font-bold text-foreground">Building your look…</p>
+            <p className="text-xs font-bold text-foreground">
+              Building your look…
+            </p>
             <AnimatedStepProgress
               steps={GENERATION_STEPS}
               intervalMs={500}
@@ -358,10 +420,14 @@ export default function HomeTab() {
                   <div
                     role="img"
                     aria-label={`Outfit palette: ${currentOutfit.items
-                      .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                      .map((i) =>
+                        getReadableColorLabel(i.color, i.desc, wardrobe),
+                      )
                       .join(", ")}`}
                     title={`Palette: ${currentOutfit.items
-                      .map((i) => getReadableColorLabel(i.color, i.desc, wardrobe))
+                      .map((i) =>
+                        getReadableColorLabel(i.color, i.desc, wardrobe),
+                      )
                       .join(" · ")}`}
                     className="inline-flex items-center p-1 rounded-full bg-muted border border-border shrink-0"
                   >
@@ -376,11 +442,7 @@ export default function HomeTab() {
                     </div>
                   </div>
                 </div>
-                {currentOutfit.rationale && (
-                  <p className="text-xs font-medium text-muted-foreground leading-snug line-clamp-2">
-                    {currentOutfit.rationale}
-                  </p>
-                )}
+               
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
@@ -402,7 +464,9 @@ export default function HomeTab() {
                           : "bg-muted text-foreground border-border hover:border-turquoise"
                     }`}
                   >
-                    <span aria-hidden="true">{speakingOutfit ? "⏹" : "🔊"}</span>
+                    <span aria-hidden="true">
+                      {speakingOutfit ? "⏹" : "🔊"}
+                    </span>
                     <span>{speakingOutfit ? "Stop" : "Listen"}</span>
                   </button>
                 )}
@@ -426,19 +490,19 @@ export default function HomeTab() {
                 const readableColor = getReadableColorLabel(
                   item.color,
                   item.desc,
-                  wardrobe
-                )
+                  wardrobe,
+                );
                 const matchedItem = wardrobe.find(
-                  (w) => w.name.toLowerCase() === item.desc.toLowerCase()
-                )
+                  (w) => w.name.toLowerCase() === item.desc.toLowerCase(),
+                );
                 const itemImg =
                   matchedItem?.imageData ||
-                  getSampleGarmentImage(item.desc, item.type)
+                  getSampleGarmentImage(item.desc, item.type);
                 const selectionTags = getOutfitItemSelectionTags(
                   item,
                   matchedItem,
-                  weather.temp
-                )
+                  weather.temp,
+                );
 
                 return (
                   <div
@@ -487,8 +551,8 @@ export default function HomeTab() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSwapTargetIndex(idx)
-                          setSwapModalOpen(true)
+                          setSwapTargetIndex(idx);
+                          setSwapModalOpen(true);
                         }}
                         aria-label={`Swap ${item.desc} (${item.type})`}
                         className="px-3 min-h-[40px] rounded-xl text-xs font-extrabold transition-transform active:scale-95 bg-turquoise/15 text-foreground border-2 border-turquoise hover:bg-turquoise/25 cursor-pointer"
@@ -498,7 +562,9 @@ export default function HomeTab() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setGarmentFeedbackTarget({ item, index: idx })}
+                        onClick={() =>
+                          setGarmentFeedbackTarget({ item, index: idx })
+                        }
                         aria-label={`Feedback for ${item.desc}`}
                         title={`Give feedback on ${item.desc}`}
                         className="w-10 h-10 rounded-xl text-xs font-extrabold flex items-center justify-center transition-transform active:scale-95 bg-muted text-foreground border-2 border-border hover:border-pink hover:text-pink cursor-pointer"
@@ -507,7 +573,7 @@ export default function HomeTab() {
                       </button>
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
 
@@ -525,10 +591,12 @@ export default function HomeTab() {
               onReject={() => setRejectModalOpen(true)}
               onRegenerate={() => handleRegenerate()}
               onFavorite={() =>
-                toggleFavoriteOutfit(String(currentOutfit.id || currentOutfit.label))
+                toggleFavoriteOutfit(
+                  String(currentOutfit.id || currentOutfit.label),
+                )
               }
               isFavorite={favoriteOutfitIds.includes(
-                String(currentOutfit.id || currentOutfit.label)
+                String(currentOutfit.id || currentOutfit.label),
               )}
             />
 
@@ -541,7 +609,7 @@ export default function HomeTab() {
                 <button
                   type="button"
                   onClick={() => {
-                    sendOutfitToLaundry(currentOutfit.items.map((i) => i.desc))
+                    sendOutfitToLaundry(currentOutfit.items.map((i) => i.desc));
                   }}
                   className="px-3 min-h-[38px] rounded-xl text-xs font-extrabold text-white shrink-0 bg-dark-teal border-2 border-[#0D0F18]/20 hover:brightness-110 transition-all shadow-sm cursor-pointer"
                 >
@@ -651,7 +719,10 @@ export default function HomeTab() {
                 <span aria-hidden="true" className="text-xl">
                   💡
                 </span>
-                <h3 id="home-why-modal-title" className="text-base font-black text-foreground">
+                <h3
+                  id="home-why-modal-title"
+                  className="text-base font-black text-foreground"
+                >
                   Why this outfit works
                 </h3>
               </div>
@@ -706,8 +777,12 @@ export default function HomeTab() {
                 </p>
                 <ul className="pt-1 space-y-1 border-t border-border">
                   {currentOutfit.items.map((item, i) => (
-                    <li key={`${item.desc}-${i}`} className="text-[11px] text-muted-foreground">
-                      <strong className="text-foreground">{item.type}:</strong> {item.reason}
+                    <li
+                      key={`${item.desc}-${i}`}
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      <strong className="text-foreground">{item.type}:</strong>{" "}
+                      {item.reason}
                     </li>
                   ))}
                 </ul>
@@ -730,8 +805,8 @@ export default function HomeTab() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => {
-            setRejectModalOpen(false)
-            setCustomRejectReason("")
+            setRejectModalOpen(false);
+            setCustomRejectReason("");
           }}
         >
           <div
@@ -743,7 +818,10 @@ export default function HomeTab() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 id="home-reject-modal-title" className="text-base font-black text-foreground">
+              <h3
+                id="home-reject-modal-title"
+                className="text-base font-black text-foreground"
+              >
                 What would you change?
               </h3>
               <button
@@ -769,9 +847,9 @@ export default function HomeTab() {
                   key={reason}
                   type="button"
                   onClick={() => {
-                    setRejectModalOpen(false)
-                    setCustomRejectReason("")
-                    handleRegenerate(reason)
+                    setRejectModalOpen(false);
+                    setCustomRejectReason("");
+                    handleRegenerate(reason);
                   }}
                   className="p-2.5 min-h-[42px] rounded-xl text-xs font-extrabold text-left border-2 border-border bg-muted hover:border-pink transition-all text-foreground cursor-pointer"
                 >
@@ -799,10 +877,10 @@ export default function HomeTab() {
                 type="button"
                 disabled={!customRejectReason.trim()}
                 onClick={() => {
-                  const note = customRejectReason.trim()
-                  setRejectModalOpen(false)
-                  setCustomRejectReason("")
-                  handleRegenerate(note)
+                  const note = customRejectReason.trim();
+                  setRejectModalOpen(false);
+                  setCustomRejectReason("");
+                  handleRegenerate(note);
                 }}
                 className="w-full min-h-[44px] py-2.5 rounded-xl text-sm font-black text-white bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 disabled:opacity-40 transition-all shadow-md cursor-pointer"
               >
@@ -813,9 +891,9 @@ export default function HomeTab() {
             <button
               type="button"
               onClick={() => {
-                setRejectModalOpen(false)
-                setCustomRejectReason("")
-                handleRegenerate()
+                setRejectModalOpen(false);
+                setCustomRejectReason("");
+                handleRegenerate();
               }}
               className="w-full min-h-[40px] py-1.5 rounded-xl text-xs font-extrabold text-muted-foreground hover:text-foreground cursor-pointer"
             >
@@ -840,7 +918,10 @@ export default function HomeTab() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 id="home-swap-modal-title" className="text-base font-black text-foreground">
+              <h3
+                id="home-swap-modal-title"
+                className="text-base font-black text-foreground"
+              >
                 Swap {currentOutfit.items[swapTargetIndex]?.type}
               </h3>
               <button
@@ -857,13 +938,19 @@ export default function HomeTab() {
               {wardrobe
                 .filter((item) => {
                   const targetType =
-                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase() || ""
-                  if (targetType.includes("top")) return item.category === "Tops"
-                  if (targetType.includes("outer")) return item.category === "Outerwear"
-                  if (targetType.includes("bottom")) return item.category === "Bottoms"
-                  if (targetType.includes("shoe")) return item.category === "Shoes"
-                  if (targetType.includes("accessor")) return item.category === "Accessories"
-                  return true
+                    currentOutfit.items[swapTargetIndex]?.type.toLowerCase() ||
+                    "";
+                  if (targetType.includes("top"))
+                    return item.category === "Tops";
+                  if (targetType.includes("outer"))
+                    return item.category === "Outerwear";
+                  if (targetType.includes("bottom"))
+                    return item.category === "Bottoms";
+                  if (targetType.includes("shoe"))
+                    return item.category === "Shoes";
+                  if (targetType.includes("accessor"))
+                    return item.category === "Accessories";
+                  return true;
                 })
                 .map((wItem) => (
                   <button
@@ -921,12 +1008,12 @@ export default function HomeTab() {
             saveOutfitFeedback(
               String(currentOutfit.id || currentOutfit.label),
               notes,
-              reasons
-            )
+              reasons,
+            );
           }}
           onRegenerateWithFeedback={(notes, reasons) => {
-            const combined = [notes, ...reasons].filter(Boolean).join(", ")
-            handleRegenerate(combined || undefined)
+            const combined = [notes, ...reasons].filter(Boolean).join(", ");
+            handleRegenerate(combined || undefined);
           }}
         />
       )}
@@ -943,20 +1030,20 @@ export default function HomeTab() {
             saveGarmentFeedback(
               `${currentOutfit?.label || "outfit"}-${garmentFeedbackTarget.item.desc}`,
               notes,
-              reasons
-            )
+              reasons,
+            );
           }}
           onSwapWithFeedback={(notes, reasons) => {
             saveGarmentFeedback(
               `${currentOutfit?.label || "outfit"}-${garmentFeedbackTarget.item.desc}`,
               notes,
-              reasons
-            )
-            setSwapTargetIndex(garmentFeedbackTarget.index)
-            setSwapModalOpen(true)
+              reasons,
+            );
+            setSwapTargetIndex(garmentFeedbackTarget.index);
+            setSwapModalOpen(true);
           }}
         />
       )}
     </div>
-  )
+  );
 }

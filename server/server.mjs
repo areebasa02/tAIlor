@@ -111,6 +111,7 @@ const MAX_TRYON_QUEUE = Math.max(1, Number(process.env.MAX_TRYON_QUEUE || 6))
 const MAX_LLM_INFLIGHT = Math.max(1, Number(process.env.MAX_LLM_INFLIGHT || 8))
 const TRYON_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.TRYON_RATE_LIMIT_PER_MIN || 10))
 const STYLIST_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.STYLIST_RATE_LIMIT_PER_MIN || 30))
+const WEATHER_ADVICE_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.WEATHER_ADVICE_RATE_LIMIT_PER_MIN || STYLIST_RATE_LIMIT_PER_MIN))
 const SCAN_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.SCAN_RATE_LIMIT_PER_MIN || 30))
 
 const configuredAllowedOrigins = new Set(
@@ -723,9 +724,11 @@ async function handleWardrobeScan(request, response) {
   }
 }
 
-async function requestModel(prompt, temperature = 0.3) {
+async function requestModel(prompt, temperature = 0.3, options = {}) {
+  const maxTokens = options.maxTokens ?? 450
+  const timeoutMs = options.timeoutMs ?? 120_000
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 120_000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const inferenceResponse = await fetch(inferenceUrl, {
     method: "POST",
     headers: {
@@ -737,7 +740,7 @@ async function requestModel(prompt, temperature = 0.3) {
     body: JSON.stringify({
       model: textModel,
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 450,
+      max_tokens: maxTokens,
       temperature,
     }),
     signal: controller.signal,
@@ -1028,6 +1031,142 @@ async function handleStylist(request, response) {
   })
 }
 
+function cleanWeatherAdviceText(raw) {
+  return String(raw || "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^[-*•]\s*/, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function buildWeatherAdvicePrompt(weather, preferences) {
+  const weatherFacts = [
+    weather.city ? `Location: ${weather.city}` : "",
+    weather.conditionLabel || weather.condition
+      ? `Conditions: ${weather.conditionLabel || weather.condition}`
+      : "",
+    typeof weather.tempF === "number"
+      ? `Temperature: ${weather.tempF}°F`
+      : weather.temp
+        ? `Temperature: ${weather.temp}`
+        : "",
+    typeof weather.feelsLikeF === "number" && weather.feelsLikeF !== weather.tempF
+      ? `Feels like: ${weather.feelsLikeF}°F`
+      : "",
+    typeof weather.humidity === "number" ? `Humidity: ${weather.humidity}%` : "",
+    typeof weather.windMph === "number" ? `Wind: ${weather.windMph} mph` : "",
+  ]
+    .filter(Boolean)
+    .join(", ")
+
+  const prefLines = [
+    preferences.preferredStyle ? `Preferred style: ${preferences.preferredStyle}` : "",
+    preferences.homeClimate
+      ? `Wearer's typical climate preference: ${preferences.homeClimate}`
+      : "",
+    preferences.stylistNotes ? `Style notes: ${preferences.stylistNotes}` : "",
+    preferences.sensorySensitive
+      ? "Sensory sensitivity: prioritize soft, breathable, tagless/non-scratchy fabrics."
+      : "",
+    preferences.lowDecisionMode
+      ? "Low-decision mode: keep the recommendation simple, direct, and easy to act on."
+      : "",
+    preferences.fitFeel ? `Preferred fit/feel: ${preferences.fitFeel}` : "",
+    preferences.easyClosures ? "Needs easy closures (zips, magnets, large buttons)." : "",
+    preferences.palette ? `Color palette preference: ${preferences.palette}` : "",
+    preferences.mood ? `Desired outfit mood: ${preferences.mood}` : "",
+    Array.isArray(preferences.attributes) && preferences.attributes.length > 0
+      ? `Favorite details: ${preferences.attributes.join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const tempLabel =
+    typeof weather.tempF === "number" ? `${weather.tempF}°F` : weather.temp || "today's temperature"
+
+  return [
+    "You are a concise personal wardrobe stylist.",
+    `Current live weather: ${weatherFacts}.`,
+    prefLines ? `Wearer preferences:\n${prefLines}` : "",
+    `Write 1 or 2 short sentences (under 35 words total) of practical clothing and layering advice tailored to both today's live weather (${tempLabel}) and the wearer's preferences.`,
+    `Base warmth strictly on today's live temperature (${tempLabel}) and weather conditions: choose light, breathable fabrics when warm/humid and extra layers or rain protection only when cool, windy, or wet.`,
+    "Return ONLY plain text advice with no markdown, no bullet points, no quotes, and no greeting.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+async function handleWeatherAdvice(request, response) {
+  const requestId = Math.random().toString(36).slice(2, 8)
+  const body = await readJsonBody(request, 64_000)
+  const rawWeather = body?.weather && typeof body.weather === "object" ? body.weather : {}
+  const rawPrefs = body?.preferences && typeof body.preferences === "object" ? body.preferences : {}
+
+  const weather = {
+    city: typeof rawWeather.city === "string" ? rawWeather.city.trim().slice(0, 80) : "",
+    temp: typeof rawWeather.temp === "string" ? rawWeather.temp.trim().slice(0, 20) : "",
+    tempF: typeof rawWeather.tempF === "number" && Number.isFinite(rawWeather.tempF) ? Math.round(rawWeather.tempF) : undefined,
+    feelsLikeF: typeof rawWeather.feelsLikeF === "number" && Number.isFinite(rawWeather.feelsLikeF) ? Math.round(rawWeather.feelsLikeF) : undefined,
+    condition: typeof rawWeather.condition === "string" ? rawWeather.condition.trim().slice(0, 80) : "",
+    conditionLabel: typeof rawWeather.conditionLabel === "string" ? rawWeather.conditionLabel.trim().slice(0, 60) : "",
+    humidity: typeof rawWeather.humidity === "number" && Number.isFinite(rawWeather.humidity) ? Math.round(rawWeather.humidity) : undefined,
+    windMph: typeof rawWeather.windMph === "number" && Number.isFinite(rawWeather.windMph) ? Math.round(rawWeather.windMph) : undefined,
+  }
+
+  if (!weather.condition && !weather.conditionLabel && !weather.temp && typeof weather.tempF !== "number") {
+    sendJson(response, 400, { error: "Weather data is required to generate weather advice." })
+    return
+  }
+
+  const preferences = {
+    preferredStyle: typeof rawPrefs.preferredStyle === "string" ? rawPrefs.preferredStyle.trim().slice(0, 160) : "",
+    homeClimate: typeof rawPrefs.homeClimate === "string" ? rawPrefs.homeClimate.trim().slice(0, 120) : "",
+    stylistNotes: typeof rawPrefs.stylistNotes === "string" ? rawPrefs.stylistNotes.trim().slice(0, 400) : "",
+    sensorySensitive: Boolean(rawPrefs.sensorySensitive),
+    lowDecisionMode: Boolean(rawPrefs.lowDecisionMode),
+    fitFeel: typeof rawPrefs.fitFeel === "string" ? rawPrefs.fitFeel.trim().slice(0, 80) : "",
+    easyClosures: Boolean(rawPrefs.easyClosures),
+    palette: typeof rawPrefs.palette === "string" ? rawPrefs.palette.trim().slice(0, 60) : "",
+    mood: typeof rawPrefs.mood === "string" ? rawPrefs.mood.trim().slice(0, 60) : "",
+    attributes: Array.isArray(rawPrefs.attributes)
+      ? rawPrefs.attributes.filter((item) => typeof item === "string").map((item) => item.trim().slice(0, 50)).slice(0, 5)
+      : [],
+  }
+
+  logStylist(requestId, "weather-advice request", {
+    city: weather.city,
+    temp: weather.temp || weather.tempF,
+    condition: weather.conditionLabel || weather.condition,
+    sensorySensitive: preferences.sensorySensitive,
+  })
+
+  try {
+    const prompt = buildWeatherAdvicePrompt(weather, preferences)
+    const rawAdvice = await requestModel(prompt, 0.3, { maxTokens: 90, timeoutMs: 45_000 })
+    const advice = cleanWeatherAdviceText(rawAdvice)
+    if (!advice) {
+      throw new Error("The local model returned empty weather advice.")
+    }
+    logStylist(requestId, "weather-advice ready", { chars: advice.length })
+    sendJson(response, 200, {
+      advice,
+      model: textModel,
+      source: "local-model",
+    })
+  } catch (error) {
+    const cause = error instanceof Error && error.cause instanceof Error
+      ? ` (${error.cause.message})`
+      : ""
+    sendJson(response, 502, {
+      error: error instanceof Error
+        ? `${error.message}${cause}`
+        : `Could not connect to the local model server at ${textBaseUrl}.${cause}`,
+    })
+  }
+}
+
 async function serveStatic(pathname, response) {
   const requestedPath = pathname === "/" ? "/index.html" : pathname
   const filePath = normalize(join(root, "dist", requestedPath))
@@ -1097,6 +1236,32 @@ const server = createServer(async (request, response) => {
       } finally {
         llmInflightCount = Math.max(0, llmInflightCount - 1)
         console.log(`[api] POST /api/stylist ip=${clientIp} status=${response.statusCode} (${Date.now() - startedAt}ms)`)
+      }
+      return
+    }
+
+    if (url.pathname === "/api/weather/advice" && request.method === "POST") {
+      const clientIp = getClientIp(request)
+      const limit = checkRateLimit("weather-advice", clientIp, WEATHER_ADVICE_RATE_LIMIT_PER_MIN)
+      if (!limit.allowed) {
+        sendJson(
+          response,
+          429,
+          { error: "Too many weather advice requests. Please wait a few seconds and retry." },
+          { "Retry-After": String(limit.retryAfterSec) },
+        )
+        return
+      }
+      if (llmInflightCount >= MAX_LLM_INFLIGHT) {
+        sendJson(response, 503, { error: "Host GPU queue is busy right now. Please retry in a moment." })
+        return
+      }
+      llmInflightCount += 1
+      try {
+        await handleWeatherAdvice(request, response)
+      } finally {
+        llmInflightCount = Math.max(0, llmInflightCount - 1)
+        console.log(`[api] POST /api/weather/advice ip=${clientIp} status=${response.statusCode} (${Date.now() - startedAt}ms)`)
       }
       return
     }
@@ -1188,6 +1353,7 @@ const server = createServer(async (request, response) => {
         },
         features: {
           stylist: true,
+          weatherAdvice: true,
           wardrobeScan: true,
           tryOn: true,
         },

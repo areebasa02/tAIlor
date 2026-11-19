@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react"
-import { ImageUploadWidget, type UploadState } from "../components/AIComponents"
+import {
+  ImageUploadWidget,
+  SCAN_ISSUE_OPTIONS,
+  WardrobeScanCorrectionModal,
+  type ScanIssueId,
+  type UploadState,
+} from "../components/AIComponents"
 import { AiHostNoticeBanner } from "../components/AiHostStatus"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
@@ -80,6 +86,11 @@ export default function WardrobeTab() {
   const [scanSource, setScanSource] = useState("")
   const [scanNote, setScanNote] = useState("")
   const [pendingImageData, setPendingImageData] = useState<string | undefined>()
+  const [correctionStep, setCorrectionStep] = useState<
+    "idle" | "ask_reason" | "modal"
+  >("idle")
+  const [wrongIssues, setWrongIssues] = useState<ScanIssueId[]>([])
+  const [wrongNote, setWrongNote] = useState("")
   const [detectedItem, setDetectedItem] = useState<WardrobeScanItem>({
     name: "Teal Gabardine Trench",
     color: THEME_COLORS.darkTeal,
@@ -159,11 +170,30 @@ export default function WardrobeTab() {
       return b.id - a.id
     })
 
+  const resetCorrectionFlow = () => {
+    setCorrectionStep("idle")
+    setWrongIssues([])
+    setWrongNote("")
+  }
+
+  const toggleWrongIssue = (id: ScanIssueId) => {
+    setWrongIssues((prev) => {
+      if (id === "all") {
+        return prev.includes("all") ? [] : ["all"]
+      }
+      const withoutAll = prev.filter((item) => item !== "all")
+      return withoutAll.includes(id)
+        ? withoutAll.filter((item) => item !== id)
+        : [...withoutAll, id]
+    })
+  }
+
   const applyScanResult = (
     item: WardrobeScanItem,
     source?: string,
     note?: string
   ) => {
+    resetCorrectionFlow()
     setDetectedItem(item)
     setScanSource(source || "")
     setScanNote(note || "")
@@ -175,6 +205,7 @@ export default function WardrobeTab() {
     mockSample?: MockSampleId
     file?: File
   }) => {
+    resetCorrectionFlow()
     setScanError("")
     setScanNote("")
     setScanSource("")
@@ -224,32 +255,40 @@ export default function WardrobeTab() {
     }
   }
 
-  const handleSaveDetected = () => {
+  const saveScanItemToWardrobe = (
+    itemToSave: WardrobeScanItem,
+    sourceLabel?: string
+  ) => {
     addWardrobeItem({
-      name: detectedItem.name,
-      category: detectedItem.category,
-      color: detectedItem.color,
-      colorName: detectedItem.colorName,
+      name: itemToSave.name,
+      category: itemToSave.category,
+      color: itemToSave.color,
+      colorName: itemToSave.colorName,
       worn: 0,
       favorite: false,
-      material: detectedItem.material || "Detected by AI",
-      storageLocation: detectedItem.storageLocation || "Closet · Main Rack",
-      careInstructions: detectedItem.careInstructions || "Gentle wash",
-      sentimentalValue: detectedItem.sentimentalValue || "Medium",
-      cost: detectedItem.cost || "$40",
+      material: itemToSave.material || "Detected by AI",
+      storageLocation: itemToSave.storageLocation || "Closet · Main Rack",
+      careInstructions: itemToSave.careInstructions || "Gentle wash",
+      sentimentalValue: itemToSave.sentimentalValue || "Medium",
+      cost: itemToSave.cost || "$40",
       status: "clean",
       imageData: pendingImageData,
     })
     showToast(
       "Added to wardrobe",
-      `${detectedItem.name} saved from ${scanSource || "AI scan"}.`,
+      `${itemToSave.name} saved from ${sourceLabel || scanSource || "AI scan"}.`,
       "success"
     )
+    resetCorrectionFlow()
     setAddStep("closed")
     setUploadState("empty")
     setScanNote("")
     setScanSource("")
     setPendingImageData(undefined)
+  }
+
+  const handleSaveDetected = () => {
+    saveScanItemToWardrobe(detectedItem)
   }
 
   const handleSaveManual = (e: React.FormEvent) => {
@@ -377,6 +416,7 @@ export default function WardrobeTab() {
             setScanError("")
             setScanNote("")
             setPendingImageData(undefined)
+            resetCorrectionFlow()
           }}
           aria-label="Add wardrobe item"
           className="min-h-[40px] px-3.5 rounded-xl flex items-center justify-center font-black text-xs gap-1 whitespace-nowrap shrink-0 shadow-md shadow-pink/25 transition-all active:scale-95 bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 cursor-pointer"
@@ -745,6 +785,7 @@ export default function WardrobeTab() {
             <button
               type="button"
               onClick={() => {
+                resetCorrectionFlow()
                 setAddStep("closed")
                 setPendingImageData(undefined)
               }}
@@ -808,23 +849,107 @@ export default function WardrobeTab() {
             }
             onFileSelected={(file) => void runScan({ file })}
             onRetake={() => {
+              resetCorrectionFlow()
               setScanError("")
               setScanNote("")
               setPendingImageData(undefined)
               setUploadState("empty")
               setUploadProgress(0)
             }}
-            onManual={() => setAddStep("manual")}
+            onManual={() => {
+              resetCorrectionFlow()
+              setAddStep("manual")
+            }}
             onSave={handleSaveDetected}
+            isCorrecting={correctionStep !== "idle"}
             onCorrect={() => {
-              showToast(
-                "Color Corrected",
-                "Keeping AI labels and saving to wardrobe.",
-                "info"
+              setCorrectionStep((prev) =>
+                prev === "idle" ? "ask_reason" : "idle"
               )
-              handleSaveDetected()
             }}
           />
+
+          {uploadState === "success" && correctionStep === "ask_reason" && (
+            <div
+              role="region"
+              aria-label="Report what was wrong with the AI scan"
+              className="rounded-2xl p-3.5 border-2 border-turquoise/50 bg-muted/70 space-y-3 animate-in fade-in duration-150"
+            >
+              <div>
+                <h3 className="text-xs font-black text-foreground">
+                  What was wrong with this scan?
+                </h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Pick everything the AI got wrong, then enter your correction.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {SCAN_ISSUE_OPTIONS.map((opt) => {
+                  const selected = wrongIssues.includes(opt.id)
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleWrongIssue(opt.id)}
+                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+                        selected
+                          ? "bg-pink text-white border-pink shadow-xs"
+                          : "bg-card text-foreground border-border hover:border-turquoise"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="scan-wrong-note"
+                  className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                >
+                  Optional details
+                </label>
+                <input
+                  id="scan-wrong-note"
+                  type="text"
+                  value={wrongNote}
+                  onChange={(e) => setWrongNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      (wrongIssues.length > 0 || wrongNote.trim())
+                    ) {
+                      e.preventDefault()
+                      setCorrectionStep("modal")
+                    }
+                  }}
+                  placeholder="e.g. It's a navy cardigan, not black"
+                  className="w-full min-h-[38px] rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground bg-card border-2 border-border focus:border-turquoise outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={resetCorrectionFlow}
+                  className="min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold bg-card text-muted-foreground border-2 border-border hover:text-foreground cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={wrongIssues.length === 0 && !wrongNote.trim()}
+                  onClick={() => setCorrectionStep("modal")}
+                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-black bg-turquoise text-[#0D0F18] border-2 border-[#0D0F18]/20 hover:brightness-105 disabled:opacity-45 disabled:cursor-not-allowed transition-all cursor-pointer"
+                >
+                  Enter Correction →
+                </button>
+              </div>
+            </div>
+          )}
 
           {scanNote && uploadState === "success" && (
             <p className="text-[11px] leading-relaxed text-gold font-medium">
@@ -1456,6 +1581,34 @@ export default function WardrobeTab() {
           </div>
         </div>
       )}
+
+      {/* AI Scan Correction Popup Modal */}
+      <WardrobeScanCorrectionModal
+        isOpen={
+          addStep === "photo" &&
+          uploadState === "success" &&
+          correctionStep === "modal"
+        }
+        onClose={() => setCorrectionStep("idle")}
+        onBack={() => setCorrectionStep("ask_reason")}
+        detectedItem={detectedItem}
+        imagePreview={pendingImageData}
+        issueIds={wrongIssues}
+        issueNote={wrongNote}
+        onApplyPreview={(corrected) => {
+          setDetectedItem(corrected)
+          setScanSource("user-corrected")
+          resetCorrectionFlow()
+          showToast(
+            "Preview Updated",
+            "Review the updated details, then tap Confirm & Save.",
+            "info"
+          )
+        }}
+        onSaveCorrected={(corrected) => {
+          saveScanItemToWardrobe(corrected, "user correction")
+        }}
+      />
     </div>
   )
 }

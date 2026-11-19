@@ -25,7 +25,8 @@ import {
   getRecentLooksForPersona,
   getSampleGarmentImage,
 } from "../data/personaData"
-import { fetchLiveWeather } from "../services/weatherService"
+import { fetchAiWeatherAdvice, fetchLiveWeather } from "../services/weatherService"
+import { useOptionalAiHost } from "./AiHostContext"
 
 export { getContrastTextColor }
 
@@ -1338,6 +1339,7 @@ export interface AppContextType {
 
   // Weather state in AppContext
   weather: WeatherData
+  weatherAdviceLoading: boolean
   refreshWeather: () => void
 
   // User testing script state: stylist tab first-run network error
@@ -1787,23 +1789,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [outfitHistory, setOutfitHistory] = useState<Outfit[]>([])
   const [wornToday, setWornToday] = useState(false)
 
-  // Weather & Climate State managed in AppContext (Open-Meteo live data)
-  const [weather, setWeather] = useState<WeatherData>(() => {
-    return PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora
-  })
+  // Weather & Climate State managed in AppContext (Open-Meteo live data + local AI advice)
+  const aiHost = useOptionalAiHost()
+  const aiHostStatus = aiHost?.status ?? "offline"
+  const aiHostTextLoaded = aiHost?.payload?.backend?.loaded?.text
+  const aiHostActiveTask = aiHost?.payload?.backend?.active_task
+  const [weather, setWeather] = useState<WeatherData>(() => ({
+    ...(PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora),
+    adviceSource: "preset",
+  }))
+  const [weatherAdviceLoading, setWeatherAdviceLoading] = useState(false)
+  const [liveWeatherReady, setLiveWeatherReady] = useState(false)
+  const [adviceRefreshNonce, setAdviceRefreshNonce] = useState(0)
   const hasGpsWeatherRef = useRef(false)
+  const hasLiveWeatherRef = useRef(false)
+  const weatherRef = useRef(weather)
+  weatherRef.current = weather
+  const lastSuccessfulAdviceKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    if (hasGpsWeatherRef.current) return
+    if (hasGpsWeatherRef.current || hasLiveWeatherRef.current) return
 
     void fetchLiveWeather({
       requestGeolocation: false,
       fallback: PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora,
     }).then((result) => {
-      if (!cancelled && !hasGpsWeatherRef.current) {
-        setWeather(result.weather)
+      if (cancelled || hasGpsWeatherRef.current) return
+      if (result.source === "gps" || result.source === "hammond") {
+        hasLiveWeatherRef.current = true
       }
+      setWeather(result.weather)
+      setLiveWeatherReady(true)
     })
 
     return () => {
@@ -1811,17 +1828,95 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser.id])
 
+  const weatherDataKey = [
+    weather.city,
+    weather.condition,
+    weather.humidity ?? "",
+    weather.windMph ?? "",
+    weather.feelsLikeF ?? "",
+  ].join("|")
+
+  const prefKey = JSON.stringify({
+    id: currentUser.id,
+    style: currentUser.preferredStyle,
+    climate: currentUser.homeClimate,
+    notes: currentUser.stylistNotes,
+    sensory: currentUser.accessibility.sensorySensitive,
+    lowDecision: currentUser.accessibility.lowDecisionMode,
+    fit: currentUser.quizProfile?.derived?.filters?.fit_feel,
+    closures: currentUser.quizProfile?.derived?.filters?.easy_closures,
+    palette: currentUser.quizProfile?.derived?.color?.palette,
+    mood: currentUser.quizProfile?.derived?.stylist?.mood_exploratory,
+    attrs: currentUser.quizProfile?.derived?.wardrobe?.attribute_terms,
+  })
+
+  useEffect(() => {
+    if (!isAuthenticated || !liveWeatherReady) return
+    if (aiHostStatus !== "online" || aiHostTextLoaded === false) return
+    if (aiHostActiveTask === "try-on") return
+
+    const requestKey = `${weatherDataKey}::${prefKey}::${adviceRefreshNonce}`
+    if (lastSuccessfulAdviceKeyRef.current === requestKey) return
+
+    const controller = new AbortController()
+    const snapshotWeather = weatherRef.current
+    const snapshotUser = currentUser
+    setWeatherAdviceLoading(true)
+
+    void fetchAiWeatherAdvice(snapshotWeather, snapshotUser, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        lastSuccessfulAdviceKeyRef.current = requestKey
+        setWeather((prev) => ({
+          ...prev,
+          ruleAdvice: prev.ruleAdvice || prev.advice,
+          advice: result.advice,
+          adviceSource: "ai",
+          adviceModel: result.model,
+        }))
+      })
+      .catch(() => {
+        // Keep the instant rule-based weather tip if local AI is busy or unreachable.
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setWeatherAdviceLoading(false)
+        }
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [
+    isAuthenticated,
+    liveWeatherReady,
+    weatherDataKey,
+    prefKey,
+    aiHostStatus,
+    aiHostTextLoaded,
+    aiHostActiveTask,
+    adviceRefreshNonce,
+    currentUser,
+  ])
+
   const currentOutfit = outfits[selectedDirection] || Object.values(outfits)[0]
 
   const refreshWeather = async () => {
+    void aiHost?.refreshHealth()
     const result = await fetchLiveWeather({
       requestGeolocation: true,
-      fallback: weather,
+      fallback: weatherRef.current,
     })
     if (result.source === "gps") {
       hasGpsWeatherRef.current = true
     }
+    if (result.source === "gps" || result.source === "hammond") {
+      hasLiveWeatherRef.current = true
+    }
+    lastSuccessfulAdviceKeyRef.current = null
     setWeather(result.weather)
+    setLiveWeatherReady(true)
+    setAdviceRefreshNonce((n) => n + 1)
     showToast(
       result.source === "gps"
         ? "Live Local Weather"
@@ -2063,8 +2158,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSelectedDirection(
       defaultDir in loadedOutfits ? defaultDir : Object.keys(loadedOutfits)[0],
     )
-    if (!hasGpsWeatherRef.current) {
-      setWeather(PERSONA_WEATHER[pid] || PERSONA_WEATHER.eliora)
+    if (!hasGpsWeatherRef.current && !hasLiveWeatherRef.current) {
+      setWeather({
+        ...(PERSONA_WEATHER[pid] || PERSONA_WEATHER.eliora),
+        adviceSource: "preset",
+      })
+    } else {
+      setWeather((prev) =>
+        prev.adviceSource === "ai" && prev.ruleAdvice
+          ? { ...prev, advice: prev.ruleAdvice, adviceSource: "rule" }
+          : prev,
+      )
     }
     if (userToSet.accessibility.largeText) {
       setFontScaleState("md")
@@ -2098,8 +2202,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? defaultDir
           : Object.keys(loadedOutfits)[0],
       )
-      if (!hasGpsWeatherRef.current) {
-        setWeather(PERSONA_WEATHER[personaId] || PERSONA_WEATHER.eliora)
+      if (!hasGpsWeatherRef.current && !hasLiveWeatherRef.current) {
+        setWeather({
+          ...(PERSONA_WEATHER[personaId] || PERSONA_WEATHER.eliora),
+          adviceSource: "preset",
+        })
+      } else {
+        setWeather((prev) =>
+          prev.adviceSource === "ai" && prev.ruleAdvice
+            ? { ...prev, advice: prev.ruleAdvice, adviceSource: "rule" }
+            : prev,
+        )
       }
       if (selected.accessibility.largeText) {
         setFontScaleState("md")
@@ -2421,6 +2534,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         undoOutfit,
         hasUndo: outfitHistory.length > 0,
         weather,
+        weatherAdviceLoading,
         refreshWeather,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,

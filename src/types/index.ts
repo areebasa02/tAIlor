@@ -149,8 +149,17 @@ export type Direction = string
 export interface WeatherData {
   city: string
   temp: string
+  tempF?: number
+  feelsLikeF?: number
   condition: string
+  conditionLabel?: string
+  humidity?: number
+  windMph?: number
+  weatherCode?: number
   advice: string
+  ruleAdvice?: string
+  adviceSource?: "ai" | "rule" | "preset"
+  adviceModel?: string
   icon: string
 }
 

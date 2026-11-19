@@ -92,6 +92,10 @@ export function AiHostProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+export function useOptionalAiHost() {
+  return useContext(AiHostContext)
+}
+
 export function useAiHost() {
   const ctx = useContext(AiHostContext)
   if (!ctx) throw new Error("useAiHost must be used within AiHostProvider")

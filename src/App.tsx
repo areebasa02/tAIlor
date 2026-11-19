@@ -885,10 +885,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AiHostProvider>
+    <AiHostProvider>
+      <AppProvider>
         <MainApp />
-      </AiHostProvider>
-    </AppProvider>
+      </AppProvider>
+    </AiHostProvider>
   )
 }

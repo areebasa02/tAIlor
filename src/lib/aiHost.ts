@@ -14,6 +14,7 @@ export type AiHostHealthPayload = {
   }
   features?: {
     stylist?: boolean
+    weatherAdvice?: boolean
     wardrobeScan?: boolean
     tryOn?: boolean
   }

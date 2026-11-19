@@ -1,4 +1,5 @@
-import type { WeatherData } from "../types"
+import { getApiUrl } from "../lib/aiHost"
+import type { UserProfile, WeatherData } from "../types"
 
 const HAMMOND_LAT = 30.5044
 const HAMMOND_LON = -90.4612
@@ -50,7 +51,7 @@ export async function fetchOpenMeteoWeather(
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${encodeURIComponent(lat)}` +
     `&longitude=${encodeURIComponent(lon)}` +
-    `&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m` +
+    `&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph`
 
   const res = await fetch(url)
@@ -61,6 +62,7 @@ export async function fetchOpenMeteoWeather(
   const data = (await res.json()) as {
     current?: {
       temperature_2m?: number
+      apparent_temperature?: number
       weather_code?: number
       relative_humidity_2m?: number
       wind_speed_10m?: number
@@ -73,16 +75,33 @@ export async function fetchOpenMeteoWeather(
   }
 
   const roundedTemp = Math.round(current.temperature_2m)
+  const feelsLikeF =
+    typeof current.apparent_temperature === "number"
+      ? Math.round(current.apparent_temperature)
+      : undefined
   const code = typeof current.weather_code === "number" ? current.weather_code : 1
   const windMph = typeof current.wind_speed_10m === "number" ? current.wind_speed_10m : 0
+  const humidity =
+    typeof current.relative_humidity_2m === "number"
+      ? Math.round(current.relative_humidity_2m)
+      : undefined
   const { label, icon } = describeWmoWeatherCode(code)
   const temp = `${roundedTemp}°F`
+  const ruleAdvice = buildWeatherAdvice(roundedTemp, code, windMph)
 
   return {
     city: cityLabel,
     temp,
+    tempF: roundedTemp,
+    feelsLikeF,
     condition: `${label} · ${temp}`,
-    advice: buildWeatherAdvice(roundedTemp, code, windMph),
+    conditionLabel: label,
+    humidity,
+    windMph: Math.round(windMph),
+    weatherCode: code,
+    advice: ruleAdvice,
+    ruleAdvice,
+    adviceSource: "rule",
     icon,
   }
 }
@@ -149,13 +168,84 @@ export async function fetchLiveWeather(options?: {
     const weather = await fetchOpenMeteoWeather(HAMMOND_LAT, HAMMOND_LON, HAMMOND_CITY)
     return { weather, source: "hammond" }
   } catch {
-    const fallbackWeather: WeatherData = options?.fallback || {
-      city: HAMMOND_CITY,
-      temp: "64°F",
-      condition: "Partly Cloudy · 64°F",
-      advice: "Mild outdoor air. Breathable layers keep you comfortable through the day.",
-      icon: "⛅",
-    }
+    const fallbackWeather: WeatherData = options?.fallback
+      ? {
+          ...options.fallback,
+          adviceSource: options.fallback.adviceSource || "preset",
+        }
+      : {
+          city: HAMMOND_CITY,
+          temp: "64°F",
+          tempF: 64,
+          condition: "Partly Cloudy · 64°F",
+          conditionLabel: "Partly Cloudy",
+          advice: "Mild outdoor air. Breathable layers keep you comfortable through the day.",
+          ruleAdvice: "Mild outdoor air. Breathable layers keep you comfortable through the day.",
+          adviceSource: "rule",
+          icon: "⛅",
+        }
     return { weather: fallbackWeather, source: "fallback" }
+  }
+}
+
+/**
+ * Ask the local Qwen text model for short clothing advice tailored to both
+ * the live Open-Meteo weather metrics and the user's preferences.
+ */
+export async function fetchAiWeatherAdvice(
+  weather: WeatherData,
+  user: UserProfile,
+  signal?: AbortSignal,
+): Promise<{ advice: string; model?: string }> {
+  const derived = user.quizProfile?.derived
+  const response = await fetch(getApiUrl("/api/weather/advice"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    signal,
+    body: JSON.stringify({
+      weather: {
+        city: weather.city,
+        temp: weather.temp,
+        tempF: weather.tempF,
+        feelsLikeF: weather.feelsLikeF,
+        condition: weather.condition,
+        conditionLabel: weather.conditionLabel,
+        humidity: weather.humidity,
+        windMph: weather.windMph,
+        weatherCode: weather.weatherCode,
+      },
+      preferences: {
+        preferredStyle: user.preferredStyle,
+        homeClimate: user.homeClimate,
+        stylistNotes: user.stylistNotes,
+        sensorySensitive: Boolean(user.accessibility.sensorySensitive),
+        lowDecisionMode: Boolean(user.accessibility.lowDecisionMode),
+        fitFeel: derived?.filters?.fit_feel,
+        easyClosures: Boolean(derived?.filters?.easy_closures),
+        palette: derived?.color?.palette,
+        mood: derived?.stylist?.mood_exploratory,
+        attributes: derived?.wardrobe?.attribute_terms,
+      },
+    }),
+  })
+
+  const contentType = response.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    throw new Error("Local AI host is offline or unreachable.")
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    advice?: string
+    model?: string
+    error?: string
+  }
+
+  if (!response.ok || typeof payload.advice !== "string" || !payload.advice.trim()) {
+    throw new Error(payload.error || "Local model returned no weather advice.")
+  }
+
+  return {
+    advice: payload.advice.trim(),
+    model: payload.model,
   }
 }

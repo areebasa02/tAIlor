@@ -1,10 +1,22 @@
 import { useState, useEffect } from "react"
+import type { WardrobeScanItem } from "../lib/wardrobeScan"
+import type { Category } from "../types"
 import { THEME_COLORS } from "../types/theme"
 
 // ─── Exported Types ───────────────────────────────────────────────────────────
 export type VoiceState = "idle" | "listening" | "processing" | "captured" | "error"
 export type ControlMode = "default" | "editing" | "rejected" | "regenerating" | "undone"
 export type UploadState = "empty" | "uploading" | "analyzing" | "success" | "error"
+export type ScanIssueId = "name" | "category" | "color" | "material" | "details" | "all"
+
+export const SCAN_ISSUE_OPTIONS: { id: ScanIssueId; label: string }[] = [
+  { id: "name", label: "Garment name" },
+  { id: "category", label: "Category" },
+  { id: "color", label: "Color" },
+  { id: "material", label: "Fabric / material" },
+  { id: "details", label: "Care & storage" },
+  { id: "all", label: "Multiple / everything" },
+]
 
 // ─── Exported Reusable AI Components ──────────────────────────────────────────
 
@@ -165,6 +177,7 @@ export function ImageUploadWidget({
   onManual,
   onSave,
   onCorrect,
+  isCorrecting = false,
 }: {
   state: UploadState
   progress: number
@@ -177,6 +190,7 @@ export function ImageUploadWidget({
   onManual: () => void
   onSave: () => void
   onCorrect: () => void
+  isCorrecting?: boolean
 }) {
   if (state === "empty") {
     if (onFileSelected) {
@@ -318,16 +332,21 @@ export function ImageUploadWidget({
           <button
             type="button"
             onClick={onSave}
-            className="flex-1 min-h-[40px] py-2 rounded-xl text-xs font-bold bg-green text-white hover:brightness-110 transition-all shadow-sm"
+            className="flex-1 min-h-[40px] py-2 rounded-xl text-xs font-bold bg-green text-white hover:brightness-110 transition-all shadow-sm cursor-pointer"
           >
             Confirm &amp; Save
           </button>
           <button
             type="button"
             onClick={onCorrect}
-            className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold bg-muted text-foreground border border-border hover:brightness-95 transition-colors"
+            aria-expanded={isCorrecting}
+            className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+              isCorrecting
+                ? "bg-turquoise/15 text-foreground border-turquoise"
+                : "bg-muted text-foreground border-border hover:brightness-95"
+            }`}
           >
-            Correct
+            {isCorrecting ? "Correcting…" : "Correct"}
           </button>
         </div>
       </div>
@@ -846,6 +865,403 @@ export function UserControlBar({
           <span aria-hidden="true">❤️</span>
           <span>Favorite</span>
         </button>
+      </div>
+    </div>
+  )
+}
+
+const SCAN_CATEGORIES: Category[] = [
+  "Tops",
+  "Bottoms",
+  "Shoes",
+  "Outerwear",
+  "Accessories",
+]
+
+export function WardrobeScanCorrectionModal({
+  isOpen,
+  onClose,
+  onBack,
+  detectedItem,
+  imagePreview,
+  issueIds,
+  issueNote,
+  onApplyPreview,
+  onSaveCorrected,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onBack: () => void
+  detectedItem: WardrobeScanItem
+  imagePreview?: string
+  issueIds: ScanIssueId[]
+  issueNote: string
+  onApplyPreview: (corrected: WardrobeScanItem) => void
+  onSaveCorrected: (corrected: WardrobeScanItem) => void
+}) {
+  const [name, setName] = useState(detectedItem.name)
+  const [category, setCategory] = useState<Category>(detectedItem.category)
+  const [colorName, setColorName] = useState(detectedItem.colorName)
+  const [colorHex, setColorHex] = useState(detectedItem.color)
+  const [material, setMaterial] = useState(detectedItem.material)
+  const [careInstructions, setCareInstructions] = useState(
+    detectedItem.careInstructions
+  )
+  const [storageLocation, setStorageLocation] = useState(
+    detectedItem.storageLocation
+  )
+  const [sentimentalValue, setSentimentalValue] = useState<
+    "Low" | "Medium" | "High"
+  >(detectedItem.sentimentalValue || "Medium")
+  const [cost, setCost] = useState(detectedItem.cost || "$40")
+  const [showAllFields, setShowAllFields] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    setName(detectedItem.name)
+    setCategory(detectedItem.category)
+    setColorName(detectedItem.colorName)
+    setColorHex(
+      /^#[0-9A-Fa-f]{6}$/.test(detectedItem.color)
+        ? detectedItem.color
+        : "#888888"
+    )
+    setMaterial(detectedItem.material)
+    setCareInstructions(detectedItem.careInstructions)
+    setStorageLocation(detectedItem.storageLocation)
+    setSentimentalValue(detectedItem.sentimentalValue || "Medium")
+    setCost(detectedItem.cost || "$40")
+    setShowAllFields(issueIds.includes("all") || issueIds.length === 0)
+  }, [isOpen, detectedItem, issueIds])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  const showName = showAllFields || issueIds.includes("name")
+  const showCategory = showAllFields || issueIds.includes("category")
+  const showColor = showAllFields || issueIds.includes("color")
+  const showMaterial = showAllFields || issueIds.includes("material")
+  const showDetails = showAllFields || issueIds.includes("details")
+
+  const flaggedLabels = SCAN_ISSUE_OPTIONS.filter((opt) =>
+    issueIds.includes(opt.id)
+  ).map((opt) => opt.label)
+
+  const buildCorrectedItem = (): WardrobeScanItem => ({
+    ...detectedItem,
+    name: name.trim() || detectedItem.name || "Corrected garment",
+    category,
+    color: /^#[0-9A-Fa-f]{6}$/.test(colorHex.trim())
+      ? colorHex.trim().toUpperCase()
+      : detectedItem.color,
+    colorName: colorName.trim() || detectedItem.colorName || "Custom Color",
+    material: material.trim() || detectedItem.material || "Breathable fabric",
+    careInstructions:
+      careInstructions.trim() ||
+      detectedItem.careInstructions ||
+      "Gentle wash",
+    storageLocation:
+      storageLocation.trim() ||
+      detectedItem.storageLocation ||
+      "Closet · Main Rack",
+    sentimentalValue,
+    cost: cost.trim() || detectedItem.cost || "$40",
+    confidence: 1,
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSaveCorrected(buildCorrectedItem())
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scan-correction-modal-title"
+        className="rounded-3xl p-4 sm:p-5 max-w-sm w-full max-h-[90dvh] overflow-y-auto space-y-3.5 shadow-2xl border-2"
+        style={{ background: "var(--card)", borderColor: "var(--border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2 pb-2 border-b border-border">
+          <div className="min-w-0">
+            <h2
+              id="scan-correction-modal-title"
+              className="text-base font-black text-foreground"
+            >
+              Correct Scan Details
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Update what the AI missed before saving.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close correction popup"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted text-sm font-bold shrink-0 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Uploaded garment preview + summary of what was flagged */}
+        <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-muted border border-border">
+          {imagePreview ? (
+            <img
+              src={imagePreview}
+              alt={name || detectedItem.name}
+              className="w-12 h-12 rounded-xl object-contain bg-card border border-border shrink-0"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="w-12 h-12 rounded-xl border border-border shrink-0"
+              style={{ backgroundColor: colorHex }}
+            />
+          )}
+          <div className="min-w-0 flex-1 space-y-0.5">
+            {flaggedLabels.length > 0 && (
+              <p className="text-[11px] font-extrabold text-pink leading-snug">
+                Fixing: {flaggedLabels.join(", ")}
+              </p>
+            )}
+            {issueNote.trim() && (
+              <p className="text-[11px] text-muted-foreground leading-snug break-words">
+                &ldquo;{issueNote.trim()}&rdquo;
+              </p>
+            )}
+            {flaggedLabels.length === 0 && !issueNote.trim() && (
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Edit any incorrect details below.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {showName && (
+            <div className="space-y-1">
+              <label
+                htmlFor="corr-garment-name"
+                className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+              >
+                Garment Name *
+              </label>
+              <input
+                id="corr-garment-name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Navy Knit Cardigan"
+                className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-turquoise/60 focus:border-pink outline-none"
+              />
+            </div>
+          )}
+
+          {showCategory && (
+            <div className="space-y-1">
+              <label
+                htmlFor="corr-garment-category"
+                className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+              >
+                Category *
+              </label>
+              <select
+                id="corr-garment-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as Category)}
+                className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-turquoise/60 focus:border-pink outline-none"
+              >
+                {SCAN_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {showColor && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="space-y-1">
+                <label
+                  htmlFor="corr-color-name"
+                  className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                >
+                  Color Name
+                </label>
+                <input
+                  id="corr-color-name"
+                  value={colorName}
+                  onChange={(e) => setColorName(e.target.value)}
+                  placeholder="e.g. Deep Navy"
+                  className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-turquoise/60 focus:border-pink outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="corr-color-hex"
+                  className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                >
+                  Color Swatch
+                </label>
+                <div className="flex items-center gap-2 min-h-[40px] px-2.5 rounded-xl bg-muted border-2 border-turquoise/60">
+                  <input
+                    id="corr-color-hex"
+                    type="color"
+                    aria-label="Pick corrected color swatch"
+                    value={/^#[0-9A-Fa-f]{6}$/.test(colorHex) ? colorHex : "#888888"}
+                    onChange={(e) => setColorHex(e.target.value.toUpperCase())}
+                    className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border border-border shrink-0"
+                  />
+                  <span className="text-xs font-mono font-bold text-foreground truncate">
+                    {colorHex.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showMaterial && (
+            <div className="space-y-1">
+              <label
+                htmlFor="corr-material"
+                className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+              >
+                Fabric / Material
+              </label>
+              <input
+                id="corr-material"
+                value={material}
+                onChange={(e) => setMaterial(e.target.value)}
+                placeholder="e.g. 100% Cotton Knit"
+                className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-turquoise/60 focus:border-pink outline-none"
+              />
+            </div>
+          )}
+
+          {showDetails && (
+            <div className="space-y-2.5">
+              <div className="space-y-1">
+                <label
+                  htmlFor="corr-care"
+                  className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                >
+                  Care Instructions
+                </label>
+                <input
+                  id="corr-care"
+                  value={careInstructions}
+                  onChange={(e) => setCareInstructions(e.target.value)}
+                  placeholder="e.g. Cold gentle wash · hang dry"
+                  className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-border focus:border-pink outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="corr-storage"
+                    className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                  >
+                    Storage
+                  </label>
+                  <input
+                    id="corr-storage"
+                    value={storageLocation}
+                    onChange={(e) => setStorageLocation(e.target.value)}
+                    placeholder="Closet · Main Rack"
+                    className="w-full min-h-[40px] rounded-xl px-3 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-border focus:border-pink outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label
+                    htmlFor="corr-sentimental"
+                    className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block"
+                  >
+                    Value &amp; Cost
+                  </label>
+                  <div className="flex gap-1.5">
+                    <select
+                      id="corr-sentimental"
+                      aria-label="Sentimental value"
+                      value={sentimentalValue}
+                      onChange={(e) =>
+                        setSentimentalValue(
+                          e.target.value as "Low" | "Medium" | "High"
+                        )
+                      }
+                      className="flex-1 min-w-0 min-h-[40px] rounded-xl px-2 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-border focus:border-pink outline-none"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Med</option>
+                      <option value="High">High</option>
+                    </select>
+                    <input
+                      aria-label="Estimated cost"
+                      value={cost}
+                      onChange={(e) => setCost(e.target.value)}
+                      placeholder="$40"
+                      className="w-16 min-h-[40px] rounded-xl px-2 py-2 text-xs font-semibold text-foreground bg-muted border-2 border-border focus:border-pink outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!issueIds.includes("all") && issueIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllFields((prev) => !prev)}
+              className="text-[11px] font-extrabold text-turquoise hover:underline cursor-pointer"
+            >
+              {showAllFields
+                ? "Hide extra fields"
+                : "+ Edit other garment details"}
+            </button>
+          )}
+
+          <div className="flex flex-col gap-2 pt-1 border-t border-border">
+            <button
+              type="submit"
+              className="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-black bg-green text-white border-2 border-[#0D0F18]/20 hover:brightness-110 active:scale-95 transition-all shadow-sm cursor-pointer"
+            >
+              Save Corrected Item to Wardrobe
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onBack}
+                className="min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold bg-muted text-foreground border-2 border-border hover:border-pink cursor-pointer"
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                onClick={() => onApplyPreview(buildCorrectedItem())}
+                className="min-h-[40px] py-2 px-3 rounded-xl text-xs font-bold bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
+              >
+                Update Preview
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   )
