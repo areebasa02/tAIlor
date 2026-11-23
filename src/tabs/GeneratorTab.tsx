@@ -683,6 +683,8 @@ export default function GeneratorTab() {
                         : calendarSource === "env" || calendarSource === "url"
                           ? "From your calendar feed"
                           : "Tap an event to fill Ask AI"}
+                  {" · "}
+                  Full month/week + wear history on Home.
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">

@@ -3,6 +3,7 @@ import type {
   UserProfile,
   WardrobeItem,
   RecentLook,
+  OutfitWearEntry,
   AppNotification,
   PersonaId,
   Outfit,
@@ -35,6 +36,12 @@ import {
   fetchCalendarEvents,
   type CalendarEventsSource,
 } from "../services/calendarService"
+import {
+  aggregateWearCounts,
+  outfitKeyFromLabel,
+  seedWearLogFromRecentLooks,
+  toIsoDay,
+} from "../lib/wearLog"
 import {
   fetchAiWeatherAdvice,
   fetchLiveWeather,
@@ -1356,6 +1363,8 @@ export interface AppContextType {
   toggleFavorite: (id: number) => void
   markItemWorn: (id: number) => void
   recentLooks: RecentLook[]
+  outfitWearLog: OutfitWearEntry[]
+  outfitWearCounts: Map<string, number>
   logOutfitWorn: (outfit: {
     label: string
     items: string[]
@@ -1806,6 +1815,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { }
     return getRecentLooksForPersona(pid)
   })
+
+  const [outfitWearLog, setOutfitWearLog] = useState<OutfitWearEntry[]>(() => {
+    const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
+    try {
+      const stored = localStorage.getItem(`tailor_outfit_wear_log_${pid}`)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch { }
+    try {
+      const storedLooks = localStorage.getItem(`tailor_recent_looks_${pid}`)
+      const looks = storedLooks
+        ? (JSON.parse(storedLooks) as RecentLook[])
+        : getRecentLooksForPersona(pid)
+      return seedWearLogFromRecentLooks(Array.isArray(looks) ? looks : [])
+    } catch {
+      return seedWearLogFromRecentLooks(getRecentLooksForPersona(pid))
+    }
+  })
+  const outfitWearCounts = aggregateWearCounts(outfitWearLog)
 
   const [favoriteOutfits, setFavoriteOutfits] = useState<FavoriteOutfit[]>(() => {
     const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
@@ -2346,6 +2376,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { }
   }, [recentLooks, currentUser.id])
 
+  useEffect(() => {
+    try {
+      const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
+      localStorage.setItem(`tailor_outfit_wear_log_${pid}`, JSON.stringify(outfitWearLog))
+    } catch { }
+  }, [outfitWearLog, currentUser.id])
+
   const showToast = (
     title: string,
     message: string,
@@ -2378,11 +2415,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loadedWardrobe = getWardrobeForPersona(pid)
     }
     setWardrobe(loadedWardrobe)
+    let loadedLooks: RecentLook[] = getRecentLooksForPersona(pid)
     try {
       const storedR = localStorage.getItem(`tailor_recent_looks_${pid}`)
-      setRecentLooks(storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid))
+      loadedLooks = storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid)
+      setRecentLooks(loadedLooks)
     } catch {
-      setRecentLooks(getRecentLooksForPersona(pid))
+      loadedLooks = getRecentLooksForPersona(pid)
+      setRecentLooks(loadedLooks)
+    }
+    try {
+      const storedWear = localStorage.getItem(`tailor_outfit_wear_log_${pid}`)
+      if (storedWear) {
+        const parsed = JSON.parse(storedWear)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setOutfitWearLog(parsed)
+        } else {
+          setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
+        }
+      } else {
+        setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
+      }
+    } catch {
+      setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
     }
     try {
       const storedFavs = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
@@ -2607,20 +2662,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     color: string
     direction: string
   }) => {
-    const todayName = new Date().toLocaleDateString("en-US", {
+    const now = new Date()
+    const todayName = now.toLocaleDateString("en-US", {
       weekday: "long",
     })
+    const wornOn = toIsoDay(now)
+    const lookId = `look-${Date.now()}`
     const newLook: RecentLook = {
-      id: `look-${Date.now()}`,
+      id: lookId,
       day: todayName,
       date: "Today",
       color: outfit.color,
       items: outfit.items,
-      direction: outfit.direction,
+      direction: outfit.direction || outfit.label,
       occasion: "Worn today",
+      wornOn,
     }
 
     setRecentLooks((prev) => [newLook, ...prev])
+
+    const key = outfitKeyFromLabel(outfit.label || outfit.direction)
+    const wearEntry: OutfitWearEntry = {
+      id: `wear-${lookId}`,
+      outfitKey: key,
+      label: outfit.label || outfit.direction,
+      wornOn,
+      color: outfit.color,
+      items: outfit.items,
+      direction: outfit.direction,
+    }
+    setOutfitWearLog((prev) => [wearEntry, ...prev])
 
     // Update wear count for matching items in wardrobe
     setWardrobe((prev) =>
@@ -2637,9 +2708,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }),
     )
 
+    const nextCount = (outfitWearCounts.get(key) || 0) + 1
     showToast(
       "Outfit Logged!",
-      `Great choice! "${outfit.label}" logged to your wear history.`,
+      `"${outfit.label}" worn on ${wornOn} · ${nextCount} total wear${nextCount === 1 ? "" : "s"}.`,
       "success",
     )
   }
@@ -2778,6 +2850,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleFavorite,
         markItemWorn,
         recentLooks,
+        outfitWearLog,
+        outfitWearCounts,
         logOutfitWorn,
         sendOutfitToLaundry,
         notifications,

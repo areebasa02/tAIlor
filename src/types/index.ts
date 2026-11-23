@@ -140,6 +140,19 @@ export interface RecentLook {
   items: string[]
   direction: string
   occasion?: string
+  /** ISO calendar day (YYYY-MM-DD) when known — used by the outfit calendar. */
+  wornOn?: string
+}
+
+/** One logged outfit wear on a specific calendar day. */
+export interface OutfitWearEntry {
+  id: string
+  outfitKey: string
+  label: string
+  wornOn: string
+  color: string
+  items: string[]
+  direction?: string
 }
 
 export interface AppNotification {
