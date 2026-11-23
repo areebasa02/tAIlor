@@ -19,18 +19,13 @@ import {
   swapMatchesCategory,
 } from "../lib/garmentCategories"
 import {
-  formatEventForStylist,
-  guessDresscodeFromEvent,
-  parseUploadedIcs,
-} from "../services/calendarService"
-import {
   getOutfitItemSelectionTags,
   getReadableColorLabel,
   getSensoryInfo,
   speakText,
   stopSpeaking,
 } from "../services/accessibilityHelpers"
-import type { CalendarEvent, WardrobeItem } from "../types"
+import type { WardrobeItem } from "../types"
 import { THEME_COLORS } from "../types/theme"
 
 type Step = "input" | "loading" | "results" | "error"
@@ -197,16 +192,8 @@ export default function GeneratorTab() {
     toggleFavoriteOutfit,
     saveOutfitFeedback,
     saveGarmentFeedback,
-    calendarEvents,
-    calendarSource,
-    calendarLoading,
-    calendarNote,
-    refreshCalendar,
-    setCalendarFromUpload,
   } = useApp()
   const errorTimerRef = useRef<number | null>(null)
-  const icsInputRef = useRef<HTMLInputElement | null>(null)
-  const [icsUploading, setIcsUploading] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -260,47 +247,6 @@ export default function GeneratorTab() {
   const showListen = Boolean(
     user.accessibility.visionImpairment || user.accessibility.voiceNarration
   )
-
-  const applyCalendarEvent = (event: CalendarEvent) => {
-    setEventDesc(formatEventForStylist(event))
-    setDresscode(guessDresscodeFromEvent(event))
-    setVoiceState("idle")
-  }
-
-  const handleIcsUpload = async (file: File | undefined) => {
-    if (!file) return
-    if (!/\.ics$/i.test(file.name) && file.type && !/calendar|text/i.test(file.type)) {
-      showToast("Calendar file", "Please choose a .ics calendar file.", "warning")
-      return
-    }
-    setIcsUploading(true)
-    try {
-      const text = await file.text()
-      const result = await parseUploadedIcs(text)
-      setCalendarFromUpload(
-        result.events,
-        result.note || `Imported ${result.events.length} event${result.events.length === 1 ? "" : "s"} from ${file.name}.`,
-      )
-      if (result.events[0]) {
-        applyCalendarEvent(result.events[0])
-      }
-      showToast(
-        "Calendar imported",
-        result.events.length > 0
-          ? `${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} ready in Ask AI.`
-          : "No upcoming events found in that .ics file.",
-        result.events.length > 0 ? "success" : "info",
-      )
-    } catch (error) {
-      showToast(
-        "Calendar import failed",
-        error instanceof Error ? error.message : "Could not read that .ics file.",
-        "warning",
-      )
-    } finally {
-      setIcsUploading(false)
-    }
-  }
 
   const handleGenerate = async (
     refinementPrompt?: string,
@@ -662,96 +608,6 @@ export default function GeneratorTab() {
             <span aria-hidden="true">✧</span>
             <span>Generate</span>
           </button>
-
-          {/* Calendar events from Google .ics / upload */}
-          <div className="p-3 rounded-2xl border-2 border-border bg-card space-y-2 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <span
-                  id="calendar-events-heading"
-                  className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
-                >
-                  Today&apos;s calendar
-                </span>
-                <p className="text-[11px] font-semibold text-muted-foreground mt-0.5 leading-snug">
-                  {calendarLoading || icsUploading
-                    ? "Loading events…"
-                    : calendarSource === "mock"
-                      ? "Demo events (set GOOGLE_CALENDAR_ICS_URL or upload .ics)"
-                      : calendarSource === "upload"
-                        ? "From your uploaded .ics"
-                        : calendarSource === "env" || calendarSource === "url"
-                          ? "From your calendar feed"
-                          : "Tap an event to fill Ask AI"}
-                  {" · "}
-                  Full month/week + wear history on Home.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => void refreshCalendar()}
-                  disabled={calendarLoading || icsUploading}
-                  className="min-h-[34px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-border bg-muted text-foreground cursor-pointer disabled:opacity-50"
-                >
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={() => icsInputRef.current?.click()}
-                  disabled={icsUploading}
-                  className="min-h-[34px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-turquoise bg-card text-foreground cursor-pointer disabled:opacity-50"
-                >
-                  Upload .ics
-                </button>
-                <input
-                  ref={icsInputRef}
-                  type="file"
-                  accept=".ics,text/calendar"
-                  className="sr-only"
-                  aria-label="Upload calendar .ics file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    e.target.value = ""
-                    void handleIcsUpload(file)
-                  }}
-                />
-              </div>
-            </div>
-            {calendarNote ? (
-              <p className="text-[11px] font-semibold text-muted-foreground leading-snug">
-                {calendarNote}
-              </p>
-            ) : null}
-            <div
-              role="group"
-              aria-labelledby="calendar-events-heading"
-              className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2"
-            >
-              {(calendarEvents.length > 0 ? calendarEvents : []).slice(0, 6).map((event) => (
-                <button
-                  key={event.id}
-                  type="button"
-                  aria-label={`Use calendar event: ${event.summary}`}
-                  onClick={() => applyCalendarEvent(event)}
-                  className="p-2.5 min-h-[48px] rounded-xl text-xs text-left border-2 border-border bg-muted text-foreground transition-all hover:border-turquoise min-w-0 flex flex-col justify-center cursor-pointer"
-                >
-                  <p className="font-extrabold text-foreground leading-snug truncate">
-                    {event.summary}
-                  </p>
-                  <p className="text-[11px] font-semibold text-muted-foreground leading-snug truncate mt-0.5">
-                    {[event.timeLabel, event.location].filter(Boolean).join(" · ") ||
-                      "Upcoming"}
-                  </p>
-                </button>
-              ))}
-              {calendarEvents.length === 0 && !calendarLoading ? (
-                <p className="col-span-full text-xs font-semibold text-muted-foreground py-1">
-                  No upcoming events yet. Upload a Google Calendar .ics export or set the feed URL.
-                </p>
-              ) : null}
-            </div>
-          </div>
 
           {/* Quick Ideas */}
           <div className="p-3 rounded-2xl border-2 border-border bg-card space-y-2 shadow-sm">

@@ -8,7 +8,6 @@ import {
   type ControlMode,
 } from "../components/AIComponents";
 import { AddStyleModal } from "../components/AddStyleModal";
-import CalendarPanel from "../components/CalendarPanel";
 import { useApp } from "../context/AppContext";
 import { getSampleGarmentImage } from "../data/personaData";
 import {
@@ -397,9 +396,6 @@ export default function HomeTab() {
           </button>
         </div>
       </div>
-
-      {/* Calendar: ICS events + outfit wear history (list / week / month) */}
-      <CalendarPanel />
 
       {/* 2. Today's Outfit Header & Style Pills */}
       <div className="space-y-2">

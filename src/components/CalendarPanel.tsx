@@ -149,20 +149,20 @@ export default function CalendarPanel() {
   return (
     <section
       className="rounded-2xl p-3 space-y-2.5 shadow-sm border-2 bg-card border-border"
-      aria-labelledby="home-calendar-heading"
+      aria-labelledby="calendar-views-heading"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2
-            id="home-calendar-heading"
+            id="calendar-views-heading"
             className="text-sm font-black text-foreground"
             style={{ fontFamily: "Nunito, sans-serif" }}
           >
-            Calendar
+            Schedule & wears
           </h2>
           <p className="text-[11px] font-semibold text-muted-foreground leading-snug">
-            ICS plans + outfit wear history
-            {calendarSource ? ` · feed ${calendarSource}` : ""}
+            ICS plans + outfit wear dates/counts
+            {calendarSource ? ` · ${calendarSource}` : ""}
           </p>
         </div>
         <button
@@ -171,7 +171,7 @@ export default function CalendarPanel() {
           disabled={calendarLoading}
           className="min-h-[32px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-border bg-muted text-foreground cursor-pointer disabled:opacity-50"
         >
-          {calendarLoading ? "…" : "Refresh ICS"}
+          {calendarLoading ? "…" : "Refresh"}
         </button>
       </div>
 

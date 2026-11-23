@@ -34,6 +34,7 @@ import {
 } from "../lib/garmentCategories"
 import {
   fetchCalendarEvents,
+  fetchCalendarEventsFromUrl,
   type CalendarEventsSource,
 } from "../services/calendarService"
 import {
@@ -1411,6 +1412,7 @@ export interface AppContextType {
   calendarNote: string
   refreshCalendar: () => Promise<void>
   setCalendarFromUpload: (events: CalendarEvent[], note?: string) => void
+  setCalendarFromUrl: (url: string) => Promise<void>
 
   // User testing script state: stylist tab first-run network error
   stylistNetworkErrorTriggered: boolean
@@ -1430,9 +1432,13 @@ export interface AppContextType {
   removeFavoriteOutfit: (id: string) => void
   activeTryOnOutfit: FavoriteOutfit | null
   setActiveTryOnOutfit: (outfit: FavoriteOutfit | null) => void
-  requestedTab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null
+  requestedTab:
+    | ("home" | "wardrobe" | "generator" | "calendar" | "laundry" | "tryon" | "profile")
+    | null
   setRequestedTab: (
-    tab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null,
+    tab:
+      | ("home" | "wardrobe" | "generator" | "calendar" | "laundry" | "tryon" | "profile")
+      | null,
   ) => void
 
   // Feedback notes
@@ -1858,7 +1864,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
   const [activeTryOnOutfit, setActiveTryOnOutfit] = useState<FavoriteOutfit | null>(null)
   const [requestedTab, setRequestedTab] = useState<
-    "home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile" | null
+    | "home"
+    | "wardrobe"
+    | "generator"
+    | "calendar"
+    | "laundry"
+    | "tryon"
+    | "profile"
+    | null
   >(null)
 
   useEffect(() => {
@@ -1939,6 +1952,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCalendarNote(note || `Loaded ${events.length} upcoming event${events.length === 1 ? "" : "s"} from .ics.`)
     lastSuccessfulAdviceKeyRef.current = null
     setAdviceRefreshNonce((n) => n + 1)
+  }
+
+  const setCalendarFromUrl = async (url: string) => {
+    const trimmed = url.trim()
+    if (!trimmed) {
+      showToast("Calendar URL", "Paste a Google Calendar .ics link first.", "warning")
+      return
+    }
+    setCalendarLoading(true)
+    try {
+      const result = await fetchCalendarEventsFromUrl(trimmed)
+      setCalendarEvents(result.events)
+      setCalendarSource(result.source)
+      setCalendarNote(
+        result.note ||
+          `Loaded ${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} from URL.`,
+      )
+      lastSuccessfulAdviceKeyRef.current = null
+      setAdviceRefreshNonce((n) => n + 1)
+      showToast(
+        "Calendar feed connected",
+        result.events.length > 0
+          ? `${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} loaded.`
+          : "Feed connected, but no upcoming events were found.",
+        result.events.length > 0 ? "success" : "info",
+      )
+    } catch (error) {
+      showToast(
+        "Calendar URL failed",
+        error instanceof Error ? error.message : "Could not fetch that .ics URL.",
+        "warning",
+      )
+    } finally {
+      setCalendarLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -2884,6 +2932,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         calendarNote,
         refreshCalendar,
         setCalendarFromUpload,
+        setCalendarFromUrl,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,
         fontScale,
