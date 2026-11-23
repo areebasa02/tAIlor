@@ -227,7 +227,7 @@ automatically.
 
 ## Deployment
 
-Deployed as a **Render Static Site**.
+Deployed as a **Render Static Site** by default.
 
 | Setting | Value |
 | --- | --- |
@@ -236,7 +236,31 @@ Deployed as a **Render Static Site**.
 
 You can also use `npm install && npm run build` if you prefer npm.
 
-A minimal Blueprint is provided in [`render.yaml`](./render.yaml) so Render can pick up the same static-site settings from the repo.
+[`render.yaml`](./render.yaml) describes a **Web Service** (`pnpm start`) that serves `dist/` **and** `/api/*`. A dashboard **Static Site** only publishes `dist/` — there is no Node `/api` on that host.
+
+### Calendar (.ics) on Render
+
+| Action | Static Site only | Needs Node API |
+| --- | --- | --- |
+| **Upload .ics** | Works in the browser | — |
+| **Connect URL** / Refresh feed | — | Yes |
+| Env feed `GOOGLE_CALENDAR_ICS_URL` | — | Yes (server env on the Node process) |
+
+**Static Site env (build-time):**
+
+```text
+# Optional — only if a Node/AI host is reachable (e.g. Tailscale Funnel)
+VITE_API_BASE_URL=https://your-host.your-tailnet.ts.net
+```
+
+**Node / Web Service env (runtime):**
+
+```text
+GOOGLE_CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/.../basic.ics
+ALLOWED_ORIGINS=https://your-site.onrender.com
+```
+
+If Connect URL says the host is unreachable on a Static Site: upload a `.ics` file, set `VITE_API_BASE_URL` to a running host, or switch to a Web Service with start command `pnpm start`.
 
 ### Hosting local GPU models for teammates via Render + Tailscale Funnel
 

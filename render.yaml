@@ -1,3 +1,6 @@
+# Web Service: serves Vite dist/ AND Node /api (calendar Connect URL, stylist, etc.).
+# If you instead create a Render Static Site in the dashboard (publish dir: dist),
+# Upload .ics still works in-browser; Connect URL needs VITE_API_BASE_URL → a Node host.
 services:
   - type: web
     name: tailor

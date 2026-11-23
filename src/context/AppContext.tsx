@@ -1411,7 +1411,11 @@ export interface AppContextType {
   calendarLoading: boolean
   calendarNote: string
   refreshCalendar: () => Promise<void>
-  setCalendarFromUpload: (events: CalendarEvent[], note?: string) => void
+  setCalendarFromUpload: (
+    events: CalendarEvent[],
+    note?: string,
+    source?: CalendarEventsSource,
+  ) => void
   setCalendarFromUrl: (url: string) => Promise<void>
 
   // User testing script state: stylist tab first-run network error
@@ -1939,16 +1943,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Keep any previously loaded events if the host is briefly offline.
       if (calendarEventsRef.current.length === 0) {
         setCalendarSource("mock")
-        setCalendarNote("Calendar host unreachable — try uploading a .ics file in Ask AI.")
+        setCalendarNote(
+          "No calendar API on this host — use Upload .ics on the Calendar tab (works without a backend).",
+        )
       }
     } finally {
       setCalendarLoading(false)
     }
   }
 
-  const setCalendarFromUpload = (events: CalendarEvent[], note?: string) => {
+  const setCalendarFromUpload = (
+    events: CalendarEvent[],
+    note?: string,
+    source: CalendarEventsSource = "local",
+  ) => {
     setCalendarEvents(events)
-    setCalendarSource("upload")
+    setCalendarSource(source)
     setCalendarNote(note || `Loaded ${events.length} upcoming event${events.length === 1 ? "" : "s"} from .ics.`)
     lastSuccessfulAdviceKeyRef.current = null
     setAdviceRefreshNonce((n) => n + 1)
