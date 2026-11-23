@@ -30,7 +30,6 @@ const NAV = [
   { id: "home" as Tab, label: "Today", icon: "✦" },
   { id: "wardrobe" as Tab, label: "Closet", icon: "👔" },
   { id: "generator" as Tab, label: "Ask AI", icon: "✧", featured: true },
-  { id: "calendar" as Tab, label: "Cal", icon: "📅" },
   { id: "laundry" as Tab, label: "Laundry", icon: "🧺" },
   { id: "tryon" as Tab, label: "Try-On", icon: "🪞" },
 ]
