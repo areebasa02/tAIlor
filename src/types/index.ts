@@ -167,6 +167,10 @@ export interface WeatherData {
   adviceSource?: "ai" | "rule" | "preset"
   adviceModel?: string
   icon: string
+  lat?: number
+  lon?: number
+  timeZone?: string
+  locationSource?: "gps" | "city" | "ip" | "last-known" | "hammond" | "fallback"
 }
 
 export interface CalendarEvent {

@@ -4,6 +4,39 @@ import type { CalendarEvent, UserProfile, WeatherData } from "../types"
 const HAMMOND_LAT = 30.5044
 const HAMMOND_LON = -90.4612
 const HAMMOND_CITY = "Hammond, LA"
+const HAMMOND_TZ = "America/Chicago"
+const LAST_LOCATION_KEY = "tailor_last_weather_location"
+
+export type WeatherLocationSource =
+  | "gps"
+  | "city"
+  | "ip"
+  | "last-known"
+  | "hammond"
+  | "fallback"
+
+export type WeatherFetchResult = {
+  weather: WeatherData
+  source: WeatherLocationSource
+}
+
+export type CitySearchResult = {
+  id: string
+  name: string
+  label: string
+  lat: number
+  lon: number
+  timeZone: string
+  countryCode?: string
+}
+
+type StoredLocation = {
+  lat: number
+  lon: number
+  city: string
+  timeZone?: string
+  savedAt: number
+}
 
 function describeWmoWeatherCode(code: number): { label: string; icon: string } {
   if (code === 0) return { label: "Clear & Sunny", icon: "☀️" }
@@ -38,6 +71,46 @@ function buildWeatherAdvice(tempF: number, code: number, windMph: number): strin
   return "Warm and humid outdoors — favor airy short sleeves, linen, and lighter neutrals."
 }
 
+export function rememberWeatherLocation(location: {
+  lat: number
+  lon: number
+  city: string
+  timeZone?: string
+}): void {
+  if (typeof window === "undefined") return
+  try {
+    const payload: StoredLocation = {
+      lat: location.lat,
+      lon: location.lon,
+      city: location.city,
+      timeZone: location.timeZone,
+      savedAt: Date.now(),
+    }
+    window.localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify(payload))
+  } catch {
+    // Ignore quota / private mode failures.
+  }
+}
+
+export function readLastWeatherLocation(): StoredLocation | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(LAST_LOCATION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredLocation
+    if (
+      typeof parsed?.lat !== "number" ||
+      typeof parsed?.lon !== "number" ||
+      typeof parsed?.city !== "string"
+    ) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 /**
  * Fetches live temperature, WMO condition, and wardrobe advice from the free,
  * keyless Open-Meteo API for the given coordinates.
@@ -46,13 +119,19 @@ export async function fetchOpenMeteoWeather(
   lat: number,
   lon: number,
   cityLabel: string,
+  options?: {
+    timeZone?: string
+    locationSource?: WeatherLocationSource
+  },
 ): Promise<WeatherData> {
+  const timezoneParam = options?.timeZone ? encodeURIComponent(options.timeZone) : "auto"
   const url =
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${encodeURIComponent(lat)}` +
     `&longitude=${encodeURIComponent(lon)}` +
     `&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m` +
-    `&temperature_unit=fahrenheit&wind_speed_unit=mph`
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph` +
+    `&timezone=${timezoneParam}`
 
   const res = await fetch(url)
   if (!res.ok) {
@@ -60,6 +139,7 @@ export async function fetchOpenMeteoWeather(
   }
 
   const data = (await res.json()) as {
+    timezone?: string
     current?: {
       temperature_2m?: number
       apparent_temperature?: number
@@ -88,8 +168,12 @@ export async function fetchOpenMeteoWeather(
   const { label, icon } = describeWmoWeatherCode(code)
   const temp = `${roundedTemp}°F`
   const ruleAdvice = buildWeatherAdvice(roundedTemp, code, windMph)
+  const timeZone =
+    (typeof data.timezone === "string" && data.timezone) ||
+    options?.timeZone ||
+    undefined
 
-  return {
+  const weather: WeatherData = {
     city: cityLabel,
     temp,
     tempF: roundedTemp,
@@ -103,31 +187,48 @@ export async function fetchOpenMeteoWeather(
     ruleAdvice,
     adviceSource: "rule",
     icon,
+    lat,
+    lon,
+    timeZone,
+    locationSource: options?.locationSource,
   }
+
+  rememberWeatherLocation({
+    lat,
+    lon,
+    city: cityLabel,
+    timeZone,
+  })
+
+  return weather
 }
 
-async function reverseGeocodeCity(lat: number, lon: number): Promise<string> {
+async function reverseGeocodeCity(lat: number, lon: number): Promise<{
+  city: string
+  timeZone?: string
+}> {
   try {
     const url =
       `https://api.bigdatacloud.net/data/reverse-geocode-client` +
       `?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`
     const res = await fetch(url)
-    if (!res.ok) return "Your Area"
+    if (!res.ok) return { city: "Your Area" }
     const json = (await res.json()) as {
       city?: string
       locality?: string
       principalSubdivisionCode?: string
+      localityInfo?: { informative?: Array<{ name?: string; description?: string }> }
     }
     const cityName = json.city || json.locality
-    if (!cityName) return "Your Area"
+    if (!cityName) return { city: "Your Area" }
     const state = json.principalSubdivisionCode?.split("-").pop()
-    return state ? `${cityName}, ${state}` : cityName
+    return { city: state ? `${cityName}, ${state}` : cityName }
   } catch {
-    return "Your Area"
+    return { city: "Your Area" }
   }
 }
 
-function getBrowserPosition(timeoutMs = 5000): Promise<GeolocationPosition> {
+function getBrowserPosition(timeoutMs = 10_000): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       reject(new Error("Geolocation unavailable"))
@@ -136,42 +237,188 @@ function getBrowserPosition(timeoutMs = 5000): Promise<GeolocationPosition> {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: false,
       timeout: timeoutMs,
-      maximumAge: 300000,
+      maximumAge: 120_000,
     })
   })
 }
 
+export async function searchCities(query: string, signal?: AbortSignal): Promise<CitySearchResult[]> {
+  const trimmed = query.trim()
+  if (trimmed.length < 2) return []
+  const url =
+    `https://geocoding-api.open-meteo.com/v1/search` +
+    `?name=${encodeURIComponent(trimmed)}` +
+    `&count=6&language=en&format=json`
+  const res = await fetch(url, { signal })
+  if (!res.ok) throw new Error(`City search HTTP ${res.status}`)
+  const data = (await res.json()) as {
+    results?: Array<{
+      id?: number
+      name?: string
+      latitude?: number
+      longitude?: number
+      timezone?: string
+      admin1?: string
+      country_code?: string
+      country?: string
+    }>
+  }
+  return (data.results || [])
+    .filter(
+      (row) =>
+        typeof row.latitude === "number" &&
+        typeof row.longitude === "number" &&
+        typeof row.name === "string" &&
+        row.name.trim(),
+    )
+    .map((row) => {
+      const parts = [row.name, row.admin1, row.country_code || row.country].filter(Boolean)
+      return {
+        id: String(row.id ?? `${row.name}-${row.latitude}-${row.longitude}`),
+        name: row.name!,
+        label: parts.join(", "),
+        lat: row.latitude!,
+        lon: row.longitude!,
+        timeZone: row.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        countryCode: row.country_code,
+      }
+    })
+}
+
+export async function fetchWeatherForCity(
+  city: CitySearchResult | { lat: number; lon: number; label: string; timeZone?: string },
+): Promise<WeatherFetchResult> {
+  const weather = await fetchOpenMeteoWeather(city.lat, city.lon, city.label, {
+    timeZone: city.timeZone,
+    locationSource: "city",
+  })
+  return { weather, source: "city" }
+}
+
+async function fetchIpApproxLocation(): Promise<{
+  lat: number
+  lon: number
+  city: string
+  timeZone?: string
+} | null> {
+  try {
+    const res = await fetch("https://ipapi.co/json/", {
+      headers: { Accept: "application/json" },
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      latitude?: number
+      longitude?: number
+      city?: string
+      region_code?: string
+      country_code?: string
+      timezone?: string
+      error?: boolean
+    }
+    if (json.error || typeof json.latitude !== "number" || typeof json.longitude !== "number") {
+      return null
+    }
+    const cityBits = [json.city, json.region_code || json.country_code].filter(Boolean)
+    return {
+      lat: json.latitude,
+      lon: json.longitude,
+      city: cityBits.join(", ") || "Your Area",
+      timeZone: typeof json.timezone === "string" ? json.timezone : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
- * Retrieves real-time weather using Open-Meteo without prompting on initial load
- * (defaulting to Hammond, LA) and optionally using browser GPS when requested.
+ * Retrieves real-time weather using Open-Meteo.
+ * - Default load prefers last-known → quiet IP approx → Hammond (no GPS prompt).
+ * - `requestGeolocation: true` asks the browser for current location (permission UX).
  */
 export async function fetchLiveWeather(options?: {
   requestGeolocation?: boolean
+  preferLastKnown?: boolean
+  preferIpFallback?: boolean
   fallback?: WeatherData
-}): Promise<{ weather: WeatherData; source: "gps" | "hammond" | "fallback" }> {
+}): Promise<WeatherFetchResult> {
   const requestGeo = Boolean(options?.requestGeolocation)
+  const preferLastKnown = options?.preferLastKnown !== false
+  const preferIpFallback = options?.preferIpFallback !== false
 
   if (requestGeo) {
     try {
-      const pos = await getBrowserPosition(5000)
+      const pos = await getBrowserPosition(10_000)
       const lat = pos.coords.latitude
       const lon = pos.coords.longitude
-      const cityLabel = await reverseGeocodeCity(lat, lon)
-      const weather = await fetchOpenMeteoWeather(lat, lon, cityLabel)
+      const place = await reverseGeocodeCity(lat, lon)
+      const weather = await fetchOpenMeteoWeather(lat, lon, place.city, {
+        timeZone: place.timeZone,
+        locationSource: "gps",
+      })
       return { weather, source: "gps" }
     } catch {
-      // Geolocation denied, unavailable, or timed out — fall back to Hammond live weather
+      // Denied / unavailable — continue through last-known → IP → Hammond.
+    }
+  }
+
+  if (preferLastKnown) {
+    const last = readLastWeatherLocation()
+    if (last) {
+      try {
+        const weather = await fetchOpenMeteoWeather(last.lat, last.lon, last.city, {
+          timeZone: last.timeZone,
+          locationSource: "last-known",
+        })
+        return { weather, source: "last-known" }
+      } catch {
+        // Continue.
+      }
+    }
+  }
+
+  if (preferIpFallback && !requestGeo) {
+    const ipPlace = await fetchIpApproxLocation()
+    if (ipPlace) {
+      try {
+        const weather = await fetchOpenMeteoWeather(ipPlace.lat, ipPlace.lon, ipPlace.city, {
+          timeZone: ipPlace.timeZone,
+          locationSource: "ip",
+        })
+        return { weather, source: "ip" }
+      } catch {
+        // Continue to Hammond.
+      }
+    }
+  }
+
+  // After a denied GPS request, still try IP before Hammond so UX has a graceful path.
+  if (preferIpFallback && requestGeo) {
+    const ipPlace = await fetchIpApproxLocation()
+    if (ipPlace) {
+      try {
+        const weather = await fetchOpenMeteoWeather(ipPlace.lat, ipPlace.lon, ipPlace.city, {
+          timeZone: ipPlace.timeZone,
+          locationSource: "ip",
+        })
+        return { weather, source: "ip" }
+      } catch {
+        // Continue.
+      }
     }
   }
 
   try {
-    const weather = await fetchOpenMeteoWeather(HAMMOND_LAT, HAMMOND_LON, HAMMOND_CITY)
+    const weather = await fetchOpenMeteoWeather(HAMMOND_LAT, HAMMOND_LON, HAMMOND_CITY, {
+      timeZone: HAMMOND_TZ,
+      locationSource: "hammond",
+    })
     return { weather, source: "hammond" }
   } catch {
     const fallbackWeather: WeatherData = options?.fallback
       ? {
           ...options.fallback,
           adviceSource: options.fallback.adviceSource || "preset",
+          locationSource: options.fallback.locationSource || "fallback",
         }
       : {
           city: HAMMOND_CITY,
@@ -183,6 +430,10 @@ export async function fetchLiveWeather(options?: {
           ruleAdvice: "Mild outdoor air. Breathable layers keep you comfortable through the day.",
           adviceSource: "rule",
           icon: "⛅",
+          lat: HAMMOND_LAT,
+          lon: HAMMOND_LON,
+          timeZone: HAMMOND_TZ,
+          locationSource: "fallback",
         }
     return { weather: fallbackWeather, source: "fallback" }
   }
@@ -214,6 +465,7 @@ export async function fetchAiWeatherAdvice(
         humidity: weather.humidity,
         windMph: weather.windMph,
         weatherCode: weather.weatherCode,
+        timeZone: weather.timeZone,
       },
       preferences: {
         preferredStyle: user.preferredStyle,

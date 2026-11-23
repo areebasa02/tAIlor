@@ -35,7 +35,14 @@ import {
   fetchCalendarEvents,
   type CalendarEventsSource,
 } from "../services/calendarService"
-import { fetchAiWeatherAdvice, fetchLiveWeather } from "../services/weatherService"
+import {
+  fetchAiWeatherAdvice,
+  fetchLiveWeather,
+  fetchOpenMeteoWeather,
+  fetchWeatherForCity,
+  type CitySearchResult,
+  type WeatherLocationSource,
+} from "../services/weatherService"
 import { useOptionalAiHost } from "./AiHostContext"
 
 export { getContrastTextColor }
@@ -1382,7 +1389,11 @@ export interface AppContextType {
   // Weather state in AppContext
   weather: WeatherData
   weatherAdviceLoading: boolean
-  refreshWeather: () => void
+  weatherLocationSource: WeatherLocationSource | null
+  weatherLocating: boolean
+  refreshWeather: () => Promise<void>
+  useCurrentLocationWeather: () => Promise<void>
+  setWeatherCity: (city: CitySearchResult) => Promise<void>
 
   // Calendar (.ics) events for Ask AI + weather advice
   calendarEvents: CalendarEvent[]
@@ -1855,6 +1866,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     adviceSource: "preset",
   }))
   const [weatherAdviceLoading, setWeatherAdviceLoading] = useState(false)
+  const [weatherLocating, setWeatherLocating] = useState(false)
+  const [weatherLocationSource, setWeatherLocationSource] =
+    useState<WeatherLocationSource | null>(null)
   const [liveWeatherReady, setLiveWeatherReady] = useState(false)
   const [adviceRefreshNonce, setAdviceRefreshNonce] = useState(0)
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
@@ -1908,15 +1922,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false
     if (hasGpsWeatherRef.current || hasLiveWeatherRef.current) return
 
+    // Quiet boot: last-known → IP approx → Hammond (no GPS permission prompt).
     void fetchLiveWeather({
       requestGeolocation: false,
+      preferLastKnown: true,
+      preferIpFallback: true,
       fallback: PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora,
     }).then((result) => {
       if (cancelled || hasGpsWeatherRef.current) return
-      if (result.source === "gps" || result.source === "hammond") {
+      if (result.source !== "fallback") {
         hasLiveWeatherRef.current = true
       }
+      if (result.source === "gps") {
+        hasGpsWeatherRef.current = true
+      }
       setWeather(result.weather)
+      setWeatherLocationSource(result.source)
       setLiveWeatherReady(true)
     })
 
@@ -2009,31 +2030,123 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const currentOutfit = outfits[selectedDirection] || Object.values(outfits)[0]
 
-  const refreshWeather = async () => {
-    void aiHost?.refreshHealth()
-    const result = await fetchLiveWeather({
-      requestGeolocation: true,
-      fallback: weatherRef.current,
-    })
+  const applyWeatherResult = (
+    result: { weather: WeatherData; source: WeatherLocationSource },
+    options?: { toastTitle?: string; skipToast?: boolean },
+  ) => {
     if (result.source === "gps") {
       hasGpsWeatherRef.current = true
     }
-    if (result.source === "gps" || result.source === "hammond") {
+    if (result.source !== "fallback") {
       hasLiveWeatherRef.current = true
     }
     lastSuccessfulAdviceKeyRef.current = null
     setWeather(result.weather)
+    setWeatherLocationSource(result.source)
     setLiveWeatherReady(true)
     setAdviceRefreshNonce((n) => n + 1)
+    if (options?.skipToast) return
+    const titles: Record<WeatherLocationSource, string> = {
+      gps: "Current location",
+      city: "City weather",
+      ip: "Approx. location",
+      "last-known": "Saved location",
+      hammond: "Hammond weather",
+      fallback: "Cached weather",
+    }
     showToast(
-      result.source === "gps"
-        ? "Live Local Weather"
-        : result.source === "hammond"
-          ? "Live Hammond Weather"
-          : "Weather Cache Active",
+      options?.toastTitle || titles[result.source],
       `${result.weather.city}: ${result.weather.condition}`,
-      result.source === "fallback" ? "warning" : "info",
+      result.source === "fallback" || options?.toastTitle?.includes("unavailable")
+        ? "warning"
+        : "info",
     )
+  }
+
+  const refreshWeather = async () => {
+    void aiHost?.refreshHealth()
+    setWeatherLocating(true)
+    try {
+      const current = weatherRef.current
+      const hasCoords =
+        typeof current.lat === "number" && typeof current.lon === "number"
+      if (hasCoords && weatherLocationSource && weatherLocationSource !== "fallback") {
+        if (weatherLocationSource === "gps") {
+          const result = await fetchLiveWeather({
+            requestGeolocation: true,
+            preferLastKnown: true,
+            preferIpFallback: true,
+            fallback: current,
+          })
+          applyWeatherResult(result, { toastTitle: "Weather refreshed" })
+          return
+        }
+        const weather = await fetchOpenMeteoWeather(
+          current.lat!,
+          current.lon!,
+          current.city,
+          {
+            timeZone: current.timeZone,
+            locationSource: weatherLocationSource,
+          },
+        )
+        applyWeatherResult(
+          { weather, source: weatherLocationSource },
+          { toastTitle: "Weather refreshed" },
+        )
+        return
+      }
+      const result = await fetchLiveWeather({
+        requestGeolocation: false,
+        preferLastKnown: true,
+        preferIpFallback: true,
+        fallback: current,
+      })
+      applyWeatherResult(result, { toastTitle: "Weather refreshed" })
+    } finally {
+      setWeatherLocating(false)
+    }
+  }
+
+  const useCurrentLocationWeather = async () => {
+    void aiHost?.refreshHealth()
+    setWeatherLocating(true)
+    try {
+      const result = await fetchLiveWeather({
+        requestGeolocation: true,
+        preferLastKnown: true,
+        preferIpFallback: true,
+        fallback: weatherRef.current,
+      })
+      if (result.source === "gps") {
+        applyWeatherResult(result, { toastTitle: "Current location" })
+      } else {
+        applyWeatherResult(result, { skipToast: true })
+        showToast(
+          "Location unavailable",
+          `Showing ${result.weather.city}. Allow location access or use Search city.`,
+          "warning",
+        )
+      }
+    } finally {
+      setWeatherLocating(false)
+    }
+  }
+
+  const setWeatherCity = async (city: CitySearchResult) => {
+    setWeatherLocating(true)
+    try {
+      const result = await fetchWeatherForCity(city)
+      applyWeatherResult(result, { toastTitle: "City selected" })
+    } catch (error) {
+      showToast(
+        "City weather failed",
+        error instanceof Error ? error.message : "Could not load weather for that city.",
+        "warning",
+      )
+    } finally {
+      setWeatherLocating(false)
+    }
   }
 
   const regenerateOutfit = (reasonConstraint?: string) => {
@@ -2686,7 +2799,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         hasUndo: outfitHistory.length > 0,
         weather,
         weatherAdviceLoading,
+        weatherLocationSource,
+        weatherLocating,
         refreshWeather,
+        useCurrentLocationWeather,
+        setWeatherCity,
         calendarEvents,
         calendarSource,
         calendarLoading,
