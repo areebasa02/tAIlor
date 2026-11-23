@@ -3,12 +3,14 @@ import type {
   UserProfile,
   WardrobeItem,
   RecentLook,
+  OutfitWearEntry,
   AppNotification,
   PersonaId,
   Outfit,
   OutfitItem,
   Direction,
   WeatherData,
+  CalendarEvent,
   QuizResult,
   FontScale,
   AccessibleFont,
@@ -30,7 +32,25 @@ import {
   getGarmentEmoji,
   isFullBodyGarment,
 } from "../lib/garmentCategories"
-import { fetchAiWeatherAdvice, fetchLiveWeather } from "../services/weatherService"
+import {
+  fetchCalendarEvents,
+  fetchCalendarEventsFromUrl,
+  type CalendarEventsSource,
+} from "../services/calendarService"
+import {
+  aggregateWearCounts,
+  outfitKeyFromLabel,
+  seedWearLogFromRecentLooks,
+  toIsoDay,
+} from "../lib/wearLog"
+import {
+  fetchAiWeatherAdvice,
+  fetchLiveWeather,
+  fetchOpenMeteoWeather,
+  fetchWeatherForCity,
+  type CitySearchResult,
+  type WeatherLocationSource,
+} from "../services/weatherService"
 import { useOptionalAiHost } from "./AiHostContext"
 
 export { getContrastTextColor }
@@ -1344,6 +1364,8 @@ export interface AppContextType {
   toggleFavorite: (id: number) => void
   markItemWorn: (id: number) => void
   recentLooks: RecentLook[]
+  outfitWearLog: OutfitWearEntry[]
+  outfitWearCounts: Map<string, number>
   logOutfitWorn: (outfit: {
     label: string
     items: string[]
@@ -1377,7 +1399,20 @@ export interface AppContextType {
   // Weather state in AppContext
   weather: WeatherData
   weatherAdviceLoading: boolean
-  refreshWeather: () => void
+  weatherLocationSource: WeatherLocationSource | null
+  weatherLocating: boolean
+  refreshWeather: () => Promise<void>
+  useCurrentLocationWeather: () => Promise<void>
+  setWeatherCity: (city: CitySearchResult) => Promise<void>
+
+  // Calendar (.ics) events for Ask AI + weather advice
+  calendarEvents: CalendarEvent[]
+  calendarSource: CalendarEventsSource | null
+  calendarLoading: boolean
+  calendarNote: string
+  refreshCalendar: () => Promise<void>
+  setCalendarFromUpload: (events: CalendarEvent[], note?: string) => void
+  setCalendarFromUrl: (url: string) => Promise<void>
 
   // User testing script state: stylist tab first-run network error
   stylistNetworkErrorTriggered: boolean
@@ -1397,9 +1432,13 @@ export interface AppContextType {
   removeFavoriteOutfit: (id: string) => void
   activeTryOnOutfit: FavoriteOutfit | null
   setActiveTryOnOutfit: (outfit: FavoriteOutfit | null) => void
-  requestedTab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null
+  requestedTab:
+    | ("home" | "wardrobe" | "generator" | "calendar" | "laundry" | "tryon" | "profile")
+    | null
   setRequestedTab: (
-    tab: ("home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile") | null,
+    tab:
+      | ("home" | "wardrobe" | "generator" | "calendar" | "laundry" | "tryon" | "profile")
+      | null,
   ) => void
 
   // Feedback notes
@@ -1783,6 +1822,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return getRecentLooksForPersona(pid)
   })
 
+  const [outfitWearLog, setOutfitWearLog] = useState<OutfitWearEntry[]>(() => {
+    const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
+    try {
+      const stored = localStorage.getItem(`tailor_outfit_wear_log_${pid}`)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch { }
+    try {
+      const storedLooks = localStorage.getItem(`tailor_recent_looks_${pid}`)
+      const looks = storedLooks
+        ? (JSON.parse(storedLooks) as RecentLook[])
+        : getRecentLooksForPersona(pid)
+      return seedWearLogFromRecentLooks(Array.isArray(looks) ? looks : [])
+    } catch {
+      return seedWearLogFromRecentLooks(getRecentLooksForPersona(pid))
+    }
+  })
+  const outfitWearCounts = aggregateWearCounts(outfitWearLog)
+
   const [favoriteOutfits, setFavoriteOutfits] = useState<FavoriteOutfit[]>(() => {
     const pid = (currentUser.id in PERSONA_WARDROBES ? currentUser.id : "eliora") as PersonaId
     try {
@@ -1804,7 +1864,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   })
   const [activeTryOnOutfit, setActiveTryOnOutfit] = useState<FavoriteOutfit | null>(null)
   const [requestedTab, setRequestedTab] = useState<
-    "home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile" | null
+    | "home"
+    | "wardrobe"
+    | "generator"
+    | "calendar"
+    | "laundry"
+    | "tryon"
+    | "profile"
+    | null
   >(null)
 
   useEffect(() => {
@@ -1842,27 +1909,113 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     adviceSource: "preset",
   }))
   const [weatherAdviceLoading, setWeatherAdviceLoading] = useState(false)
+  const [weatherLocating, setWeatherLocating] = useState(false)
+  const [weatherLocationSource, setWeatherLocationSource] =
+    useState<WeatherLocationSource | null>(null)
   const [liveWeatherReady, setLiveWeatherReady] = useState(false)
   const [adviceRefreshNonce, setAdviceRefreshNonce] = useState(0)
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [calendarSource, setCalendarSource] = useState<CalendarEventsSource | null>(null)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarNote, setCalendarNote] = useState("")
+  const calendarEventsRef = useRef(calendarEvents)
+  calendarEventsRef.current = calendarEvents
   const hasGpsWeatherRef = useRef(false)
   const hasLiveWeatherRef = useRef(false)
   const weatherRef = useRef(weather)
   weatherRef.current = weather
   const lastSuccessfulAdviceKeyRef = useRef<string | null>(null)
 
+  const refreshCalendar = async () => {
+    setCalendarLoading(true)
+    try {
+      const result = await fetchCalendarEvents()
+      setCalendarEvents(result.events)
+      setCalendarSource(result.source)
+      setCalendarNote(result.note || "")
+      lastSuccessfulAdviceKeyRef.current = null
+      setAdviceRefreshNonce((n) => n + 1)
+    } catch {
+      // Keep any previously loaded events if the host is briefly offline.
+      if (calendarEventsRef.current.length === 0) {
+        setCalendarSource("mock")
+        setCalendarNote("Calendar host unreachable — try uploading a .ics file in Ask AI.")
+      }
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  const setCalendarFromUpload = (events: CalendarEvent[], note?: string) => {
+    setCalendarEvents(events)
+    setCalendarSource("upload")
+    setCalendarNote(note || `Loaded ${events.length} upcoming event${events.length === 1 ? "" : "s"} from .ics.`)
+    lastSuccessfulAdviceKeyRef.current = null
+    setAdviceRefreshNonce((n) => n + 1)
+  }
+
+  const setCalendarFromUrl = async (url: string) => {
+    const trimmed = url.trim()
+    if (!trimmed) {
+      showToast("Calendar URL", "Paste a Google Calendar .ics link first.", "warning")
+      return
+    }
+    setCalendarLoading(true)
+    try {
+      const result = await fetchCalendarEventsFromUrl(trimmed)
+      setCalendarEvents(result.events)
+      setCalendarSource(result.source)
+      setCalendarNote(
+        result.note ||
+          `Loaded ${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} from URL.`,
+      )
+      lastSuccessfulAdviceKeyRef.current = null
+      setAdviceRefreshNonce((n) => n + 1)
+      showToast(
+        "Calendar feed connected",
+        result.events.length > 0
+          ? `${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} loaded.`
+          : "Feed connected, but no upcoming events were found.",
+        result.events.length > 0 ? "success" : "info",
+      )
+    } catch (error) {
+      showToast(
+        "Calendar URL failed",
+        error instanceof Error ? error.message : "Could not fetch that .ics URL.",
+        "warning",
+      )
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    void refreshCalendar()
+    // Intentionally load once per auth session; uploads call setCalendarFromUpload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
+
   useEffect(() => {
     let cancelled = false
     if (hasGpsWeatherRef.current || hasLiveWeatherRef.current) return
 
+    // Quiet boot: last-known → IP approx → Hammond (no GPS permission prompt).
     void fetchLiveWeather({
       requestGeolocation: false,
+      preferLastKnown: true,
+      preferIpFallback: true,
       fallback: PERSONA_WEATHER[currentUser.id] || PERSONA_WEATHER.eliora,
     }).then((result) => {
       if (cancelled || hasGpsWeatherRef.current) return
-      if (result.source === "gps" || result.source === "hammond") {
+      if (result.source !== "fallback") {
         hasLiveWeatherRef.current = true
       }
+      if (result.source === "gps") {
+        hasGpsWeatherRef.current = true
+      }
       setWeather(result.weather)
+      setWeatherLocationSource(result.source)
       setLiveWeatherReady(true)
     })
 
@@ -1893,20 +2046,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     attrs: currentUser.quizProfile?.derived?.wardrobe?.attribute_terms,
   })
 
+  const calendarKey = calendarEvents
+    .map((event) => `${event.id}|${event.dtstart}|${event.summary}`)
+    .join("::")
+
   useEffect(() => {
     if (!isAuthenticated || !liveWeatherReady) return
     if (aiHostStatus !== "online" || aiHostTextLoaded === false) return
     if (aiHostActiveTask === "try-on") return
 
-    const requestKey = `${weatherDataKey}::${prefKey}::${adviceRefreshNonce}`
+    const requestKey = `${weatherDataKey}::${prefKey}::${calendarKey}::${adviceRefreshNonce}`
     if (lastSuccessfulAdviceKeyRef.current === requestKey) return
 
     const controller = new AbortController()
     const snapshotWeather = weatherRef.current
     const snapshotUser = currentUser
+    const snapshotCalendar = calendarEventsRef.current
     setWeatherAdviceLoading(true)
 
-    void fetchAiWeatherAdvice(snapshotWeather, snapshotUser, controller.signal)
+    void fetchAiWeatherAdvice(
+      snapshotWeather,
+      snapshotUser,
+      controller.signal,
+      snapshotCalendar,
+    )
       .then((result) => {
         if (controller.signal.aborted) return
         lastSuccessfulAdviceKeyRef.current = requestKey
@@ -1935,6 +2098,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     liveWeatherReady,
     weatherDataKey,
     prefKey,
+    calendarKey,
     aiHostStatus,
     aiHostTextLoaded,
     aiHostActiveTask,
@@ -1944,31 +2108,123 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const currentOutfit = outfits[selectedDirection] || Object.values(outfits)[0]
 
-  const refreshWeather = async () => {
-    void aiHost?.refreshHealth()
-    const result = await fetchLiveWeather({
-      requestGeolocation: true,
-      fallback: weatherRef.current,
-    })
+  const applyWeatherResult = (
+    result: { weather: WeatherData; source: WeatherLocationSource },
+    options?: { toastTitle?: string; skipToast?: boolean },
+  ) => {
     if (result.source === "gps") {
       hasGpsWeatherRef.current = true
     }
-    if (result.source === "gps" || result.source === "hammond") {
+    if (result.source !== "fallback") {
       hasLiveWeatherRef.current = true
     }
     lastSuccessfulAdviceKeyRef.current = null
     setWeather(result.weather)
+    setWeatherLocationSource(result.source)
     setLiveWeatherReady(true)
     setAdviceRefreshNonce((n) => n + 1)
+    if (options?.skipToast) return
+    const titles: Record<WeatherLocationSource, string> = {
+      gps: "Current location",
+      city: "City weather",
+      ip: "Approx. location",
+      "last-known": "Saved location",
+      hammond: "Hammond weather",
+      fallback: "Cached weather",
+    }
     showToast(
-      result.source === "gps"
-        ? "Live Local Weather"
-        : result.source === "hammond"
-          ? "Live Hammond Weather"
-          : "Weather Cache Active",
+      options?.toastTitle || titles[result.source],
       `${result.weather.city}: ${result.weather.condition}`,
-      result.source === "fallback" ? "warning" : "info",
+      result.source === "fallback" || options?.toastTitle?.includes("unavailable")
+        ? "warning"
+        : "info",
     )
+  }
+
+  const refreshWeather = async () => {
+    void aiHost?.refreshHealth()
+    setWeatherLocating(true)
+    try {
+      const current = weatherRef.current
+      const hasCoords =
+        typeof current.lat === "number" && typeof current.lon === "number"
+      if (hasCoords && weatherLocationSource && weatherLocationSource !== "fallback") {
+        if (weatherLocationSource === "gps") {
+          const result = await fetchLiveWeather({
+            requestGeolocation: true,
+            preferLastKnown: true,
+            preferIpFallback: true,
+            fallback: current,
+          })
+          applyWeatherResult(result, { toastTitle: "Weather refreshed" })
+          return
+        }
+        const weather = await fetchOpenMeteoWeather(
+          current.lat!,
+          current.lon!,
+          current.city,
+          {
+            timeZone: current.timeZone,
+            locationSource: weatherLocationSource,
+          },
+        )
+        applyWeatherResult(
+          { weather, source: weatherLocationSource },
+          { toastTitle: "Weather refreshed" },
+        )
+        return
+      }
+      const result = await fetchLiveWeather({
+        requestGeolocation: false,
+        preferLastKnown: true,
+        preferIpFallback: true,
+        fallback: current,
+      })
+      applyWeatherResult(result, { toastTitle: "Weather refreshed" })
+    } finally {
+      setWeatherLocating(false)
+    }
+  }
+
+  const useCurrentLocationWeather = async () => {
+    void aiHost?.refreshHealth()
+    setWeatherLocating(true)
+    try {
+      const result = await fetchLiveWeather({
+        requestGeolocation: true,
+        preferLastKnown: true,
+        preferIpFallback: true,
+        fallback: weatherRef.current,
+      })
+      if (result.source === "gps") {
+        applyWeatherResult(result, { toastTitle: "Current location" })
+      } else {
+        applyWeatherResult(result, { skipToast: true })
+        showToast(
+          "Location unavailable",
+          `Showing ${result.weather.city}. Allow location access or use Search city.`,
+          "warning",
+        )
+      }
+    } finally {
+      setWeatherLocating(false)
+    }
+  }
+
+  const setWeatherCity = async (city: CitySearchResult) => {
+    setWeatherLocating(true)
+    try {
+      const result = await fetchWeatherForCity(city)
+      applyWeatherResult(result, { toastTitle: "City selected" })
+    } catch (error) {
+      showToast(
+        "City weather failed",
+        error instanceof Error ? error.message : "Could not load weather for that city.",
+        "warning",
+      )
+    } finally {
+      setWeatherLocating(false)
+    }
   }
 
   const regenerateOutfit = (reasonConstraint?: string) => {
@@ -2168,6 +2424,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { }
   }, [recentLooks, currentUser.id])
 
+  useEffect(() => {
+    try {
+      const pid = (currentUser.id in PERSONA_RECENT_LOOKS ? currentUser.id : "eliora") as PersonaId
+      localStorage.setItem(`tailor_outfit_wear_log_${pid}`, JSON.stringify(outfitWearLog))
+    } catch { }
+  }, [outfitWearLog, currentUser.id])
+
   const showToast = (
     title: string,
     message: string,
@@ -2200,11 +2463,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loadedWardrobe = getWardrobeForPersona(pid)
     }
     setWardrobe(loadedWardrobe)
+    let loadedLooks: RecentLook[] = getRecentLooksForPersona(pid)
     try {
       const storedR = localStorage.getItem(`tailor_recent_looks_${pid}`)
-      setRecentLooks(storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid))
+      loadedLooks = storedR ? JSON.parse(storedR) : getRecentLooksForPersona(pid)
+      setRecentLooks(loadedLooks)
     } catch {
-      setRecentLooks(getRecentLooksForPersona(pid))
+      loadedLooks = getRecentLooksForPersona(pid)
+      setRecentLooks(loadedLooks)
+    }
+    try {
+      const storedWear = localStorage.getItem(`tailor_outfit_wear_log_${pid}`)
+      if (storedWear) {
+        const parsed = JSON.parse(storedWear)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setOutfitWearLog(parsed)
+        } else {
+          setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
+        }
+      } else {
+        setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
+      }
+    } catch {
+      setOutfitWearLog(seedWearLogFromRecentLooks(loadedLooks))
     }
     try {
       const storedFavs = localStorage.getItem(`tailor_favorite_outfit_objects_${pid}`)
@@ -2429,20 +2710,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     color: string
     direction: string
   }) => {
-    const todayName = new Date().toLocaleDateString("en-US", {
+    const now = new Date()
+    const todayName = now.toLocaleDateString("en-US", {
       weekday: "long",
     })
+    const wornOn = toIsoDay(now)
+    const lookId = `look-${Date.now()}`
     const newLook: RecentLook = {
-      id: `look-${Date.now()}`,
+      id: lookId,
       day: todayName,
       date: "Today",
       color: outfit.color,
       items: outfit.items,
-      direction: outfit.direction,
+      direction: outfit.direction || outfit.label,
       occasion: "Worn today",
+      wornOn,
     }
 
     setRecentLooks((prev) => [newLook, ...prev])
+
+    const key = outfitKeyFromLabel(outfit.label || outfit.direction)
+    const wearEntry: OutfitWearEntry = {
+      id: `wear-${lookId}`,
+      outfitKey: key,
+      label: outfit.label || outfit.direction,
+      wornOn,
+      color: outfit.color,
+      items: outfit.items,
+      direction: outfit.direction,
+    }
+    setOutfitWearLog((prev) => [wearEntry, ...prev])
 
     // Update wear count for matching items in wardrobe
     setWardrobe((prev) =>
@@ -2459,9 +2756,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }),
     )
 
+    const nextCount = (outfitWearCounts.get(key) || 0) + 1
     showToast(
       "Outfit Logged!",
-      `Great choice! "${outfit.label}" logged to your wear history.`,
+      `"${outfit.label}" worn on ${wornOn} · ${nextCount} total wear${nextCount === 1 ? "" : "s"}.`,
       "success",
     )
   }
@@ -2600,6 +2898,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleFavorite,
         markItemWorn,
         recentLooks,
+        outfitWearLog,
+        outfitWearCounts,
         logOutfitWorn,
         sendOutfitToLaundry,
         notifications,
@@ -2621,7 +2921,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         hasUndo: outfitHistory.length > 0,
         weather,
         weatherAdviceLoading,
+        weatherLocationSource,
+        weatherLocating,
         refreshWeather,
+        useCurrentLocationWeather,
+        setWeatherCity,
+        calendarEvents,
+        calendarSource,
+        calendarLoading,
+        calendarNote,
+        refreshCalendar,
+        setCalendarFromUpload,
+        setCalendarFromUrl,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,
         fontScale,

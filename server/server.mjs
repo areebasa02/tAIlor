@@ -1142,7 +1142,339 @@ function cleanWeatherAdviceText(raw) {
     .trim()
 }
 
-function buildWeatherAdvicePrompt(weather, preferences) {
+function unfoldIcsText(raw) {
+  return String(raw || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n[ \t]/g, "")
+}
+
+function unescapeIcsValue(value) {
+  return String(value || "")
+    .replace(/\\n/gi, "\n")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\\\/g, "\\")
+    .trim()
+}
+
+function parseIcsDateTime(rawValue, params = "") {
+  const value = String(rawValue || "").trim()
+  if (!value) return null
+  const isDateOnly =
+    /VALUE=DATE/i.test(params) || (/^\d{8}$/.test(value) && !value.includes("T"))
+  const match = value.match(
+    /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2}))?(Z)?$/i,
+  )
+  if (!match) return null
+  const [, y, mo, d, hh = "00", mm = "00", ss = "00", zulu] = match
+  if (isDateOnly) {
+    const local = new Date(Number(y), Number(mo) - 1, Number(d), 0, 0, 0, 0)
+    if (Number.isNaN(local.getTime())) return null
+    return { date: local, allDay: true }
+  }
+  if (zulu) {
+    const utc = new Date(
+      Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(hh), Number(mm), Number(ss)),
+    )
+    if (Number.isNaN(utc.getTime())) return null
+    return { date: utc, allDay: false }
+  }
+  const floating = new Date(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(hh),
+    Number(mm),
+    Number(ss),
+    0,
+  )
+  if (Number.isNaN(floating.getTime())) return null
+  return { date: floating, allDay: false }
+}
+
+function getIcsProperty(block, name) {
+  const lines = unfoldIcsText(block).split("\n")
+  const prefix = `${String(name || "").toUpperCase()}`
+  for (const line of lines) {
+    const upper = line.toUpperCase()
+    if (upper === prefix || upper.startsWith(`${prefix}:`) || upper.startsWith(`${prefix};`)) {
+      const colon = line.indexOf(":")
+      if (colon < 0) continue
+      const meta = line.slice(0, colon)
+      const value = line.slice(colon + 1)
+      const params = meta.includes(";") ? meta.slice(meta.indexOf(";") + 1) : ""
+      return { value: unescapeIcsValue(value), params }
+    }
+  }
+  return null
+}
+
+function startOfLocalDay(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+}
+
+function endOfLocalDay(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+}
+
+function formatCalendarTime(date, allDay) {
+  if (allDay) return "All day"
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
+function normalizeCalendarEvent(raw = {}) {
+  const summary =
+    typeof raw.summary === "string" && raw.summary.trim()
+      ? raw.summary.trim().slice(0, 160)
+      : "Untitled event"
+  const location =
+    typeof raw.location === "string" ? raw.location.trim().slice(0, 160) : ""
+  const description =
+    typeof raw.description === "string" ? raw.description.trim().slice(0, 400) : ""
+  const startDate =
+    raw.start instanceof Date
+      ? raw.start
+      : typeof raw.start === "string" || typeof raw.dtstart === "string"
+        ? new Date(raw.start || raw.dtstart)
+        : null
+  const endDate =
+    raw.end instanceof Date
+      ? raw.end
+      : typeof raw.end === "string" || typeof raw.dtend === "string"
+        ? new Date(raw.end || raw.dtend)
+        : null
+  if (!startDate || Number.isNaN(startDate.getTime())) return null
+  const allDay = Boolean(raw.allDay)
+  const end =
+    endDate && !Number.isNaN(endDate.getTime())
+      ? endDate
+      : allDay
+        ? new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 23, 59, 59, 999)
+        : new Date(startDate.getTime() + 60 * 60 * 1000)
+  return {
+    id:
+      typeof raw.id === "string" && raw.id.trim()
+        ? raw.id.trim().slice(0, 120)
+        : `${startDate.toISOString()}::${summary}`.slice(0, 120),
+    summary,
+    dtstart: startDate.toISOString(),
+    dtend: end.toISOString(),
+    location,
+    description,
+    allDay,
+    timeLabel: formatCalendarTime(startDate, allDay),
+    startMs: startDate.getTime(),
+    endMs: end.getTime(),
+  }
+}
+
+function parseIcsEvents(icsText, options = {}) {
+  const horizonHours = Math.max(1, Number(options.horizonHours) || 36)
+  const now = options.now instanceof Date ? options.now : new Date()
+  const windowStart = startOfLocalDay(now)
+  const windowEnd = new Date(now.getTime() + horizonHours * 60 * 60 * 1000)
+  const dayEnd = endOfLocalDay(now)
+  const cutoff = windowEnd.getTime() > dayEnd.getTime() ? windowEnd : dayEnd
+
+  const unfolded = unfoldIcsText(icsText)
+  const blocks = unfolded.split(/BEGIN:VEVENT/i).slice(1)
+  const events = []
+  for (const rawBlock of blocks) {
+    const block = rawBlock.split(/END:VEVENT/i)[0] || ""
+    const summaryProp = getIcsProperty(block, "SUMMARY")
+    const startProp = getIcsProperty(block, "DTSTART")
+    const endProp = getIcsProperty(block, "DTEND")
+    const locationProp = getIcsProperty(block, "LOCATION")
+    const descriptionProp = getIcsProperty(block, "DESCRIPTION")
+    const uidProp = getIcsProperty(block, "UID")
+    if (!startProp?.value) continue
+    const startParsed = parseIcsDateTime(startProp.value, startProp.params)
+    if (!startParsed) continue
+    const endParsed = endProp?.value
+      ? parseIcsDateTime(endProp.value, endProp.params)
+      : null
+    let endDate = endParsed?.date
+    // Same-day DTEND earlier than DTSTART usually means the event crosses midnight.
+    if (endDate && endDate.getTime() < startParsed.date.getTime()) {
+      endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000)
+    }
+    const normalized = normalizeCalendarEvent({
+      id: uidProp?.value,
+      summary: summaryProp?.value || "Untitled event",
+      start: startParsed.date,
+      end: endDate,
+      allDay: startParsed.allDay || Boolean(endParsed?.allDay),
+      location: locationProp?.value || "",
+      description: descriptionProp?.value || "",
+    })
+    if (!normalized) continue
+    // Keep events that overlap today / the near horizon.
+    if (normalized.endMs < windowStart.getTime() || normalized.startMs > cutoff.getTime()) {
+      continue
+    }
+    if (normalized.endMs < now.getTime() - 15 * 60_000) continue
+    events.push(normalized)
+  }
+  events.sort((a, b) => a.startMs - b.startMs)
+  return events.slice(0, Math.max(1, Number(options.limit) || 12))
+}
+
+function buildMockCalendarEvents(now = new Date()) {
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const d = now.getDate()
+  const mk = (hour, minute, durationMinutes, summary, location, description) =>
+    normalizeCalendarEvent({
+      id: `mock-${summary.toLowerCase().replace(/\s+/g, "-")}`,
+      summary,
+      start: new Date(y, m, d, hour, minute, 0, 0),
+      end: new Date(y, m, d, hour, minute + durationMinutes, 0, 0),
+      location,
+      description,
+      allDay: false,
+    })
+  return [
+    mk(9, 30, 30, "Team standup", "Zoom", "Quick sync before the day starts."),
+    mk(12, 15, 60, "Client lunch", "Downtown bistro", "Business-casual lunch meeting."),
+    mk(18, 30, 90, "Networking dinner", "Rooftop venue", "Evening mixer — smart casual."),
+  ].filter(Boolean)
+}
+
+function isSafeCalendarUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || "").trim())
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false
+    if (parsed.username || parsed.password) return false
+    const host = parsed.hostname.toLowerCase()
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host.endsWith(".local") ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function fetchIcsTextFromUrl(url) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20_000)
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "text/calendar, text/plain, */*",
+        "User-Agent": "tAIlor-calendar-proxy/1.0",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    })
+    if (!response.ok) {
+      throw new Error(`Calendar feed returned HTTP ${response.status}.`)
+    }
+    const text = await response.text()
+    if (!/BEGIN:VCALENDAR/i.test(text) && !/BEGIN:VEVENT/i.test(text)) {
+      throw new Error("Fetched URL did not look like an .ics calendar feed.")
+    }
+    if (text.length > 2_000_000) {
+      throw new Error("Calendar feed is too large.")
+    }
+    return text
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function sanitizeIncomingCalendarEvents(rawEvents) {
+  if (!Array.isArray(rawEvents)) return []
+  return rawEvents
+    .map((item) =>
+      normalizeCalendarEvent({
+        id: item?.id,
+        summary: item?.summary || item?.title,
+        start: item?.dtstart || item?.start,
+        end: item?.dtend || item?.end,
+        location: item?.location,
+        description: item?.description,
+        allDay: item?.allDay,
+      }),
+    )
+    .filter(Boolean)
+    .slice(0, 12)
+}
+
+async function resolveCalendarEvents(body = {}) {
+  const limit = Math.max(1, Math.min(20, Number(body.limit) || 8))
+  const horizonHours = Math.max(6, Math.min(72, Number(body.horizonHours) || 36))
+  const icsText = typeof body.ics === "string" ? body.ics : ""
+  const requestedUrl = typeof body.url === "string" ? body.url.trim() : ""
+  const envUrl = typeof process.env.GOOGLE_CALENDAR_ICS_URL === "string"
+    ? process.env.GOOGLE_CALENDAR_ICS_URL.trim()
+    : ""
+
+  if (icsText.trim()) {
+    if (icsText.length > 2_000_000) {
+      return { error: "Uploaded calendar file is too large.", status: 400 }
+    }
+    return {
+      events: parseIcsEvents(icsText, { limit, horizonHours }),
+      source: "upload",
+      feedUrl: null,
+    }
+  }
+
+  const feedUrl = requestedUrl || envUrl
+  if (feedUrl) {
+    if (!isSafeCalendarUrl(feedUrl)) {
+      return { error: "Calendar URL must be a public http(s) .ics feed.", status: 400 }
+    }
+    try {
+      const text = await fetchIcsTextFromUrl(feedUrl)
+      return {
+        events: parseIcsEvents(text, { limit, horizonHours }),
+        source: requestedUrl ? "url" : "env",
+        feedUrl,
+      }
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Could not fetch calendar feed.",
+        status: 502,
+      }
+    }
+  }
+
+  return {
+    events: buildMockCalendarEvents().slice(0, limit),
+    source: "mock",
+    feedUrl: null,
+    note: "No GOOGLE_CALENDAR_ICS_URL or upload provided — returning demo events for today.",
+  }
+}
+
+async function handleCalendarEvents(request, response) {
+  const body = await readJsonBody(request, 2_100_000)
+  const resolved = await resolveCalendarEvents(body)
+  if (resolved.error) {
+    sendJson(response, resolved.status || 400, { error: resolved.error })
+    return
+  }
+  sendJson(response, 200, {
+    events: resolved.events.map(({ startMs, endMs, ...rest }) => rest),
+    source: resolved.source,
+    feedUrl: resolved.feedUrl,
+    ...(resolved.note ? { note: resolved.note } : {}),
+  })
+}
+
+function buildWeatherAdvicePrompt(weather, preferences, calendarEvents = []) {
   const weatherFacts = [
     weather.city ? `Location: ${weather.city}` : "",
     weather.conditionLabel || weather.condition
@@ -1185,6 +1517,18 @@ function buildWeatherAdvicePrompt(weather, preferences) {
     .filter(Boolean)
     .join("\n")
 
+  const calendarLines = calendarEvents
+    .slice(0, 6)
+    .map((event) => {
+      const bits = [
+        event.summary,
+        event.timeLabel || event.dtstart,
+        event.location ? `at ${event.location}` : "",
+      ].filter(Boolean)
+      return `- ${bits.join(" · ")}`
+    })
+    .join("\n")
+
   const tempLabel =
     typeof weather.tempF === "number" ? `${weather.tempF}°F` : weather.temp || "today's temperature"
 
@@ -1192,6 +1536,9 @@ function buildWeatherAdvicePrompt(weather, preferences) {
     "You are a concise personal wardrobe stylist.",
     `Current live weather: ${weatherFacts}.`,
     prefLines ? `Wearer preferences:\n${prefLines}` : "",
+    calendarLines
+      ? `Today's upcoming calendar events:\n${calendarLines}\nFactor these plans into fabric weight, formality, and layering when relevant.`
+      : "",
     `Write 1 or 2 short sentences (under 35 words total) of practical clothing and layering advice tailored to both today's live weather (${tempLabel}) and the wearer's preferences.`,
     `Base warmth strictly on today's live temperature (${tempLabel}) and weather conditions: choose light, breathable fabrics when warm/humid and extra layers or rain protection only when cool, windy, or wet.`,
     "Return ONLY plain text advice with no markdown, no bullet points, no quotes, and no greeting.",
@@ -1237,15 +1584,24 @@ async function handleWeatherAdvice(request, response) {
       : [],
   }
 
+  let calendarEvents = sanitizeIncomingCalendarEvents(body?.calendarEvents || body?.events)
+  if (calendarEvents.length === 0) {
+    const resolved = await resolveCalendarEvents({})
+    if (!resolved.error && Array.isArray(resolved.events)) {
+      calendarEvents = resolved.events
+    }
+  }
+
   logStylist(requestId, "weather-advice request", {
     city: weather.city,
     temp: weather.temp || weather.tempF,
     condition: weather.conditionLabel || weather.condition,
     sensorySensitive: preferences.sensorySensitive,
+    calendarCount: calendarEvents.length,
   })
 
   try {
-    const prompt = buildWeatherAdvicePrompt(weather, preferences)
+    const prompt = buildWeatherAdvicePrompt(weather, preferences, calendarEvents)
     const rawAdvice = await requestModel(prompt, 0.3, { maxTokens: 90, timeoutMs: 45_000 })
     const advice = cleanWeatherAdviceText(rawAdvice)
     if (!advice) {
@@ -1256,6 +1612,7 @@ async function handleWeatherAdvice(request, response) {
       advice,
       model: textModel,
       source: "local-model",
+      calendarCount: calendarEvents.length,
     })
   } catch (error) {
     const cause = error instanceof Error && error.cause instanceof Error
@@ -1368,6 +1725,26 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (url.pathname === "/api/calendar/events" && request.method === "POST") {
+      const clientIp = getClientIp(request)
+      const limit = checkRateLimit("calendar-events", clientIp, STYLIST_RATE_LIMIT_PER_MIN)
+      if (!limit.allowed) {
+        sendJson(
+          response,
+          429,
+          { error: "Too many calendar requests. Please wait a few seconds and retry." },
+          { "Retry-After": String(limit.retryAfterSec) },
+        )
+        return
+      }
+      try {
+        await handleCalendarEvents(request, response)
+      } finally {
+        console.log(`[api] POST /api/calendar/events ip=${clientIp} status=${response.statusCode} (${Date.now() - startedAt}ms)`)
+      }
+      return
+    }
+
     if (url.pathname === "/api/try-on/jobs" && request.method === "POST") {
       await handleCreateTryOnJob(request, response)
       return
@@ -1458,6 +1835,7 @@ const server = createServer(async (request, response) => {
           weatherAdvice: true,
           wardrobeScan: true,
           tryOn: true,
+          calendar: true,
         },
         ...(backendError ? { error: backendError } : {}),
       })

@@ -12,11 +12,19 @@ import LoginScreen from "./components/LoginScreen"
 import HomeTab from "./tabs/HomeTab"
 import WardrobeTab from "./tabs/WardrobeTab"
 import GeneratorTab from "./tabs/GeneratorTab"
+import CalendarTab from "./tabs/CalendarTab"
 import TryOnTab from "./tabs/TryOnTab"
 import LaundryTab from "./tabs/LaundryTab"
 import ProfileTab from "./tabs/ProfileTab"
 
-type Tab = "home" | "wardrobe" | "generator" | "laundry" | "tryon" | "profile"
+type Tab =
+  | "home"
+  | "wardrobe"
+  | "generator"
+  | "calendar"
+  | "laundry"
+  | "tryon"
+  | "profile"
 
 const NAV = [
   { id: "home" as Tab, label: "Today", icon: "✦" },
@@ -102,6 +110,9 @@ function MainApp() {
     } else if (tab === "generator") {
       summary =
         "AI Event Stylist screen. Describe your upcoming event in plain words or tap a quick example scenario to generate tailored outfits from your closet."
+    } else if (tab === "calendar") {
+      summary =
+        "Calendar screen. Upload a Google Calendar .ics file or paste an iCal URL, then switch List, Week, or Month to see plans and outfit wear history."
     } else if (tab === "laundry") {
       summary =
         "Laundry and Fabric Care screen. Track clean clothes versus clothes in your hamper and review washing care instructions."
@@ -240,6 +251,28 @@ function MainApp() {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-1.5 min-[360px]:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setTab("calendar")
+                setUserMenuOpen(false)
+                setFontMenuOpen(false)
+                setAssistBarOpen(false)
+              }}
+              aria-current={tab === "calendar" ? "page" : undefined}
+              aria-label="Open Calendar"
+              title="Calendar"
+              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-transform active:scale-95 cursor-pointer ${
+                tab === "calendar"
+                  ? "bg-pink/15 border-pink text-pink"
+                  : "bg-card text-foreground border-border hover:border-turquoise"
+              }`}
+            >
+              <span aria-hidden="true" className="text-base leading-none">
+                📅
+              </span>
+            </button>
+
             {/* Quick Accessibility Assist Pill */}
             <button
               type="button"
@@ -796,6 +829,7 @@ function MainApp() {
           {tab === "home" && <HomeTab />}
           {tab === "wardrobe" && <WardrobeTab />}
           {tab === "generator" && <GeneratorTab />}
+          {tab === "calendar" && <CalendarTab />}
           {tab === "laundry" && <LaundryTab />}
           {tab === "tryon" && <TryOnTab />}
           {tab === "profile" && <ProfileTab onBack={() => setTab("home")} />}

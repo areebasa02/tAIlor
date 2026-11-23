@@ -17,6 +17,7 @@ export type AiHostHealthPayload = {
     weatherAdvice?: boolean
     wardrobeScan?: boolean
     tryOn?: boolean
+    calendar?: boolean
   }
   backend?: {
     status?: string

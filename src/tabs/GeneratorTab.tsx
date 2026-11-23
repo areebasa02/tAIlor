@@ -615,7 +615,7 @@ export default function GeneratorTab() {
               id="quick-scenarios-heading"
               className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
             >
-              <span aria-hidden="true">⚡ </span>Quick Ideas (Tap to Fill)
+              Quick Ideas (Tap to Fill)
             </span>
             <div
               role="group"

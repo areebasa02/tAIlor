@@ -140,6 +140,19 @@ export interface RecentLook {
   items: string[]
   direction: string
   occasion?: string
+  /** ISO calendar day (YYYY-MM-DD) when known — used by the outfit calendar. */
+  wornOn?: string
+}
+
+/** One logged outfit wear on a specific calendar day. */
+export interface OutfitWearEntry {
+  id: string
+  outfitKey: string
+  label: string
+  wornOn: string
+  color: string
+  items: string[]
+  direction?: string
 }
 
 export interface AppNotification {
@@ -167,6 +180,21 @@ export interface WeatherData {
   adviceSource?: "ai" | "rule" | "preset"
   adviceModel?: string
   icon: string
+  lat?: number
+  lon?: number
+  timeZone?: string
+  locationSource?: "gps" | "city" | "ip" | "last-known" | "hammond" | "fallback"
+}
+
+export interface CalendarEvent {
+  id: string
+  summary: string
+  dtstart: string
+  dtend: string
+  location: string
+  description: string
+  allDay?: boolean
+  timeLabel?: string
 }
 
 export function getContrastTextColor(hexBg: string): string {

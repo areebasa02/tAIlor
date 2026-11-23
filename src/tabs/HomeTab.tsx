@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AnimatedStepProgress,
   UserControlBar,
@@ -20,8 +20,33 @@ import {
   speakText,
   stopSpeaking,
 } from "../services/accessibilityHelpers";
+import {
+  searchCities,
+  type CitySearchResult,
+} from "../services/weatherService";
 import type { OutfitItem } from "../types";
 import { THEME_COLORS } from "../types/theme";
+
+function locationSourceLabel(
+  source: string | null | undefined,
+): string {
+  switch (source) {
+    case "gps":
+      return "Current location";
+    case "city":
+      return "City search";
+    case "ip":
+      return "Approx. from network";
+    case "last-known":
+      return "Saved location";
+    case "hammond":
+      return "Default · Hammond, LA";
+    case "fallback":
+      return "Cached";
+    default:
+      return "Live weather";
+  }
+}
 
 const GENERATION_STEPS = [
   "Reading digital wardrobe & local forecast…",
@@ -53,7 +78,11 @@ export default function HomeTab() {
     swapOutfitItem,
     weather,
     weatherAdviceLoading,
+    weatherLocationSource,
+    weatherLocating,
     refreshWeather,
+    useCurrentLocationWeather,
+    setWeatherCity,
     showToast,
     favoriteOutfitIds,
     toggleFavoriteOutfit,
@@ -76,8 +105,64 @@ export default function HomeTab() {
     item: OutfitItem;
     index: number;
   } | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  const [cityQuery, setCityQuery] = useState("");
+  const [cityResults, setCityResults] = useState<CitySearchResult[]>([]);
+  const [citySearching, setCitySearching] = useState(false);
+  const [showCitySearch, setShowCitySearch] = useState(false);
+  const citySearchTimerRef = useRef<number | null>(null);
 
   useEffect(() => () => stopSpeaking(), []);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    if (citySearchTimerRef.current) {
+      window.clearTimeout(citySearchTimerRef.current);
+    }
+    const trimmed = cityQuery.trim();
+    if (trimmed.length < 2) {
+      setCityResults([]);
+      setCitySearching(false);
+      return;
+    }
+    setCitySearching(true);
+    const controller = new AbortController();
+    citySearchTimerRef.current = window.setTimeout(() => {
+      void searchCities(trimmed, controller.signal)
+        .then((results) => setCityResults(results))
+        .catch(() => {
+          if (!controller.signal.aborted) setCityResults([]);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setCitySearching(false);
+        });
+    }, 280);
+    return () => {
+      controller.abort();
+      if (citySearchTimerRef.current) {
+        window.clearTimeout(citySearchTimerRef.current);
+      }
+    };
+  }, [cityQuery]);
+
+  const clockTimeZone =
+    weather.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const liveDateLabel = now.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: clockTimeZone,
+  });
+  const liveTimeLabel = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: clockTimeZone,
+  });
 
   const showListen = Boolean(
     user.accessibility.visionImpairment || user.accessibility.voiceNarration,
@@ -148,14 +233,10 @@ export default function HomeTab() {
           aria-hidden="true"
           className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-pink via-gold to-turquoise"
         />
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[11px] min-[380px]:text-xs font-extrabold uppercase tracking-wider text-muted-foreground leading-snug">
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-              })}
+              {liveDateLabel}
             </p>
             <h1
               className="text-xl min-[390px]:text-2xl font-black tracking-tight leading-tight text-foreground"
@@ -163,13 +244,25 @@ export default function HomeTab() {
             >
               Hi, {user.name.split(" ")[0]}
             </h1>
+            <p
+              className="mt-0.5 text-sm font-black tabular-nums text-foreground leading-tight"
+              aria-live="polite"
+              aria-atomic="true"
+              title={`Local time · ${clockTimeZone}`}
+            >
+              {liveTimeLabel}
+              <span className="ml-1.5 text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                live
+              </span>
+            </p>
           </div>
 
           <button
             type="button"
             onClick={() => void refreshWeather()}
-            aria-label={`Weather in ${weather.city.split(",")[0]}: ${weather.temp}. Tap to refresh live weather.`}
-            className="flex items-center gap-2 px-3 py-1.5 min-h-[42px] rounded-xl border-2 border-border bg-muted transition-transform active:scale-95 shrink-0 hover:border-turquoise cursor-pointer"
+            disabled={weatherLocating}
+            aria-label={`Weather in ${weather.city}: ${weather.temp}. Tap to refresh live weather.`}
+            className="flex items-center gap-2 px-3 py-1.5 min-h-[42px] rounded-xl border-2 border-border bg-muted transition-transform active:scale-95 shrink-0 hover:border-turquoise cursor-pointer disabled:opacity-60"
             title="Tap to refresh live weather"
           >
             <span aria-hidden="true" className="text-lg leading-none">
@@ -179,12 +272,79 @@ export default function HomeTab() {
               <p className="text-sm font-black leading-tight text-foreground whitespace-nowrap">
                 {weather.temp}
               </p>
-              <p className="text-[11px] font-bold leading-tight text-muted-foreground whitespace-nowrap">
-                {weather.city.split(",")[0]}
+              <p className="text-[11px] font-bold leading-tight text-muted-foreground whitespace-nowrap max-w-[9.5rem] truncate">
+                {weather.city}
               </p>
             </div>
           </button>
         </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+            {locationSourceLabel(weatherLocationSource || weather.locationSource)}
+          </span>
+          <button
+            type="button"
+            onClick={() => void useCurrentLocationWeather()}
+            disabled={weatherLocating}
+            className="min-h-[32px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-turquoise bg-turquoise/10 text-foreground cursor-pointer disabled:opacity-50"
+          >
+            {weatherLocating && weatherLocationSource !== "city"
+              ? "Locating…"
+              : "Use my location"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCitySearch((open) => !open)}
+            aria-expanded={showCitySearch}
+            className="min-h-[32px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-border bg-muted text-foreground cursor-pointer"
+          >
+            {showCitySearch ? "Hide city search" : "Search city"}
+          </button>
+        </div>
+
+        {showCitySearch && (
+          <div className="space-y-1.5 rounded-xl border-2 border-border bg-muted/40 p-2">
+            <label htmlFor="home-city-search" className="sr-only">
+              Search city for weather
+            </label>
+            <input
+              id="home-city-search"
+              type="search"
+              value={cityQuery}
+              onChange={(e) => setCityQuery(e.target.value)}
+              placeholder="Type a city (e.g. New Orleans)"
+              className="w-full min-h-[40px] rounded-lg border-2 border-border bg-card px-3 text-sm font-semibold text-foreground outline-none focus:border-turquoise"
+            />
+            <p className="text-[11px] font-semibold text-muted-foreground leading-snug">
+              {citySearching
+                ? "Searching…"
+                : "If location is denied, pick a city. We also remember your last place."}
+            </p>
+            {cityResults.length > 0 && (
+              <ul className="space-y-1" role="listbox" aria-label="City search results">
+                {cityResults.map((result) => (
+                  <li key={result.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      onClick={() => {
+                        void setWeatherCity(result).then(() => {
+                          setShowCitySearch(false);
+                          setCityQuery("");
+                          setCityResults([]);
+                        });
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-extrabold border-2 border-border bg-card text-foreground hover:border-turquoise cursor-pointer"
+                    >
+                      {result.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* AI Climate Tip */}
         <div className="rounded-xl px-3 py-2 flex items-center justify-between text-xs bg-turquoise/10 border-2 border-turquoise/45">
@@ -218,7 +378,7 @@ export default function HomeTab() {
           <button
             type="button"
             onClick={() => void refreshWeather()}
-            disabled={weatherAdviceLoading}
+            disabled={weatherAdviceLoading || weatherLocating}
             className="text-xs font-black text-foreground hover:text-pink shrink-0 ml-2 w-8 h-8 rounded-lg border-2 border-border bg-card flex items-center justify-center cursor-pointer disabled:opacity-60"
             title="Refresh live weather and AI advice"
             aria-label="Refresh weather advice"
@@ -226,7 +386,9 @@ export default function HomeTab() {
             <span
               aria-hidden="true"
               className={
-                weatherAdviceLoading ? "inline-block animate-spin" : ""
+                weatherAdviceLoading || weatherLocating
+                  ? "inline-block animate-spin"
+                  : ""
               }
             >
               ↻
