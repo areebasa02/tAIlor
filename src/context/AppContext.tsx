@@ -9,6 +9,7 @@ import type {
   OutfitItem,
   Direction,
   WeatherData,
+  CalendarEvent,
   QuizResult,
   FontScale,
   AccessibleFont,
@@ -30,6 +31,10 @@ import {
   getGarmentEmoji,
   isFullBodyGarment,
 } from "../lib/garmentCategories"
+import {
+  fetchCalendarEvents,
+  type CalendarEventsSource,
+} from "../services/calendarService"
 import { fetchAiWeatherAdvice, fetchLiveWeather } from "../services/weatherService"
 import { useOptionalAiHost } from "./AiHostContext"
 
@@ -1379,6 +1384,14 @@ export interface AppContextType {
   weatherAdviceLoading: boolean
   refreshWeather: () => void
 
+  // Calendar (.ics) events for Ask AI + weather advice
+  calendarEvents: CalendarEvent[]
+  calendarSource: CalendarEventsSource | null
+  calendarLoading: boolean
+  calendarNote: string
+  refreshCalendar: () => Promise<void>
+  setCalendarFromUpload: (events: CalendarEvent[], note?: string) => void
+
   // User testing script state: stylist tab first-run network error
   stylistNetworkErrorTriggered: boolean
   setStylistNetworkErrorTriggered: (val: boolean) => void
@@ -1844,11 +1857,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [weatherAdviceLoading, setWeatherAdviceLoading] = useState(false)
   const [liveWeatherReady, setLiveWeatherReady] = useState(false)
   const [adviceRefreshNonce, setAdviceRefreshNonce] = useState(0)
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [calendarSource, setCalendarSource] = useState<CalendarEventsSource | null>(null)
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [calendarNote, setCalendarNote] = useState("")
+  const calendarEventsRef = useRef(calendarEvents)
+  calendarEventsRef.current = calendarEvents
   const hasGpsWeatherRef = useRef(false)
   const hasLiveWeatherRef = useRef(false)
   const weatherRef = useRef(weather)
   weatherRef.current = weather
   const lastSuccessfulAdviceKeyRef = useRef<string | null>(null)
+
+  const refreshCalendar = async () => {
+    setCalendarLoading(true)
+    try {
+      const result = await fetchCalendarEvents()
+      setCalendarEvents(result.events)
+      setCalendarSource(result.source)
+      setCalendarNote(result.note || "")
+      lastSuccessfulAdviceKeyRef.current = null
+      setAdviceRefreshNonce((n) => n + 1)
+    } catch {
+      // Keep any previously loaded events if the host is briefly offline.
+      if (calendarEventsRef.current.length === 0) {
+        setCalendarSource("mock")
+        setCalendarNote("Calendar host unreachable — try uploading a .ics file in Ask AI.")
+      }
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  const setCalendarFromUpload = (events: CalendarEvent[], note?: string) => {
+    setCalendarEvents(events)
+    setCalendarSource("upload")
+    setCalendarNote(note || `Loaded ${events.length} upcoming event${events.length === 1 ? "" : "s"} from .ics.`)
+    lastSuccessfulAdviceKeyRef.current = null
+    setAdviceRefreshNonce((n) => n + 1)
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    void refreshCalendar()
+    // Intentionally load once per auth session; uploads call setCalendarFromUpload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
 
   useEffect(() => {
     let cancelled = false
@@ -1893,20 +1947,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     attrs: currentUser.quizProfile?.derived?.wardrobe?.attribute_terms,
   })
 
+  const calendarKey = calendarEvents
+    .map((event) => `${event.id}|${event.dtstart}|${event.summary}`)
+    .join("::")
+
   useEffect(() => {
     if (!isAuthenticated || !liveWeatherReady) return
     if (aiHostStatus !== "online" || aiHostTextLoaded === false) return
     if (aiHostActiveTask === "try-on") return
 
-    const requestKey = `${weatherDataKey}::${prefKey}::${adviceRefreshNonce}`
+    const requestKey = `${weatherDataKey}::${prefKey}::${calendarKey}::${adviceRefreshNonce}`
     if (lastSuccessfulAdviceKeyRef.current === requestKey) return
 
     const controller = new AbortController()
     const snapshotWeather = weatherRef.current
     const snapshotUser = currentUser
+    const snapshotCalendar = calendarEventsRef.current
     setWeatherAdviceLoading(true)
 
-    void fetchAiWeatherAdvice(snapshotWeather, snapshotUser, controller.signal)
+    void fetchAiWeatherAdvice(
+      snapshotWeather,
+      snapshotUser,
+      controller.signal,
+      snapshotCalendar,
+    )
       .then((result) => {
         if (controller.signal.aborted) return
         lastSuccessfulAdviceKeyRef.current = requestKey
@@ -1935,6 +1999,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     liveWeatherReady,
     weatherDataKey,
     prefKey,
+    calendarKey,
     aiHostStatus,
     aiHostTextLoaded,
     aiHostActiveTask,
@@ -2622,6 +2687,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         weather,
         weatherAdviceLoading,
         refreshWeather,
+        calendarEvents,
+        calendarSource,
+        calendarLoading,
+        calendarNote,
+        refreshCalendar,
+        setCalendarFromUpload,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,
         fontScale,

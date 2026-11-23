@@ -1,5 +1,5 @@
 import { getApiUrl } from "../lib/aiHost"
-import type { UserProfile, WeatherData } from "../types"
+import type { CalendarEvent, UserProfile, WeatherData } from "../types"
 
 const HAMMOND_LAT = 30.5044
 const HAMMOND_LON = -90.4612
@@ -196,6 +196,7 @@ export async function fetchAiWeatherAdvice(
   weather: WeatherData,
   user: UserProfile,
   signal?: AbortSignal,
+  calendarEvents: CalendarEvent[] = [],
 ): Promise<{ advice: string; model?: string }> {
   const derived = user.quizProfile?.derived
   const response = await fetch(getApiUrl("/api/weather/advice"), {
@@ -226,6 +227,16 @@ export async function fetchAiWeatherAdvice(
         mood: derived?.stylist?.mood_exploratory,
         attributes: derived?.wardrobe?.attribute_terms,
       },
+      calendarEvents: calendarEvents.slice(0, 8).map((event) => ({
+        id: event.id,
+        summary: event.summary,
+        dtstart: event.dtstart,
+        dtend: event.dtend,
+        location: event.location,
+        description: event.description,
+        allDay: event.allDay,
+        timeLabel: event.timeLabel,
+      })),
     }),
   })
 

@@ -169,6 +169,17 @@ export interface WeatherData {
   icon: string
 }
 
+export interface CalendarEvent {
+  id: string
+  summary: string
+  dtstart: string
+  dtend: string
+  location: string
+  description: string
+  allDay?: boolean
+  timeLabel?: string
+}
+
 export function getContrastTextColor(hexBg: string): string {
   if (!hexBg) return "#ffffff"
   const clean = hexBg.replace("#", "").slice(0, 6)
