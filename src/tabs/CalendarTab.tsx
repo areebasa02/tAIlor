@@ -35,6 +35,7 @@ export default function CalendarTab() {
         result.events,
         result.note ||
           `Imported ${result.events.length} event${result.events.length === 1 ? "" : "s"} from ${file.name}.`,
+        result.source,
       )
       showToast(
         "Calendar imported",
@@ -90,7 +91,8 @@ export default function CalendarTab() {
             Add your calendar
           </h2>
           <p className="text-[11px] font-semibold text-muted-foreground mt-0.5 leading-snug">
-            Upload a Google Calendar export (.ics) or paste the secret iCal URL.
+            Upload .ics works in the browser (no backend). Connect URL needs the Node API
+            (VITE_API_BASE_URL or a Web Service running `pnpm start`).
             {calendarSource ? ` Currently: ${calendarSource}` : ""}
             {calendarEvents.length > 0
               ? ` · ${calendarEvents.length} upcoming`
