@@ -67,13 +67,6 @@ type Step = "studio" | "processing" | "preview" | "error"
 type StudioPanelTab = "pose" | "body" | "face"
 type ResultViewMode = "ai" | "compare"
 
-const STAGES = [
-  "Encoding 2D OpenPose skeleton & camera framing…",
-  "Extracting outfit garments & material references…",
-  "Generating posed mannequin on local RTX GPU…",
-  "Refining cloth drape, seams & studio lighting…",
-]
-
 type BuilderSlot = "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes"
 type BuilderMode = "separates" | "full_body"
 
@@ -411,7 +404,6 @@ export default function TryOnTab() {
   const [swapSlot, setSwapSlot] = useState<BuilderSlot | null>(null)
 
   const [step, setStep] = useState<Step>("studio")
-  const [processingStage, setProcessingStage] = useState(0)
   const [queueStatusText, setQueueStatusText] = useState<string | null>(null)
   const [poseSnapshot, setPoseSnapshot] = useState<string | null>(null)
   const [barePoseSnapshot, setBarePoseSnapshot] = useState<string | null>(null)
@@ -425,18 +417,9 @@ export default function TryOnTab() {
   const lastKeypointsRef = useRef<Record<string, [number, number, number]> | null>(null)
   const lastOpenposeRef = useRef<string | null>(null)
   const faceUploadInputRef = useRef<HTMLInputElement | null>(null)
-  const intervalRef = useRef<number | null>(null)
   const tryOnAbortRef = useRef<AbortController | null>(null)
 
-  const clearTimers = () => {
-    if (intervalRef.current !== null) {
-      window.clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-  }
-
   const cancelInflightTryOn = () => {
-    clearTimers()
     if (tryOnAbortRef.current) {
       tryOnAbortRef.current.abort()
       tryOnAbortRef.current = null
@@ -784,7 +767,6 @@ export default function TryOnTab() {
     bypassSimulatedError = false,
     reuseSnapshot?: string,
   ) => {
-    clearTimers()
     if (simulatedError && !bypassSimulatedError) {
       setGenerationError(
         "Simulated error active. Tap Retry Generation or disable Test Error.",
@@ -859,13 +841,8 @@ export default function TryOnTab() {
     setPoseSnapshot(bareSnapshot)
     setGeneratedImage(null)
     setGenerationError("")
-    setProcessingStage(0)
-    setQueueStatusText("Submitting to host GPU queue…")
+    setQueueStatusText("Preparing pose and selected garments…")
     setStep("processing")
-
-    intervalRef.current = window.setInterval(() => {
-      setProcessingStage((prev) => Math.min(prev + 1, STAGES.length - 1))
-    }, 850)
 
     const abortController = new AbortController()
     tryOnAbortRef.current = abortController
@@ -924,6 +901,10 @@ export default function TryOnTab() {
                 ? ` (${Math.max(1, Math.round(progress.elapsedMs / 1000))}s)`
                 : ""
               setQueueStatusText(`Generating on host RTX GPU${secs}…`)
+            } else if (progress.status === "completed") {
+              setQueueStatusText("Render complete; loading your preview…")
+            } else if (progress.status === "failed") {
+              setQueueStatusText("Host GPU reported a generation failure.")
             }
           },
         },
@@ -950,7 +931,6 @@ export default function TryOnTab() {
         tryOnAbortRef.current = null
       }
       setQueueStatusText(null)
-      clearTimers()
     }
   }
 
@@ -1890,14 +1870,16 @@ export default function TryOnTab() {
 
           <div className="space-y-2 max-w-sm mx-auto">
             <p className="text-sm font-black text-foreground">
-              {STAGES[processingStage]}
+              AI try-on in progress
             </p>
-            <div className="h-2.5 rounded-full overflow-hidden bg-muted border border-border">
+            <div
+              role="progressbar"
+              aria-label={queueStatusText || "AI try-on request in progress"}
+              className="h-2.5 rounded-full overflow-hidden bg-muted border border-border"
+            >
               <div
-                className="h-full rounded-full transition-all duration-300 bg-gradient-to-r from-turquoise to-pink"
-                style={{
-                  width: `${((processingStage + 1) / STAGES.length) * 100}%`,
-                }}
+                aria-hidden="true"
+                className="h-full w-full rounded-full bg-gradient-to-r from-turquoise to-pink animate-pulse"
               />
             </div>
             <p className="text-xs font-semibold text-muted-foreground">

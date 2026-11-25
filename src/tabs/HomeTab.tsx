@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AnimatedStepProgress,
+  AIErrorBanner,
+  PulseOrb,
   UserControlBar,
   WhyItWorksDisclosure,
   OutfitFeedbackModal,
@@ -20,6 +21,7 @@ import {
   speakText,
   stopSpeaking,
 } from "../services/accessibilityHelpers";
+import { formatAiErrorMessage } from "../lib/aiHost";
 import {
   searchCities,
   type CitySearchResult,
@@ -48,13 +50,6 @@ function locationSourceLabel(
   }
 }
 
-const GENERATION_STEPS = [
-  "Reading digital wardrobe & local forecast…",
-  "Analyzing wear history & color theory rules…",
-  "Synthesizing accessible outfit options…",
-  "Finalizing personalized stylist notes…",
-];
-
 function getPieceEmoji(typeOrCategory: string, itemName = ""): string {
   return getGarmentEmoji(typeOrCategory, itemName, "👗");
 }
@@ -72,9 +67,10 @@ export default function HomeTab() {
     defaultDirection,
     removeCustomStyle,
     currentOutfit,
+    todayOutfit,
+    generateTodayOutfit,
     wornToday,
     setWornToday,
-    regenerateOutfit,
     swapOutfitItem,
     weather,
     weatherAdviceLoading,
@@ -91,6 +87,7 @@ export default function HomeTab() {
   } = useApp();
 
   const [loading, setLoading] = useState(false);
+  const [todayOutfitError, setTodayOutfitError] = useState("");
   const [ctrlMode, setCtrlMode] = useState<ControlMode>("default");
   const [whyModalOpen, setWhyModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -151,6 +148,7 @@ export default function HomeTab() {
 
   const clockTimeZone =
     weather.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const liveDateLabel = now.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
@@ -196,13 +194,49 @@ export default function HomeTab() {
 
   const handleRegenerate = (reasonConstraint?: string) => {
     setLoading(true);
+    setTodayOutfitError("");
     setCtrlMode("regenerating");
-    setTimeout(() => {
-      regenerateOutfit(reasonConstraint);
-      setLoading(false);
-      setCtrlMode("default");
-    }, 650);
+    void generateTodayOutfit(reasonConstraint, true)
+      .catch((error: unknown) => {
+        const message = formatAiErrorMessage(
+          error,
+          "Could not generate today's outfit.",
+        );
+        setTodayOutfitError(message);
+        showToast("Today's outfit unavailable", message, "warning");
+      })
+      .finally(() => {
+        setLoading(false);
+        setCtrlMode("default");
+      });
   };
+
+  useEffect(() => {
+    if (todayOutfit) {
+      setLoading(false);
+      setTodayOutfitError("");
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setTodayOutfitError("");
+    void generateTodayOutfit()
+      .catch((error: unknown) => {
+        if (active) {
+          setTodayOutfitError(
+            formatAiErrorMessage(error, "Could not generate today's outfit."),
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [todayOutfit, user.id, localDay]);
 
   const handleApprove = () => {
     logOutfitWorn({
@@ -447,7 +481,9 @@ export default function HomeTab() {
                     setSelectedDirection(dirKey);
                     setCtrlMode("default");
                     setWornToday(false);
+                    handleRegenerate(`Use the ${o.label} style direction.`);
                   }}
+                  disabled={loading}
                   className={`shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold tracking-wide transition-all duration-200 flex items-center gap-1 cursor-pointer border-2 ${
                     active
                       ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-pink/25"
@@ -516,18 +552,28 @@ export default function HomeTab() {
             }}
           >
             <p className="text-xs font-bold text-foreground">
-              Building your look…
+              Waiting for the AI stylist to finish your everyday outfit…
             </p>
-            <AnimatedStepProgress
-              steps={GENERATION_STEPS}
-              intervalMs={500}
-              onComplete={() => setLoading(false)}
-            />
+            <PulseOrb label="Using your wardrobe, weather, and style preferences" />
           </div>
         )}
 
+        {!loading && todayOutfitError && (
+          <AIErrorBanner
+            title="Could not load today's outfit"
+            message={todayOutfitError}
+            actions={[
+              {
+                label: "Try Again",
+                primary: true,
+                onClick: () => handleRegenerate(),
+              },
+            ]}
+          />
+        )}
+
         {/* Main Outfit Card */}
-        {!loading && currentOutfit && (
+        {!loading && todayOutfit && currentOutfit && (
           <div
             className="rounded-2xl p-3 space-y-2.5 shadow-md border-2 transition-all"
             style={{

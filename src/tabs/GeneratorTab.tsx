@@ -53,10 +53,10 @@ const PRESET_EVENTS = [
 ]
 
 const GENERATION_STEPS = [
-  "Interpreting event context & venue dress code…",
-  "Scanning clean wardrobe pieces & sensory preferences…",
-  "Checking layering rules & color harmony…",
-  "Synthesizing tailored styling suggestions…",
+  "Preparing your event details and available wardrobe…",
+  "Waiting for the AI stylist to generate recommendations…",
+  "Response received; validating the outfit details…",
+  "Preparing your outfit results…",
 ]
 
 function getPieceEmoji(
@@ -193,18 +193,17 @@ export default function GeneratorTab() {
     saveOutfitFeedback,
     saveGarmentFeedback,
   } = useApp()
-  const errorTimerRef = useRef<number | null>(null)
+  const requestAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     return () => {
-      if (errorTimerRef.current) {
-        clearTimeout(errorTimerRef.current)
-      }
+      requestAbortRef.current?.abort()
       stopSpeaking()
     }
   }, [])
 
   const [step, setStep] = useState<Step>("input")
+  const [generationStep, setGenerationStep] = useState(0)
   const [eventDesc, setEventDesc] = useState("")
   const [dresscode, setDresscode] = useState("Smart-casual")
   const [voiceState, setVoiceState] = useState<VoiceState>("idle")
@@ -253,10 +252,6 @@ export default function GeneratorTab() {
     bypassSimulatedError = false
   ) => {
     if (!inputReady) return
-    if (errorTimerRef.current) {
-      clearTimeout(errorTimerRef.current)
-      errorTimerRef.current = null
-    }
     if (serviceError && !bypassSimulatedError) {
       setServiceErrorMessage(
         "Simulated connection interruption active. Disable Test Error or tap Try Again to reconnect."
@@ -266,7 +261,11 @@ export default function GeneratorTab() {
     }
 
     setStep("loading")
+    setGenerationStep(0)
     setServiceErrorMessage("")
+    requestAbortRef.current?.abort()
+    const controller = new AbortController()
+    requestAbortRef.current = controller
 
     const promptPayload = refinementPrompt
       ? `${eventDesc.trim()}. Follow-up adjustment: ${refinementPrompt}`
@@ -277,9 +276,11 @@ export default function GeneratorTab() {
         (w) => w.status !== "dirty" && w.status !== "washing"
       )
       const availableWardrobe = cleanWardrobe.length >= 3 ? cleanWardrobe : wardrobe
+      setGenerationStep(1)
       const response = await fetch(getApiUrl("/api/stylist"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           event: promptPayload,
           dresscode: dresscode || "Smart-casual",
@@ -295,6 +296,7 @@ export default function GeneratorTab() {
         }),
       })
 
+      setGenerationStep(2)
       const contentType = response.headers.get("content-type") || ""
       if (!contentType.includes("application/json")) {
         throw new Error("Host PC AI server is offline or unreachable.")
@@ -316,6 +318,7 @@ export default function GeneratorTab() {
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
       }
 
+      setGenerationStep(3)
       setResults(result.outfits)
       setShowBackupOutfits(false)
       stopSpeaking()
@@ -346,28 +349,29 @@ export default function GeneratorTab() {
         "success"
       )
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
       const message = formatAiErrorMessage(error, "Please try again.")
       setServiceErrorMessage(message)
       setStep("error")
       showToast("Stylist unavailable", message, "warning")
+    } finally {
+      if (requestAbortRef.current === controller) {
+        requestAbortRef.current = null
+      }
     }
   }
 
   const handleRetry = () => {
-    if (errorTimerRef.current) {
-      clearTimeout(errorTimerRef.current)
-      errorTimerRef.current = null
-    }
     setServiceError(false)
     setServiceErrorMessage("")
     void handleGenerate(undefined, true)
   }
 
   const cancelLoading = () => {
-    if (errorTimerRef.current) {
-      clearTimeout(errorTimerRef.current)
-      errorTimerRef.current = null
-    }
+    requestAbortRef.current?.abort()
+    requestAbortRef.current = null
     setStep("input")
   }
 
@@ -656,7 +660,10 @@ export default function GeneratorTab() {
           <p className="text-sm font-black text-foreground">
             Building outfits…
           </p>
-          <AnimatedStepProgress steps={GENERATION_STEPS} intervalMs={400} />
+          <AnimatedStepProgress
+            steps={GENERATION_STEPS}
+            currentStep={generationStep}
+          />
           <button
             type="button"
             onClick={cancelLoading}

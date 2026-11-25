@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react"
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react"
 import type {
   UserProfile,
   WardrobeItem,
@@ -52,6 +52,7 @@ import {
   type WeatherLocationSource,
 } from "../services/weatherService"
 import { useOptionalAiHost } from "./AiHostContext"
+import { formatAiErrorMessage, getApiUrl } from "../lib/aiHost"
 
 export { getContrastTextColor }
 
@@ -1389,6 +1390,8 @@ export interface AppContextType {
   addCustomStyle: (input: AddCustomStyleInput) => void
   removeCustomStyle: (directionKey: string) => void
   currentOutfit: Outfit
+  todayOutfit: Outfit | null
+  generateTodayOutfit: (reasonConstraint?: string, force?: boolean) => Promise<Outfit>
   wornToday: boolean
   setWornToday: (val: boolean) => void
   regenerateOutfit: (reasonConstraint?: string) => void
@@ -1446,6 +1449,30 @@ export interface AppContextType {
   saveOutfitFeedback: (outfitId: string, notes: string, reasons?: string[]) => void
   garmentFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
   saveGarmentFeedback: (itemId: string, notes: string, reasons?: string[]) => void
+}
+
+type StoredTodayOutfit = {
+  date: string
+  outfit: Outfit
+}
+
+function getStoredTodayOutfit(personaId: PersonaId): StoredTodayOutfit | null {
+  try {
+    const raw = localStorage.getItem(`tailor_today_outfit_${personaId}`)
+    if (!raw) return null
+    const stored = JSON.parse(raw) as StoredTodayOutfit
+    if (
+      stored.date !== toIsoDay() ||
+      !stored.outfit ||
+      typeof stored.outfit.label !== "string" ||
+      !Array.isArray(stored.outfit.items)
+    ) {
+      return null
+    }
+    return stored
+  } catch {
+    return null
+  }
 }
 
 function hydrateFavoriteOutfits(
@@ -1898,6 +1925,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [outfitHistory, setOutfitHistory] = useState<Outfit[]>([])
   const [wornToday, setWornToday] = useState(false)
+  const [todayOutfitRecord, setTodayOutfitRecord] = useState<StoredTodayOutfit | null>(
+    () => getStoredTodayOutfit(currentUser.id),
+  )
+  const todayOutfitRequestsRef = useRef(new Map<string, Promise<Outfit>>())
 
   // Weather & Climate State managed in AppContext (Open-Meteo live data + local AI advice)
   const aiHost = useOptionalAiHost()
@@ -2106,7 +2137,144 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     currentUser,
   ])
 
-  const currentOutfit = outfits[selectedDirection] || Object.values(outfits)[0]
+  const todayOutfit =
+    todayOutfitRecord?.date === toIsoDay() ? todayOutfitRecord.outfit : null
+  const currentOutfit =
+    todayOutfit || outfits[selectedDirection] || Object.values(outfits)[0]
+
+  const setTodayOutfit = (outfit: Outfit | null) => {
+    const date = toIsoDay()
+    const key = `tailor_today_outfit_${currentUser.id}`
+    try {
+      if (outfit) {
+        localStorage.setItem(key, JSON.stringify({ date, outfit }))
+      } else {
+        localStorage.removeItem(key)
+      }
+    } catch (error) {
+      console.error("Could not save today's outfit.", error)
+    }
+    setTodayOutfitRecord(outfit ? { date, outfit } : null)
+  }
+
+  const generateTodayOutfit = useCallback(
+    (reasonConstraint?: string, force = false): Promise<Outfit> => {
+      const personaId = currentUser.id
+      const date = toIsoDay()
+      const requestKey = `${personaId}:${date}`
+      const cached =
+        todayOutfitRecord?.date === date ? todayOutfitRecord.outfit : null
+      if (!force && cached) return Promise.resolve(cached)
+
+      const inFlight = todayOutfitRequestsRef.current.get(requestKey)
+      if (inFlight) return inFlight
+
+      const request = (async () => {
+        const cleanWardrobe = wardrobe.filter(
+          (item) => item.status !== "dirty" && item.status !== "washing",
+        )
+        const availableWardrobe =
+          cleanWardrobe.length >= 3 ? cleanWardrobe : wardrobe
+        const response = await fetch(getApiUrl("/api/stylist"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            event: "Everyday wear today.",
+            everyday: true,
+            dresscode: "Casual",
+            reasonConstraint,
+            weather: weather.condition,
+            sensorySensitive: currentUser.accessibility.sensorySensitive,
+            stylistNotes: [currentUser.preferredStyle, currentUser.stylistNotes]
+              .filter(Boolean)
+              .join("; "),
+            wardrobe: availableWardrobe.map(
+              ({ name, category, color, material }) => ({
+                name,
+                category,
+                color,
+                material,
+              }),
+            ),
+          }),
+        })
+
+        const contentType = response.headers.get("content-type") || ""
+        if (!contentType.includes("application/json")) {
+          throw new Error("Host PC AI server is offline or unreachable.")
+        }
+        const result = (await response.json()) as {
+          advice?: string
+          outfits?: {
+            id: number
+            label: string
+            rationale: string
+            items: { type: string; desc: string; color: string; emoji: string }[]
+          }[]
+          error?: string
+        }
+        const generated = result.outfits?.[0]
+        if (
+          !response.ok ||
+          !generated ||
+          !Array.isArray(generated.items) ||
+          generated.items.length === 0
+        ) {
+          throw new Error(
+            result.error || "The stylist service returned no everyday outfit.",
+          )
+        }
+
+        const outfit: Outfit = {
+          id: `today-${date}-${Date.now()}`,
+          direction: "Everyday",
+          label: generated.label || "Everyday Outfit",
+          tagline: "Everyday outfit",
+          rationale: generated.rationale || result.advice || "Selected for everyday wear.",
+          items: generated.items.map((item) => ({
+            ...item,
+            reason: "Selected for comfortable everyday wear.",
+          })),
+          accent: THEME_COLORS.pink,
+          bg: "rgba(206,0,90,0.08)",
+          whyDetails: {
+            weatherReason: `Considered today's weather: ${weather.condition}.`,
+            colorHarmony: generated.rationale || "Pieces selected to work together.",
+            wearFrequency: "Recommended for everyday wear.",
+            sensoryComfort: currentUser.accessibility.sensorySensitive
+              ? "Prioritized sensory comfort."
+              : "Balanced for comfortable daily wear.",
+          },
+        }
+        try {
+          localStorage.setItem(
+            `tailor_today_outfit_${personaId}`,
+            JSON.stringify({ date, outfit }),
+          )
+        } catch (error) {
+          console.error("Could not save today's outfit.", error)
+        }
+        if (currentUser.id === personaId && toIsoDay() === date) {
+          setTodayOutfitRecord({ date, outfit })
+          setWornToday(false)
+        }
+        return outfit
+      })()
+
+      todayOutfitRequestsRef.current.set(requestKey, request)
+      const clearRequest = () => {
+        if (todayOutfitRequestsRef.current.get(requestKey) === request) {
+          todayOutfitRequestsRef.current.delete(requestKey)
+        }
+      }
+      void request.then(clearRequest, clearRequest)
+      return request
+    },
+    [currentUser, todayOutfitRecord, wardrobe, weather.condition],
+  )
 
   const applyWeatherResult = (
     result: { weather: WeatherData; source: WeatherLocationSource },
@@ -2304,6 +2472,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const swapOutfitItem = (index: number, replacementItem: WardrobeItem) => {
     setOutfitHistory((prev) => [currentOutfit, ...prev])
+    if (todayOutfit) {
+      const updatedItems = [...todayOutfit.items]
+      updatedItems[index] = {
+        type: categoryToOutfitType(replacementItem.category),
+        desc: replacementItem.name,
+        color: replacementItem.color,
+        emoji: getGarmentEmoji(replacementItem.category, replacementItem.name),
+        reason: `Manually swapped for ${replacementItem.colorName}.`,
+      }
+      setTodayOutfit({ ...todayOutfit, items: updatedItems })
+      showToast("Item Swapped", `Replaced with ${replacementItem.name}.`, "success")
+      return
+    }
     setOutfits((prev) => {
       const target = prev[selectedDirection]
       const updated = [...target.items]
@@ -2520,6 +2701,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadPersonaData(pid)
     const loadedOutfits = getOutfitsForUser(pid)
     setOutfits(loadedOutfits)
+    setTodayOutfitRecord(getStoredTodayOutfit(pid))
     const defaultDir =
       DEFAULT_DIRECTION_FOR_PERSONA[pid] || Object.keys(loadedOutfits)[0]
     setSelectedDirection(
@@ -2562,6 +2744,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       loadPersonaData(personaId)
       const loadedOutfits = getOutfitsForUser(personaId)
       setOutfits(loadedOutfits)
+      setTodayOutfitRecord(getStoredTodayOutfit(personaId))
       const defaultDir =
         DEFAULT_DIRECTION_FOR_PERSONA[personaId] || Object.keys(loadedOutfits)[0]
       setSelectedDirection(
@@ -2913,6 +3096,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addCustomStyle,
         removeCustomStyle,
         currentOutfit,
+        todayOutfit,
+        generateTodayOutfit,
         wornToday,
         setWornToday,
         regenerateOutfit,

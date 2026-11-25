@@ -81,6 +81,9 @@ export default function WardrobeTab() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [scanError, setScanError] = useState("")
   const [scanSource, setScanSource] = useState("")
+  const [scanProgressLabel, setScanProgressLabel] = useState(
+    "AI scan in progress; waiting for garment details…",
+  )
   const [scanNote, setScanNote] = useState("")
   const [pendingImageData, setPendingImageData] = useState<string | undefined>()
   const [correctionStep, setCorrectionStep] = useState<
@@ -214,28 +217,30 @@ export default function WardrobeTab() {
     setScanError("")
     setScanNote("")
     setScanSource("")
-    setUploadState("uploading")
-    setUploadProgress(15)
+    setScanProgressLabel(
+      options.mockSample
+        ? "Loading the selected demo sample…"
+        : "Qwen2.5-VL scan in progress; waiting for garment details…",
+    )
+    setUploadState(options.file ? "uploading" : "analyzing")
+    setUploadProgress(0)
 
     try {
       let image: string | undefined
       let mimeType: string | undefined
       if (options.file) {
-        const encoded = await fileToBase64(options.file)
+        const encoded = await fileToBase64(options.file, setUploadProgress)
         image = encoded.base64
         mimeType = encoded.mimeType
         setPendingImageData(`data:${mimeType};base64,${image}`)
-        setUploadProgress(55)
       } else {
         const sampleImg = QUICK_SAMPLES.find(
           (s) => s.id === options.mockSample,
         )?.imageData
         setPendingImageData(sampleImg)
-        setUploadProgress(45)
       }
 
       setUploadState("analyzing")
-      setUploadProgress(80)
 
       const result = await scanWardrobePhoto({
         image,
@@ -244,7 +249,6 @@ export default function WardrobeTab() {
         useMock: Boolean(options.mockSample),
       })
 
-      setUploadProgress(100)
       applyScanResult(result.item, result.source, result.note)
       if (result.note) {
         showToast("Demo scan", result.note, "info")
@@ -987,6 +991,7 @@ export default function WardrobeTab() {
           <ImageUploadWidget
             state={uploadState}
             progress={uploadProgress}
+            analyzingLabel={scanProgressLabel}
             errorMessage={scanError}
             result={
               uploadState === "success"
