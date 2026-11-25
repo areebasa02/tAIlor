@@ -88,7 +88,14 @@ _CAMERA_PROMPTS: dict[str, str] = {
     "front": "front view",
     "three_quarter": "three-quarter view",
     "side": "side profile view",
+    "back": "rear back view from behind, facing away",
     "low_angle": "low-angle full shot",
+}
+
+_FIT_PROMPTS: dict[str, str] = {
+    "fitted": "tailored fitted cut",
+    "standard": "classic regular fit",
+    "relaxed": "relaxed oversized loose drape",
 }
 
 _BODY_PROMPTS: dict[str, str] = {
@@ -221,6 +228,7 @@ def render_openpose_from_keypoints(
     w: int = 768,
     h: int = 1024,
     include_face_features: bool = False,
+    is_back_view: bool = False,
 ) -> Image.Image:
     """Fallback OpenPose COCO-18 renderer from normalized 2D skeleton keypoints."""
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
@@ -272,9 +280,10 @@ def render_openpose_from_keypoints(
         ("neck", "hipL", (0, 255, 255)),
         ("hipL", "kneeL", (0, 170, 255)),
         ("kneeL", "ankleL", (0, 85, 255)),
-        ("neck", "nose", (0, 0, 255)),
     ]
-    if include_face_features:
+    if not is_back_view:
+        limb_specs.append(("neck", "nose", (0, 0, 255)))
+    if include_face_features and not is_back_view:
         limb_specs.extend([
             ("nose", "eyeR", (85, 0, 255)),
             ("eyeR", "earR", (170, 0, 255)),
@@ -295,7 +304,6 @@ def render_openpose_from_keypoints(
     canvas = cv2.addWeighted(overlay, 0.65, canvas, 0.35, 0.0)
 
     joint_cols = [
-        ("nose", (255, 0, 0)),
         ("neck", (255, 85, 0)),
         ("shoulderR", (255, 170, 0)),
         ("elbowR", (255, 255, 0)),
@@ -310,13 +318,20 @@ def render_openpose_from_keypoints(
         ("kneeL", (0, 0, 255)),
         ("ankleL", (85, 0, 255)),
     ]
-    if include_face_features:
+    if is_back_view:
         joint_cols.extend([
-            ("eyeR", (170, 0, 255)),
-            ("eyeL", (255, 0, 255)),
             ("earR", (255, 0, 170)),
             ("earL", (255, 0, 85)),
         ])
+    else:
+        joint_cols.insert(0, ("nose", (255, 0, 0)))
+        if include_face_features:
+            joint_cols.extend([
+                ("eyeR", (170, 0, 255)),
+                ("eyeL", (255, 0, 255)),
+                ("earR", (255, 0, 170)),
+                ("earL", (255, 0, 85)),
+            ])
     for name, col in joint_cols:
         px, py = pts[name]
         cv2.circle(canvas, (int(round(px)), int(round(py))), 4, col, thickness=-1, lineType=cv2.LINE_AA)
@@ -417,16 +432,20 @@ def build_tryon_prompts(
     backdrop_preset: str | None = "cyclorama",
     pose_label: str | None = None,
     body_preset: str | None = None,
+    fit_style: str | None = "standard",
     material_id: str | None = "porcelain",
     include_my_face: bool = False,
 ) -> tuple[str, str]:
     """Build concise, high-impact SDXL prompts fitting safely under 77 CLIP tokens."""
+    cam_key = (camera_preset or "front").lower()
+    is_back_view = cam_key == "back"
     mat_desc = _MATERIAL_PROMPTS.get((material_id or "porcelain").lower(), _MATERIAL_PROMPTS["porcelain"])
-    cam_desc = _CAMERA_PROMPTS.get((camera_preset or "front").lower(), _CAMERA_PROMPTS["front"])
+    cam_desc = _CAMERA_PROMPTS.get(cam_key, _CAMERA_PROMPTS["front"])
     backdrop_desc = _BACKDROP_PROMPTS.get(
         (backdrop_preset or "cyclorama").lower(), _BACKDROP_PROMPTS["cyclorama"]
     )
     body_desc = _BODY_PROMPTS.get((body_preset or "standard").lower(), _BODY_PROMPTS["standard"])
+    fit_desc = _FIT_PROMPTS.get((fit_style or "standard").lower(), _FIT_PROMPTS["standard"])
 
     slot_rank = {
         "FullBody": 0,
@@ -483,8 +502,9 @@ def build_tryon_prompts(
     outfit_desc = ", ".join(garment_clauses) if garment_clauses else "tailored contemporary outfit"
     pose_part = f", {pose_label.lower()} pose" if pose_label and pose_label.lower() != "custom pose" else ""
     dress_neg_suffix = ", pants, trousers, jeans, two-piece" if has_skirted_dress else ""
+    back_neg_suffix = ", front view, looking at camera, face, eyes, nose, mouth" if is_back_view else ""
 
-    if include_my_face:
+    if include_my_face and not is_back_view:
         head_clause = "sculpted studio mannequin with realistic portrait face matching reference"
         negative = (
             "uncanny face, distorted features, naked torso, bare chest, blurry, lowres, "
@@ -493,19 +513,23 @@ def build_tryon_prompts(
         )
         positive = (
             f"studio full-body catalog photo, {cam_desc}, {head_clause}, {body_desc}{pose_part}, "
-            f"wearing {outfit_desc}, {backdrop_desc}"
+            f"wearing {outfit_desc}, {fit_desc}, {backdrop_desc}"
         )
     else:
-        head_clause = f"abstract featureless {mat_desc}, completely blank smooth egg head, no eyes, no hair"
+        head_clause = (
+            f"abstract featureless {mat_desc} seen from behind, smooth back of head"
+            if is_back_view
+            else f"abstract featureless {mat_desc}, completely blank smooth egg head, no eyes, no hair"
+        )
         negative = (
             "human, real person, face, facial features, eyes, eyebrows, eyelashes, nose, mouth, lips, hair, wig, "
             "ears, skin pores, blurry, lowres, cropped head, cropped shoes, floating shoes, spare shoes, extra shoes, "
             "extra limbs, extra arms, flat-lay collage, white border, text, watermark"
-            f"{dress_neg_suffix}"
+            f"{dress_neg_suffix}{back_neg_suffix}"
         )
         positive = (
             f"studio catalog mannequin photo, {head_clause}, {cam_desc}, {body_desc}{pose_part}, "
-            f"wearing {outfit_desc}, {backdrop_desc}"
+            f"wearing {outfit_desc}, {fit_desc}, {backdrop_desc}"
         )
     return positive, negative
 
@@ -606,6 +630,7 @@ def generate_sdxl_tryon(
     backdrop_preset: str | None = "cyclorama",
     pose_label: str | None = None,
     body_preset: str | None = None,
+    fit_style: str | None = "standard",
     material_id: str | None = "porcelain",
     include_my_face: bool = False,
     face_img: Image.Image | None = None,
@@ -619,6 +644,8 @@ def generate_sdxl_tryon(
     if openpose_img.size != (target_w, target_h):
         openpose_img = openpose_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
+    is_back_view = (camera_preset or "").strip().lower() == "back"
+    use_face = bool(include_my_face and face_img is not None and not is_back_view)
     garment_collage = build_garment_collage(garments, load_rgba_fn)
     prompt, negative_prompt = build_tryon_prompts(
         garments,
@@ -626,11 +653,11 @@ def generate_sdxl_tryon(
         backdrop_preset=backdrop_preset,
         pose_label=pose_label,
         body_preset=body_preset,
+        fit_style=fit_style,
         material_id=material_id,
-        include_my_face=include_my_face and face_img is not None,
+        include_my_face=use_face,
     )
 
-    use_face = bool(include_my_face and face_img is not None)
     if use_face and face_img is not None:
         face_ref = face_img.convert("RGB").resize((512, 512), Image.Resampling.LANCZOS)
         pipe.set_ip_adapter_scale([0.28, 0.56])

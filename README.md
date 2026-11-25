@@ -227,7 +227,7 @@ automatically.
 
 ## Deployment
 
-Deployed as a **Render Static Site**.
+Deployed as a **Render Static Site** by default.
 
 | Setting | Value |
 | --- | --- |
@@ -236,7 +236,16 @@ Deployed as a **Render Static Site**.
 
 You can also use `npm install && npm run build` if you prefer npm.
 
-A minimal Blueprint is provided in [`render.yaml`](./render.yaml) so Render can pick up the same static-site settings from the repo.
+[`render.yaml`](./render.yaml) describes an optional **Web Service** (`pnpm start`) that serves both `dist/` and `/api/*`. A dashboard **Static Site** publishes `dist/` directly without a Node `/api` server on Render.
+
+### Calendar (`.ics` / `.zip`) on Render
+
+| Action | Static Site (no backend) | With Node API (`VITE_API_BASE_URL` or `pnpm start`) |
+| --- | --- | --- |
+| **Upload `.ics` or Google `.zip`** | Works 100% in the browser (`RRULE` + `.zip` supported) | Works in the browser |
+| **Connect URL** (CORS-enabled `.ics` link) | Works via direct browser fallback | Works via Node proxy |
+| **Connect URL** (Google / Apple / Outlook private link) | Blocked by provider CORS — prompts to upload `.ics`/`.zip` | Works via Node proxy |
+| Env feed `GOOGLE_CALENDAR_ICS_URL` | — | Works (server runtime env var) |
 
 ### Hosting local GPU models for teammates via Render + Tailscale Funnel
 

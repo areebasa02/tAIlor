@@ -29,8 +29,19 @@ import TryOnPoseStudio2D, {
   type BackdropPresetId,
   type CameraPresetId,
   type PosePresetId,
+  type StudioGarmentPreviewLayer,
   type TryOnPoseCaptureResult,
 } from "../components/TryOnPoseStudio2D"
+import {
+  FIT_EASE,
+  deriveBodyMeasurements,
+  fitIndicator,
+  formatEaseValue,
+  formatMeasurement,
+  inferFitStyleFromProfile,
+  suggestSizes,
+  type MeasurementUnit,
+} from "../lib/bodyMeasurements"
 import { useApp } from "../context/AppContext"
 import { getSampleGarmentImage } from "../data/personaData"
 import {
@@ -53,6 +64,7 @@ import {
 import type {
   FavoriteOutfit,
   FavoriteOutfitItem,
+  GarmentFitStyle,
   MannequinBodyPreset,
   MannequinCustomization,
   MannequinMaterialId,
@@ -301,17 +313,26 @@ export default function TryOnTab() {
 
   const storageKey = `tailor_mannequin_studio_${user.id}`
 
+  const defaultFitStyle = useMemo(
+    () => inferFitStyleFromProfile(user.quizProfile?.derived?.filters?.fit_feel),
+    [user.quizProfile?.derived?.filters?.fit_feel],
+  )
+
   const [customization, setCustomization] = useState<MannequinCustomization>(() => {
     try {
       const saved = localStorage.getItem(storageKey)
       if (saved) {
         const parsed = JSON.parse(saved)
         if (parsed?.customization) {
-          return { ...DEFAULT_CUSTOMIZATION, ...parsed.customization }
+          return {
+            ...DEFAULT_CUSTOMIZATION,
+            fitStyle: defaultFitStyle,
+            ...parsed.customization,
+          }
         }
       }
     } catch { }
-    return DEFAULT_CUSTOMIZATION
+    return { ...DEFAULT_CUSTOMIZATION, fitStyle: defaultFitStyle }
   })
 
   const [pose, setPose] = useState<Pose2D>(() => {
@@ -332,6 +353,15 @@ export default function TryOnTab() {
   const [studioTab, setStudioTab] = useState<StudioPanelTab>("pose")
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>("front")
   const [backdropPreset, setBackdropPreset] = useState<BackdropPresetId>("cyclorama")
+  const [studioZoom, setStudioZoom] = useState<number>(1)
+  const [measureUnit, setMeasureUnit] = useState<MeasurementUnit>("in")
+  const [activeLayers, setActiveLayers] = useState<Record<BuilderSlot, boolean>>({
+    Top: true,
+    Bottom: true,
+    "Full Body": true,
+    Outerwear: true,
+    Shoes: true,
+  })
 
   // Reload studio customization & pose when switching user persona
   useEffect(() => {
@@ -341,8 +371,12 @@ export default function TryOnTab() {
         const parsed = JSON.parse(saved)
         setCustomization(
           parsed?.customization
-            ? { ...DEFAULT_CUSTOMIZATION, ...parsed.customization }
-            : DEFAULT_CUSTOMIZATION,
+            ? {
+                ...DEFAULT_CUSTOMIZATION,
+                fitStyle: defaultFitStyle,
+                ...parsed.customization,
+              }
+            : { ...DEFAULT_CUSTOMIZATION, fitStyle: defaultFitStyle },
         )
         if (isValidPose2D(parsed?.pose)) {
           setPose(parsed.pose)
@@ -354,10 +388,10 @@ export default function TryOnTab() {
         return
       }
     } catch { }
-    setCustomization(DEFAULT_CUSTOMIZATION)
+    setCustomization({ ...DEFAULT_CUSTOMIZATION, fitStyle: defaultFitStyle })
     setPose(DEFAULT_POSE)
     setActivePosePreset("classic")
-  }, [storageKey])
+  }, [storageKey, defaultFitStyle])
 
   // Persist studio customization & pose
   useEffect(() => {
@@ -452,7 +486,65 @@ export default function TryOnTab() {
   useEffect(() => {
     lastOpenposeRef.current = null
     setPoseSnapshot(null)
-  }, [selectedOutfit])
+    setActiveLayers({
+      Top: true,
+      Bottom: true,
+      "Full Body": true,
+      Outerwear: true,
+      Shoes: true,
+    })
+  }, [selectedOutfit.id, selectedOutfit.label])
+
+  const activeFitStyle: GarmentFitStyle = customization.fitStyle || "standard"
+  const bodyMeasurements = useMemo(
+    () => deriveBodyMeasurements(customization),
+    [
+      customization.height,
+      customization.shoulders,
+      customization.chest,
+      customization.waistHips,
+      customization.limbBuild,
+    ],
+  )
+  const sizeSuggest = useMemo(
+    () => suggestSizes(bodyMeasurements),
+    [bodyMeasurements],
+  )
+  const fitSummary = useMemo(
+    () => fitIndicator(activeFitStyle, bodyMeasurements, measureUnit),
+    [activeFitStyle, bodyMeasurements, measureUnit],
+  )
+  const activeGarmentPreviewLayers = useMemo<StudioGarmentPreviewLayer[]>(() => {
+    const out: StudioGarmentPreviewLayer[] = []
+    for (const item of selectedOutfit.items) {
+      const slot = normalizeSlotType(item.type, item.name)
+      if (
+        (slot === "Top" ||
+          slot === "Bottom" ||
+          slot === "Full Body" ||
+          slot === "Outerwear" ||
+          slot === "Shoes") &&
+        activeLayers[slot] !== false
+      ) {
+        out.push({ slot, name: item.name, color: item.color })
+      }
+    }
+    return out
+  }, [selectedOutfit.items, activeLayers])
+
+  const toggleLayer = (slot: BuilderSlot) => {
+    setActiveLayers((prev) => ({
+      ...prev,
+      [slot]: prev[slot] === false,
+    }))
+  }
+
+  const adjustZoom = (delta: number) => {
+    setStudioZoom((prev) => {
+      const next = Math.round((prev + delta) * 100) / 100
+      return Math.min(1.75, Math.max(1, next))
+    })
+  }
 
   // Open manual builder automatically if favorites become empty
   useEffect(() => {
@@ -778,13 +870,14 @@ export default function TryOnTab() {
     const garments = selectedOutfit.items
       .filter((item) => {
         const slot = normalizeSlotType(item.type, item.name)
-        return (
+        const isSupported =
           slot === "Full Body" ||
           slot === "Top" ||
           slot === "Bottom" ||
           slot === "Outerwear" ||
           slot === "Shoes"
-        )
+        if (!isSupported) return false
+        return activeLayers[slot as BuilderSlot] !== false
       })
       .sort((a, b) => {
         const rank = (t: string, n: string) => {
@@ -809,9 +902,15 @@ export default function TryOnTab() {
     })
 
     if (!hasPrimaryGarment) {
+      const hadOutfitItems = selectedOutfit.items.some((g) => {
+        const s = normalizeSlotType(g.type, g.name)
+        return s === "Full Body" || s === "Top" || s === "Outerwear" || s === "Bottom"
+      })
       showToast(
-        "Add a Garment First",
-        "Select a Dress / Full Body piece or a Top, Outerwear, or Bottom to generate a try-on.",
+        hadOutfitItems ? "Enable a Garment Layer" : "Add a Garment First",
+        hadOutfitItems
+          ? "Turn on at least one Top, Bottom, Outerwear, or Dress layer above the studio before generating."
+          : "Select a Dress / Full Body piece or a Top, Outerwear, or Bottom to generate a try-on.",
         "warning",
       )
       return
@@ -879,11 +978,13 @@ export default function TryOnTab() {
           backdropPreset,
           poseLabel,
           bodyPreset: BODY_PRESET_VALUES[customization.bodyPreset].label,
+          fitStyle: activeFitStyle,
           materialId: customization.materialId,
-          includeMyFace: customization.includeMyFace,
-          faceImage: customization.includeMyFace
-            ? customization.faceImageData || defaultFacePortrait
-            : undefined,
+          includeMyFace: customization.includeMyFace && cameraPreset !== "back",
+          faceImage:
+            customization.includeMyFace && cameraPreset !== "back"
+              ? customization.faceImageData || defaultFacePortrait
+              : undefined,
           seed: reuseSnapshot ? Math.floor(Math.random() * 2_000_000_000) : undefined,
         },
         {
@@ -972,7 +1073,8 @@ export default function TryOnTab() {
       activePosePreset === "custom"
         ? "Custom Pose"
         : POSE_PRESETS[activePosePreset].label
-    const text = `Virtual Fitting Room for ${selectedOutfit.label}. Mannequin configured as ${bodyLabel}, ${matLabel} finish, in ${poseLabel}${customization.includeMyFace ? " with your face included" : ""}. Pieces: ${itemsText}.`
+    const fitLabel = FIT_EASE[activeFitStyle]?.label || "Standard"
+    const text = `Virtual Fitting Room for ${selectedOutfit.label}. Mannequin configured as ${bodyLabel}, ${fitLabel} fit, ${matLabel} finish, in ${poseLabel}${customization.includeMyFace && cameraPreset !== "back" ? " with your face included" : ""}. Pieces: ${itemsText}.`
     const started = speakText(text, () => setSpeakingPreview(false))
     if (started) {
       setSpeakingPreview(true)
@@ -1286,69 +1388,122 @@ export default function TryOnTab() {
         </div>
       )}
 
-      {/* Collapsed Active Outfit Summary Bar once an outfit is selected */}
+      {/* Collapsed Active Outfit Summary Bar + Non-Destructive Layer Toggles */}
       {step === "studio" && outfitSelected && (
-        <div className="rounded-2xl px-3 py-2.5 border-2 border-border bg-card flex items-center justify-between gap-2 shadow-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex -space-x-1 shrink-0">
-              {selectedOutfit.items.slice(0, 3).map((item) => (
-                <div
-                  key={`${item.type}-${item.name}`}
-                  className="w-7 h-7 rounded-lg border border-border overflow-hidden bg-card flex items-center justify-center text-xs"
-                  style={
-                    item.imageData
-                      ? undefined
-                      : { background: `${item.color}30` }
-                  }
-                  title={`${item.type}: ${item.name}`}
-                >
-                  {item.imageData ? (
-                    <img
-                      src={item.imageData}
-                      alt={item.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    item.emoji
-                  )}
-                </div>
-              ))}
+        <div className="rounded-2xl px-3 py-2.5 border-2 border-border bg-card space-y-2 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex -space-x-1 shrink-0">
+                {selectedOutfit.items.slice(0, 3).map((item) => (
+                  <div
+                    key={`${item.type}-${item.name}`}
+                    className="w-7 h-7 rounded-lg border border-border overflow-hidden bg-card flex items-center justify-center text-xs"
+                    style={
+                      item.imageData
+                        ? undefined
+                        : { background: `${item.color}30` }
+                    }
+                    title={`${item.type}: ${item.name}`}
+                  >
+                    {item.imageData ? (
+                      <img
+                        src={item.imageData}
+                        alt={item.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      item.emoji
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-foreground truncate">
+                  {selectedOutfit.label}
+                </p>
+                <p className="text-[10px] font-semibold text-muted-foreground truncate">
+                  {selectedOutfit.items.map((i) => i.name).join(" + ")}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black text-foreground truncate">
-                {selectedOutfit.label}
-              </p>
-              <p className="text-[10px] font-semibold text-muted-foreground truncate">
-                {selectedOutfit.items.map((i) => i.name).join(" + ")}
-              </p>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleToggleCurrentFavorite}
+                aria-pressed={isCurrentFavorited}
+                className={`min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold border-2 transition-colors cursor-pointer ${
+                  isCurrentFavorited
+                    ? "bg-pink/15 text-pink border-pink"
+                    : "bg-muted text-foreground border-border hover:border-pink"
+                }`}
+                title={
+                  isCurrentFavorited
+                    ? "Saved in Favorite Outfits"
+                    : "Save outfit to Wardrobe -> Favorite Outfits"
+                }
+              >
+                {isCurrentFavorited ? "♥" : "♡"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOutfitSelected(false)}
+                className="min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
+              >
+                ✎ Change Outfit
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleToggleCurrentFavorite}
-              aria-pressed={isCurrentFavorited}
-              className={`min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold border-2 transition-colors cursor-pointer ${
-                isCurrentFavorited
-                  ? "bg-pink/15 text-pink border-pink"
-                  : "bg-muted text-foreground border-border hover:border-pink"
-              }`}
-              title={
-                isCurrentFavorited
-                  ? "Saved in Favorite Outfits"
-                  : "Save outfit to Wardrobe -> Favorite Outfits"
-              }
-            >
-              {isCurrentFavorited ? "♥" : "♡"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setOutfitSelected(false)}
-              className="min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
-            >
-              ✎ Change Outfit
-            </button>
+          {/* Interactive Garment Layer Visibility Toggles */}
+          <div
+            role="group"
+            aria-label="Toggle garment layers"
+            className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-border/70"
+          >
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground mr-0.5">
+              Layers:
+            </span>
+            {(outfitUsesFullBody(selectedOutfit)
+              ? (["Full Body", "Outerwear", "Shoes"] as const)
+              : (["Top", "Bottom", "Outerwear", "Shoes"] as const)
+            ).map((layerSlot) => {
+              const slotItem = getSlotItem(layerSlot)
+              const hasItem = Boolean(slotItem)
+              const isOn = hasItem && activeLayers[layerSlot] !== false
+              const shortLabel = layerSlot === "Full Body" ? "Dress" : layerSlot
+              return (
+                <button
+                  key={layerSlot}
+                  type="button"
+                  disabled={!hasItem}
+                  aria-pressed={isOn}
+                  onClick={() => hasItem && toggleLayer(layerSlot)}
+                  title={
+                    hasItem
+                      ? `Toggle ${shortLabel} (${slotItem?.name})`
+                      : `No ${shortLabel} in this outfit`
+                  }
+                  className={`min-h-[28px] px-2.5 py-0.5 rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1.5 border transition-all ${
+                    !hasItem
+                      ? "bg-muted/40 text-muted-foreground/50 border-border cursor-not-allowed"
+                      : isOn
+                        ? "bg-turquoise/15 text-foreground border-turquoise shadow-2xs cursor-pointer"
+                        : "bg-muted text-muted-foreground border-border hover:text-foreground cursor-pointer"
+                  }`}
+                >
+                  {hasItem && slotItem?.color && (
+                    <span
+                      aria-hidden="true"
+                      className="w-2.5 h-2.5 rounded-full border border-black/20 shrink-0"
+                      style={{ background: slotItem.color }}
+                    />
+                  )}
+                  <span>{shortLabel}</span>
+                  <span className="text-[10px]">{!hasItem ? "—" : isOn ? "✓" : "✕"}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1425,24 +1580,65 @@ export default function TryOnTab() {
               facePreviewUrl={defaultFacePortrait}
               cameraPreset={cameraPreset}
               backdropPreset={backdropPreset}
+              zoom={studioZoom}
+              fitStyle={activeFitStyle}
+              garmentPreviewLayers={activeGarmentPreviewLayers}
               onRegisterCapture={handleRegisterCapture}
             />
 
-            {/* Floating Bottom Studio HUD: Mannequin Finish badge (bottom-left) + Drag Hint (bottom-right) */}
+            {/* Floating Bottom Studio HUD: Mannequin Finish badge (bottom-left) + Zoom & Drag Hint (bottom-right) */}
             <div className="absolute bottom-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-none flex-wrap">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm bg-white/90 text-neutral-900 border border-black/10">
                   {BODY_PRESET_VALUES[customization.bodyPreset].label} ·{" "}
+                  {FIT_EASE[activeFitStyle].label} ·{" "}
                   {MANNEQUIN_MATERIALS[customization.materialId].label}
                 </span>
-                {customization.includeMyFace && (
+                {customization.includeMyFace && cameraPreset !== "back" && (
                   <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm bg-pink text-white">
                     😊 My Face
                   </span>
                 )}
               </div>
-              <div className="px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-black/10 text-[10px] font-bold text-neutral-700 whitespace-nowrap ml-auto">
-                Drag joints ({JOINT_LABELS[selectedJoint]}) · Pull wrist/ankle for IK
+
+              <div className="flex items-center gap-1.5 ml-auto pointer-events-auto">
+                <div
+                  role="group"
+                  aria-label="Studio viewport zoom"
+                  className="inline-flex items-center rounded-full bg-white/92 backdrop-blur-xs border border-black/15 shadow-xs overflow-hidden text-[10px] font-black text-neutral-900"
+                >
+                  <button
+                    type="button"
+                    aria-label="Zoom out"
+                    disabled={studioZoom <= 1}
+                    onClick={() => adjustZoom(-0.35)}
+                    className="px-2 py-0.5 hover:bg-black/5 disabled:opacity-40 cursor-pointer"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Reset studio zoom"
+                    onClick={() => setStudioZoom(1)}
+                    title="Reset studio zoom (AI render stays full-body)"
+                    className="px-1.5 py-0.5 border-x border-black/10 tabular-nums hover:bg-black/5 cursor-pointer"
+                  >
+                    {studioZoom === 1 ? "1×" : `${studioZoom.toFixed(2).replace(/\.?0+$/, "")}×`}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Zoom in"
+                    disabled={studioZoom >= 1.7}
+                    onClick={() => adjustZoom(0.35)}
+                    className="px-2 py-0.5 hover:bg-black/5 disabled:opacity-40 cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div className="hidden min-[420px]:block px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-xs border border-black/10 text-[10px] font-bold text-neutral-700 whitespace-nowrap pointer-events-none">
+                  Drag joints ({JOINT_LABELS[selectedJoint]}) · Pull wrist/ankle for IK
+                </div>
               </div>
             </div>
           </div>
@@ -1467,7 +1663,7 @@ export default function TryOnTab() {
               {(
                 [
                   { id: "pose", label: "🕺 Pose" },
-                  { id: "body", label: "📐 Body & Tone" },
+                  { id: "body", label: "📐 Body & Fit" },
                   { id: "face", label: "😊 Face" },
                 ] as const
               ).map((tab) => (
@@ -1649,10 +1845,59 @@ export default function TryOnTab() {
               </div>
             )}
 
-            {/* Tab 2: Body Proportions & Material Finish */}
+            {/* Tab 2: Garment Fit/Ease, Body Proportions, Live Measurements & Finish */}
             {studioTab === "body" && (
               <div className="space-y-3">
-                <div className="space-y-1.5">
+                {/* Garment Fit / Ease Selector + Fit Indicator */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-foreground">
+                      Garment Fit &amp; Ease
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {FIT_EASE[activeFitStyle].note}
+                    </span>
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Garment fit and ease"
+                    className="grid grid-cols-3 gap-1.5"
+                  >
+                    {(["fitted", "standard", "relaxed"] as const).map((styleId) => {
+                      const active = activeFitStyle === styleId
+                      return (
+                        <button
+                          key={styleId}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() =>
+                            setCustomization((prev) => ({
+                              ...prev,
+                              fitStyle: styleId,
+                            }))
+                          }
+                          className={`min-h-[36px] px-2.5 py-1.5 rounded-xl text-xs font-extrabold border-2 transition-all cursor-pointer ${
+                            active
+                              ? "bg-pink text-white border-[#0D0F18]/20 shadow-xs"
+                              : "bg-muted text-foreground border-border hover:border-pink"
+                          }`}
+                        >
+                          {FIT_EASE[styleId].label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="rounded-xl px-3 py-2 bg-turquoise/10 border border-turquoise/40 text-[11px]">
+                    <span className="font-extrabold uppercase tracking-wider text-[9px] text-muted-foreground block">
+                      Fit indicator · {FIT_EASE[activeFitStyle].label} · estimate / demo
+                    </span>
+                    <p className="font-bold text-foreground mt-0.5 leading-snug">
+                      {fitSummary.summary}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 pt-1 border-t border-border">
                   <span className="text-[11px] font-black uppercase tracking-wider text-foreground block">
                     Body Build Preset
                   </span>
@@ -1715,6 +1960,88 @@ export default function TryOnTab() {
                       />
                     </div>
                   ))}
+                </div>
+
+                {/* Live Slider-Driven Measurements & Suggested Sizes */}
+                <div className="rounded-2xl p-3 border border-border bg-muted/45 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                      Mannequin Measurements · estimate / demo
+                    </span>
+                    <div
+                      role="group"
+                      aria-label="Measurement units"
+                      className="inline-flex rounded-lg border border-border bg-card p-0.5 text-[10px] font-extrabold"
+                    >
+                      {(["in", "cm"] as const).map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          aria-pressed={measureUnit === u}
+                          onClick={() => setMeasureUnit(u)}
+                          className={`px-2 py-0.5 rounded-md cursor-pointer transition-colors ${
+                            measureUnit === u
+                              ? "bg-turquoise text-[#0D0F18]"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    {(
+                      [
+                        ["Height", formatMeasurement(bodyMeasurements.heightCm, measureUnit, true)],
+                        ["Chest", formatMeasurement(bodyMeasurements.chestCm, measureUnit)],
+                        ["Waist", formatMeasurement(bodyMeasurements.waistCm, measureUnit)],
+                        ["Hip", formatMeasurement(bodyMeasurements.hipCm, measureUnit)],
+                        ["Inseam", formatMeasurement(bodyMeasurements.inseamCm, measureUnit)],
+                        ["Shoulder", formatMeasurement(bodyMeasurements.shoulderCm, measureUnit)],
+                      ] as const
+                    ).map(([label, val]) => (
+                      <div
+                        key={label}
+                        className="rounded-xl bg-card border border-border px-2.5 py-1.5"
+                      >
+                        <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+                          {label}
+                        </div>
+                        <div className="font-extrabold text-foreground tabular-nums">
+                          {val}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] font-semibold text-muted-foreground leading-snug">
+                    Suggested from figure ·{" "}
+                    <span className="text-foreground font-extrabold">
+                      Tops {sizeSuggest.tops}
+                    </span>{" "}
+                    ·{" "}
+                    <span className="text-foreground font-extrabold">
+                      Bottoms {sizeSuggest.bottoms}
+                    </span>{" "}
+                    ·{" "}
+                    <span className="text-foreground font-extrabold">
+                      Dress {sizeSuggest.dress}
+                    </span>{" "}
+                    · Ease +{formatEaseValue(FIT_EASE[activeFitStyle].chestEaseCm, measureUnit)}/
+                    +{formatEaseValue(FIT_EASE[activeFitStyle].waistEaseCm, measureUnit)}/
+                    +{formatEaseValue(FIT_EASE[activeFitStyle].hipEaseCm, measureUnit)}
+                  </p>
+                  {user.quizProfile?.derived?.consent?.sizes !== false &&
+                    user.typicalSizes && (
+                      <p className="text-[10px] font-semibold text-muted-foreground leading-snug">
+                        Saved profile sizes ({user.name.split(" ")[0]}):{" "}
+                        <span className="text-foreground font-bold">
+                          {user.typicalSizes}
+                        </span>
+                      </p>
+                    )}
                 </div>
 
                 {/* Material & Skin Tone Swatches */}

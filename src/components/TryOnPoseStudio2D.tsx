@@ -5,7 +5,9 @@
  * for local SDXL + ControlNet + IP-Adapter generation (zero 3D / WebGL).
  */
 import { useEffect, useMemo, useRef, useState } from "react"
+import { FIT_EASE } from "../lib/bodyMeasurements"
 import type {
+  GarmentFitStyle,
   MannequinBodyPreset,
   MannequinCustomization,
   MannequinMaterialId,
@@ -14,10 +16,16 @@ import type {
   PosePoint2D,
 } from "../types"
 
+export interface StudioGarmentPreviewLayer {
+  slot: "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes"
+  name: string
+  color: string
+}
+
 export const STUDIO_W = 768
 export const STUDIO_H = 1024
 
-export type CameraPresetId = "front" | "three_quarter" | "side" | "low_angle"
+export type CameraPresetId = "front" | "three_quarter" | "side" | "back" | "low_angle"
 
 export const CAMERA_PRESETS: Record<
   CameraPresetId,
@@ -28,6 +36,7 @@ export const CAMERA_PRESETS: Record<
     shiftX: number
     scaleY: number
     offsetY: number
+    mirrorX?: boolean
   }
 > = {
   front: {
@@ -53,6 +62,15 @@ export const CAMERA_PRESETS: Record<
     shiftX: -0.015,
     scaleY: 1.0,
     offsetY: 0,
+  },
+  back: {
+    label: "Back",
+    promptTag: "rear back-facing full-body studio portrait from behind",
+    scaleX: 1.0,
+    shiftX: 0,
+    scaleY: 1.0,
+    offsetY: 0,
+    mirrorX: true,
   },
   low_angle: {
     label: "Hero",
@@ -283,6 +301,7 @@ export const DEFAULT_CUSTOMIZATION: MannequinCustomization = {
   waistHips: 1.0,
   limbBuild: 1.0,
   materialId: "porcelain",
+  fitStyle: "standard",
   includeMyFace: false,
 }
 
@@ -654,6 +673,7 @@ export function projectPoseForView(
   const anchorY = 0.848
   const cx = (pose.neck[0] + pose.pelvis[0]) * 0.5
   const hScale = customization.height * cam.scaleY
+  const dirX = cam.mirrorX ? -1 : 1
 
   const mapPt = (id: PoseJointId): PosePoint2D => {
     let [x, y] = pose[id]
@@ -672,7 +692,7 @@ export function projectPoseForView(
       id === "wristL" ||
       id === "wristR"
     const xScaled =
-      cx + (x - cx) * cam.scaleX + (isUpper ? cam.shiftX : 0)
+      cx + (x - cx) * cam.scaleX * dirX + (isUpper ? cam.shiftX : 0)
     const yScaled = anchorY + (y - 0.89) * hScale + cam.offsetY
     return [
       Math.min(0.95, Math.max(0.05, xScaled)),
@@ -687,8 +707,8 @@ export function projectPoseForView(
 
   const nose = norm.nose
   const headH = Math.max(0.045, Math.abs(norm.neck[1] - nose[1]))
-  const eyeW = 0.017 * Math.max(0.45, cam.scaleX)
-  const earW = 0.032 * Math.max(0.35, cam.scaleX)
+  const eyeW = 0.017 * Math.max(0.45, cam.scaleX) * dirX
+  const earW = 0.032 * Math.max(0.35, cam.scaleX) * dirX
 
   const normPts: Record<PoseJointId | "eyeL" | "eyeR" | "earL" | "earR", PosePoint2D> = {
     ...norm,
@@ -735,6 +755,7 @@ const OPENPOSE_LIMBS: {
 export function renderOpenPoseCanvas(
   projected: ProjectedSkeleton2D,
   includeFaceFeatures = false,
+  isBackView = false,
 ): string {
   const canvas = document.createElement("canvas")
   canvas.width = STUDIO_W
@@ -746,11 +767,21 @@ export function renderOpenPoseCanvas(
   ctx.fillRect(0, 0, STUDIO_W, STUDIO_H)
 
   const pts = projected.points
-  const activeLimbs = includeFaceFeatures
-    ? OPENPOSE_LIMBS
-    : OPENPOSE_LIMBS.filter(
-        (l) => l.a !== "eyeR" && l.b !== "eyeR" && l.a !== "eyeL" && l.b !== "eyeL",
+  const activeLimbs = isBackView
+    ? OPENPOSE_LIMBS.filter(
+        (l) =>
+          l.a !== "nose" &&
+          l.b !== "nose" &&
+          l.a !== "eyeR" &&
+          l.b !== "eyeR" &&
+          l.a !== "eyeL" &&
+          l.b !== "eyeL",
       )
+    : includeFaceFeatures
+      ? OPENPOSE_LIMBS
+      : OPENPOSE_LIMBS.filter(
+          (l) => l.a !== "eyeR" && l.b !== "eyeR" && l.a !== "eyeL" && l.b !== "eyeL",
+        )
   ctx.globalAlpha = 0.65
   for (const limb of activeLimbs) {
     const p1 = pts[limb.a]
@@ -787,15 +818,21 @@ export function renderOpenPoseCanvas(
     { id: "kneeL", color: "rgb(0, 0, 255)" },
     { id: "ankleL", color: "rgb(85, 0, 255)" },
   ]
-  const joints = includeFaceFeatures
+  const joints = isBackView
     ? [
-        ...baseJoints,
-        { id: "eyeR" as const, color: "rgb(170, 0, 255)" },
-        { id: "eyeL" as const, color: "rgb(255, 0, 255)" },
+        ...baseJoints.filter((j) => j.id !== "nose"),
         { id: "earR" as const, color: "rgb(255, 0, 170)" },
         { id: "earL" as const, color: "rgb(255, 0, 85)" },
       ]
-    : baseJoints
+    : includeFaceFeatures
+      ? [
+          ...baseJoints,
+          { id: "eyeR" as const, color: "rgb(170, 0, 255)" },
+          { id: "eyeL" as const, color: "rgb(255, 0, 255)" },
+          { id: "earR" as const, color: "rgb(255, 0, 170)" },
+          { id: "earL" as const, color: "rgb(255, 0, 85)" },
+        ]
+      : baseJoints
   for (const j of joints) {
     const [jx, jy] = pts[j.id]
     ctx.fillStyle = j.color
@@ -812,6 +849,7 @@ export async function renderBareSilhouetteCanvas(
   customization: MannequinCustomization,
   backdropPreset: BackdropPresetId,
   faceUrl?: string,
+  isBackView = false,
 ): Promise<string> {
   const backdrop =
     STUDIO_BACKDROP_PRESETS[backdropPreset] || STUDIO_BACKDROP_PRESETS.cyclorama
@@ -931,8 +969,11 @@ export async function renderBareSilhouetteCanvas(
     ctx.fill()
   }
 
-  // Optional circular portrait preview if "Put My Face" is enabled
-  const faceSrc = customization.includeMyFace ? customization.faceImageData || faceUrl : undefined
+  // Optional circular portrait preview if "Put My Face" is enabled (front/angled views only)
+  const faceSrc =
+    !isBackView && customization.includeMyFace
+      ? customization.faceImageData || faceUrl
+      : undefined
   if (faceSrc) {
     await new Promise<void>((resolve) => {
       const img = new Image()
@@ -975,6 +1016,9 @@ export interface TryOnPoseStudio2DProps {
   facePreviewUrl?: string
   cameraPreset: CameraPresetId
   backdropPreset: BackdropPresetId
+  zoom?: number
+  fitStyle?: GarmentFitStyle
+  garmentPreviewLayers?: StudioGarmentPreviewLayer[]
   onRegisterCapture?: (captureFn: () => Promise<TryOnPoseCaptureResult>) => void
 }
 
@@ -984,6 +1028,10 @@ const FOUR_WAY_DIRS: { dx: number; dy: number; rot: number }[] = [
   { dx: 0, dy: 1, rot: 180 },
   { dx: -1, dy: 0, rot: 270 },
 ]
+
+function lerpPt(a: [number, number], b: [number, number], t: number): [number, number] {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+}
 
 export default function TryOnPoseStudio2D({
   customization,
@@ -995,6 +1043,9 @@ export default function TryOnPoseStudio2D({
   facePreviewUrl,
   cameraPreset,
   backdropPreset,
+  zoom = 1,
+  fitStyle = "standard",
+  garmentPreviewLayers = [],
   onRegisterCapture,
 }: TryOnPoseStudio2DProps) {
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -1005,6 +1056,12 @@ export default function TryOnPoseStudio2D({
     STUDIO_BACKDROP_PRESETS[backdropPreset] || STUDIO_BACKDROP_PRESETS.cyclorama
   const mat =
     MANNEQUIN_MATERIALS[customization.materialId] || MANNEQUIN_MATERIALS.porcelain
+  const isBackView = cameraPreset === "back"
+  const clampedZoom = Math.min(2, Math.max(1, zoom || 1))
+  const viewW = STUDIO_W / clampedZoom
+  const viewH = STUDIO_H / clampedZoom
+  const viewX = (STUDIO_W - viewW) * 0.5
+  const viewY = (STUDIO_H - viewH) * 0.44
 
   const projected = useMemo(
     () => projectPoseForView(pose, customization, cameraPreset),
@@ -1027,13 +1084,20 @@ export default function TryOnPoseStudio2D({
     if (!onRegisterCapture) return
     const capture = async (): Promise<TryOnPoseCaptureResult> => {
       const custom = customizationRef.current
-      const proj = projectPoseForView(poseRef.current, custom, cameraRef.current)
-      const openposeImageDataUrl = renderOpenPoseCanvas(proj, Boolean(custom.includeMyFace))
+      const camId = cameraRef.current
+      const back = camId === "back"
+      const proj = projectPoseForView(poseRef.current, custom, camId)
+      const openposeImageDataUrl = renderOpenPoseCanvas(
+        proj,
+        Boolean(custom.includeMyFace) && !back,
+        back,
+      )
       const imageDataUrl = await renderBareSilhouetteCanvas(
         proj,
         custom,
         backdropRef.current,
         faceRef.current,
+        back,
       )
       const keypoints: Record<string, [number, number, number]> = {}
       ;(Object.keys(proj.norm) as PoseJointId[]).forEach((k) => {
@@ -1053,16 +1117,19 @@ export default function TryOnPoseStudio2D({
     if (!svg) return null
     const rect = svg.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return null
-    const scale = Math.min(rect.width / STUDIO_W, rect.height / STUDIO_H)
-    const renderedW = STUDIO_W * scale
-    const renderedH = STUDIO_H * scale
+    const scale = Math.min(rect.width / viewW, rect.height / viewH)
+    const renderedW = viewW * scale
+    const renderedH = viewH * scale
     const offsetX = rect.left + (rect.width - renderedW) * 0.5
     const offsetY = rect.top + (rect.height - renderedH) * 0.5
-    const vx = (clientX - offsetX) / renderedW
-    const vy = (clientY - offsetY) / renderedH
+    const svgX = viewX + ((clientX - offsetX) / renderedW) * viewW
+    const svgY = viewY + ((clientY - offsetY) / renderedH) * viewH
+    const vx = svgX / STUDIO_W
+    const vy = svgY / STUDIO_H
 
-    // Invert camera framing so dragging tracks cursor cleanly
+    // Invert camera framing (including Back-view horizontal mirror) so dragging tracks cursor 1:1
     const cam = CAMERA_PRESETS[cameraPreset] || CAMERA_PRESETS.front
+    const dirX = cam.mirrorX ? -1 : 1
     const cx = (pose.neck[0] + pose.pelvis[0]) * 0.5
     const isUpper =
       selectedJoint === "nose" ||
@@ -1073,7 +1140,9 @@ export default function TryOnPoseStudio2D({
       selectedJoint === "elbowR" ||
       selectedJoint === "wristL" ||
       selectedJoint === "wristR"
-    const invX = cx + (vx - (isUpper ? cam.shiftX : 0) - cx) / Math.max(0.28, cam.scaleX)
+    const invX =
+      cx +
+      ((vx - (isUpper ? cam.shiftX : 0) - cx) * dirX) / Math.max(0.28, cam.scaleX)
     const anchorY = 0.848
     const hScale = customization.height * cam.scaleY
     const invY = 0.89 + (vy - cam.offsetY - anchorY) / Math.max(0.5, hScale)
@@ -1128,14 +1197,78 @@ export default function TryOnPoseStudio2D({
 
   const baseY = Math.max(pts.ankleL[1], pts.ankleR[1]) + 28
   const centerX = (pts.ankleL[0] + pts.ankleR[0]) * 0.5
-  const effectiveFace = customization.includeMyFace
-    ? customization.faceImageData || facePreviewUrl
-    : undefined
+  const effectiveFace =
+    !isBackView && customization.includeMyFace
+      ? customization.faceImageData || facePreviewUrl
+      : undefined
+
+  // Atelier 2D Garment Layer & Ease Drape Overlay geometry (visual studio feedback only)
+  const easeScale = (FIT_EASE[fitStyle] || FIT_EASE.standard).drapeScale
+  const shLeftX = Math.min(shR[0], shL[0])
+  const shRightX = Math.max(shR[0], shL[0])
+  const shMidY = (shR[1] + shL[1]) * 0.5
+  const hpLeftX = Math.min(hpR[0], hpL[0])
+  const hpRightX = Math.max(hpR[0], hpL[0])
+  const hpMidY = (hpR[1] + hpL[1]) * 0.5
+  const garmentWaistHalf = Math.max(26, waistW * 1.04 * easeScale)
+  const hipPad = 14 * easeScale
+  const shPad = 9 * easeScale
+
+  const topLayer = garmentPreviewLayers.find((l) => l.slot === "Top")
+  const bottomLayer = garmentPreviewLayers.find((l) => l.slot === "Bottom")
+  const fullBodyLayer = garmentPreviewLayers.find((l) => l.slot === "Full Body")
+  const outerLayer = garmentPreviewLayers.find((l) => l.slot === "Outerwear")
+  const shoesLayer = garmentPreviewLayers.find((l) => l.slot === "Shoes")
+
+  const topTorsoPath = [
+    `M ${shLeftX - shPad} ${shMidY - 12}`,
+    `Q ${(shLeftX + shRightX) * 0.5} ${shMidY - (isBackView ? 22 : 6)} ${shRightX + shPad} ${shMidY - 12}`,
+    `Q ${waistCx + garmentWaistHalf} ${waistY} ${hpRightX + hipPad} ${hpMidY + 22}`,
+    `Q ${(hpLeftX + hpRightX) * 0.5} ${hpMidY + 34} ${hpLeftX - hipPad} ${hpMidY + 22}`,
+    `Q ${waistCx - garmentWaistHalf} ${waistY} ${shLeftX - shPad} ${shMidY - 12} Z`,
+  ].join(" ")
+
+  const outerPad = 16 * easeScale
+  const outerHemY = Math.min(pts.kneeL[1], pts.kneeR[1]) - 18
+  const outerTorsoPath = [
+    `M ${shLeftX - outerPad} ${shMidY - 15}`,
+    `Q ${(shLeftX + shRightX) * 0.5} ${shMidY - 26} ${shRightX + outerPad} ${shMidY - 15}`,
+    `L ${hpRightX + hipPad + 14 * easeScale} ${outerHemY}`,
+    `Q ${(hpLeftX + hpRightX) * 0.5} ${outerHemY + 12} ${hpLeftX - hipPad - 14 * easeScale} ${outerHemY}`,
+    `Z`,
+  ].join(" ")
+
+  const isPantsFullBody = Boolean(
+    fullBodyLayer &&
+      /(jumpsuit|romper|boilersuit|coverall|overalls)/i.test(fullBodyLayer.name),
+  )
+  const dressHemY =
+    (Math.max(pts.kneeL[1], pts.kneeR[1]) * 0.38 +
+      Math.min(pts.ankleL[1], pts.ankleR[1]) * 0.62)
+  const dressFlare = 42 * easeScale
+  const ankleLeftX = Math.min(pts.ankleR[0], pts.ankleL[0])
+  const ankleRightX = Math.max(pts.ankleR[0], pts.ankleL[0])
+  const dressSkirtPath = [
+    `M ${shLeftX - shPad} ${shMidY - 12}`,
+    `Q ${(shLeftX + shRightX) * 0.5} ${shMidY - (isBackView ? 20 : 6)} ${shRightX + shPad} ${shMidY - 12}`,
+    `Q ${waistCx + garmentWaistHalf * 0.94} ${waistY} ${ankleRightX + dressFlare} ${dressHemY}`,
+    `Q ${(ankleLeftX + ankleRightX) * 0.5} ${dressHemY + 20} ${ankleLeftX - dressFlare} ${dressHemY}`,
+    `Q ${waistCx - garmentWaistHalf * 0.94} ${waistY} ${shLeftX - shPad} ${shMidY - 12} Z`,
+  ].join(" ")
+
+  const topHasLongSleeves = Boolean(
+    topLayer &&
+      /(sweater|knit|blouse|shirt|long|cardigan|turtleneck|hoodie|crewneck)/i.test(
+        topLayer.name,
+      ),
+  )
+  const sleeveRTarget = topHasLongSleeves ? pts.wristR : lerpPt(pts.shoulderR, pts.elbowR, 0.72)
+  const sleeveLTarget = topHasLongSleeves ? pts.wristL : lerpPt(pts.shoulderL, pts.elbowL, 0.72)
 
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${STUDIO_W} ${STUDIO_H}`}
+      viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`}
       preserveAspectRatio="xMidYMid meet"
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}
@@ -1214,6 +1347,12 @@ export default function TryOnPoseStudio2D({
         <path d={torsoPath} fill={mat.color} />
         <ellipse cx={pts.nose[0]} cy={pts.nose[1] - 4} rx="34" ry="46" fill={mat.color} />
 
+        {isBackView && (
+          <g stroke={mat.shade} strokeWidth="2.5" strokeLinecap="round" opacity="0.65">
+            <line x1={pts.nose[0]} y1={pts.nose[1] + 24} x2={pts.pelvis[0]} y2={pts.pelvis[1] - 8} strokeDasharray="5 5" />
+          </g>
+        )}
+
         {effectiveFace && (
           <image
             href={effectiveFace}
@@ -1226,6 +1365,146 @@ export default function TryOnPoseStudio2D({
           />
         )}
       </g>
+
+      {/* Live 2D Atelier Garment Drape & Fit/Ease Preview Overlay */}
+      {garmentPreviewLayers.length > 0 && (
+        <g pointerEvents="none">
+          {/* Bottoms (Trousers / Skirt) or Jumpsuit Legs */}
+          {(bottomLayer || (fullBodyLayer && isPantsFullBody)) && (() => {
+            const col = (bottomLayer || fullBodyLayer)?.color || "#3B4254"
+            return (
+              <g opacity="0.58">
+                <g stroke={col} strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <line x1={pts.hipR[0]} y1={pts.hipR[1]} x2={pts.kneeR[0]} y2={pts.kneeR[1]} strokeWidth={limbW(50) * easeScale} />
+                  <line x1={pts.kneeR[0]} y1={pts.kneeR[1]} x2={pts.ankleR[0]} y2={pts.ankleR[1] - 6} strokeWidth={limbW(38) * easeScale} />
+                  <line x1={pts.hipL[0]} y1={pts.hipL[1]} x2={pts.kneeL[0]} y2={pts.kneeL[1]} strokeWidth={limbW(50) * easeScale} />
+                  <line x1={pts.kneeL[0]} y1={pts.kneeL[1]} x2={pts.ankleL[0]} y2={pts.ankleL[1] - 6} strokeWidth={limbW(38) * easeScale} />
+                </g>
+                <ellipse
+                  cx={(hpLeftX + hpRightX) * 0.5}
+                  cy={hpMidY + 8}
+                  rx={Math.max(30, (hpRightX - hpLeftX) * 0.5 + hipPad)}
+                  ry={26}
+                  fill={col}
+                />
+              </g>
+            )
+          })()}
+
+          {/* Full-Body Dress / Jumpsuit Bodice */}
+          {fullBodyLayer && (
+            <g opacity="0.62">
+              <path
+                d={isPantsFullBody ? topTorsoPath : dressSkirtPath}
+                fill={fullBodyLayer.color || "#9B5DE5"}
+                stroke="#11131C"
+                strokeOpacity="0.22"
+                strokeWidth="2"
+              />
+              <g stroke={fullBodyLayer.color || "#9B5DE5"} strokeLinecap="round" fill="none">
+                <line
+                  x1={pts.shoulderR[0]}
+                  y1={pts.shoulderR[1]}
+                  x2={lerpPt(pts.shoulderR, pts.elbowR, 0.55)[0]}
+                  y2={lerpPt(pts.shoulderR, pts.elbowR, 0.55)[1]}
+                  strokeWidth={limbW(32) * easeScale}
+                />
+                <line
+                  x1={pts.shoulderL[0]}
+                  y1={pts.shoulderL[1]}
+                  x2={lerpPt(pts.shoulderL, pts.elbowL, 0.55)[0]}
+                  y2={lerpPt(pts.shoulderL, pts.elbowL, 0.55)[1]}
+                  strokeWidth={limbW(32) * easeScale}
+                />
+              </g>
+            </g>
+          )}
+
+          {/* Top Layer */}
+          {topLayer && (
+            <g opacity="0.62">
+              <g stroke={topLayer.color || "#CE005A"} strokeLinecap="round" strokeLinejoin="round" fill="none">
+                {topHasLongSleeves ? (
+                  <>
+                    <line x1={pts.shoulderR[0]} y1={pts.shoulderR[1]} x2={pts.elbowR[0]} y2={pts.elbowR[1]} strokeWidth={limbW(33) * easeScale} />
+                    <line x1={pts.elbowR[0]} y1={pts.elbowR[1]} x2={sleeveRTarget[0]} y2={sleeveRTarget[1]} strokeWidth={limbW(26) * easeScale} />
+                    <line x1={pts.shoulderL[0]} y1={pts.shoulderL[1]} x2={pts.elbowL[0]} y2={pts.elbowL[1]} strokeWidth={limbW(33) * easeScale} />
+                    <line x1={pts.elbowL[0]} y1={pts.elbowL[1]} x2={sleeveLTarget[0]} y2={sleeveLTarget[1]} strokeWidth={limbW(26) * easeScale} />
+                  </>
+                ) : (
+                  <>
+                    <line x1={pts.shoulderR[0]} y1={pts.shoulderR[1]} x2={sleeveRTarget[0]} y2={sleeveRTarget[1]} strokeWidth={limbW(34) * easeScale} />
+                    <line x1={pts.shoulderL[0]} y1={pts.shoulderL[1]} x2={sleeveLTarget[0]} y2={sleeveLTarget[1]} strokeWidth={limbW(34) * easeScale} />
+                  </>
+                )}
+              </g>
+              <path
+                d={topTorsoPath}
+                fill={topLayer.color || "#CE005A"}
+                stroke="#11131C"
+                strokeOpacity="0.22"
+                strokeWidth="2"
+              />
+            </g>
+          )}
+
+          {/* Outerwear Layer (open coat/jacket silhouette + full sleeves) */}
+          {outerLayer && (
+            <g opacity="0.54">
+              <g stroke={outerLayer.color || "#1E6F78"} strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <line x1={pts.shoulderR[0]} y1={pts.shoulderR[1]} x2={pts.elbowR[0]} y2={pts.elbowR[1]} strokeWidth={limbW(38) * easeScale} />
+                <line x1={pts.elbowR[0]} y1={pts.elbowR[1]} x2={pts.wristR[0]} y2={pts.wristR[1]} strokeWidth={limbW(30) * easeScale} />
+                <line x1={pts.shoulderL[0]} y1={pts.shoulderL[1]} x2={pts.elbowL[0]} y2={pts.elbowL[1]} strokeWidth={limbW(38) * easeScale} />
+                <line x1={pts.elbowL[0]} y1={pts.elbowL[1]} x2={pts.wristL[0]} y2={pts.wristL[1]} strokeWidth={limbW(30) * easeScale} />
+              </g>
+              <path
+                d={outerTorsoPath}
+                fill={outerLayer.color || "#1E6F78"}
+                fillOpacity={isBackView ? "0.92" : "0.52"}
+                stroke={outerLayer.color || "#1E6F78"}
+                strokeWidth="4"
+              />
+              {!isBackView && (topLayer || fullBodyLayer) && (
+                <line
+                  x1={(shLeftX + shRightX) * 0.5}
+                  y1={shMidY - 8}
+                  x2={(hpLeftX + hpRightX) * 0.5}
+                  y2={outerHemY + 4}
+                  stroke="#FFFFFF"
+                  strokeOpacity="0.45"
+                  strokeWidth="3"
+                />
+              )}
+            </g>
+          )}
+
+          {/* Shoes Layer */}
+          {shoesLayer && (
+            <g opacity="0.78">
+              <ellipse
+                cx={pts.ankleR[0]}
+                cy={pts.ankleR[1] + 15}
+                rx={limbW(22)}
+                ry="13"
+                fill={shoesLayer.color || "#222530"}
+                stroke="#11131C"
+                strokeOpacity="0.3"
+                strokeWidth="2"
+              />
+              <ellipse
+                cx={pts.ankleL[0]}
+                cy={pts.ankleL[1] + 15}
+                rx={limbW(22)}
+                ry="13"
+                fill={shoesLayer.color || "#222530"}
+                stroke="#11131C"
+                strokeOpacity="0.3"
+                strokeWidth="2"
+              />
+            </g>
+          )}
+        </g>
+      )}
 
       {/* Subtle skeleton bone guide lines */}
       <g stroke="#11131C" strokeWidth="3.5" strokeOpacity="0.32" strokeDasharray="7 6" fill="none">

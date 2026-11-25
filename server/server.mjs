@@ -358,6 +358,7 @@ function parseTryOnPayload(body) {
       faceImage: typeof body.faceImage === "string" ? body.faceImage : undefined,
       poseLabel: typeof body.poseLabel === "string" ? body.poseLabel : undefined,
       bodyPreset: typeof body.bodyPreset === "string" ? body.bodyPreset : undefined,
+      fitStyle: typeof body.fitStyle === "string" ? body.fitStyle : "standard",
       materialId: typeof body.materialId === "string" ? body.materialId : "porcelain",
       seed: typeof body.seed === "number" ? body.seed : undefined,
     },
@@ -1511,8 +1512,8 @@ function sanitizeIncomingCalendarEvents(rawEvents) {
 }
 
 async function resolveCalendarEvents(body = {}) {
-  const limit = Math.max(1, Math.min(200, Number(body.limit) || 8))
-  const horizonHours = Math.max(6, Math.min(1440, Number(body.horizonHours) || 36))
+  const limit = Math.max(1, Math.min(250, Number(body.limit) || 8))
+  const horizonHours = Math.max(6, Math.min(2880, Number(body.horizonHours) || 36))
   const icsText = typeof body.ics === "string" ? body.ics : ""
   const requestedUrl = typeof body.url === "string" ? body.url.trim() : ""
   const envUrl = typeof process.env.GOOGLE_CALENDAR_ICS_URL === "string"

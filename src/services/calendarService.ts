@@ -1,4 +1,4 @@
-import { getApiUrl } from "../lib/aiHost"
+import { getApiBaseUrl, getApiUrl } from "../lib/aiHost"
 import { parseIcsCalendar } from "../lib/icsParser"
 import type { CalendarEvent, PersonaId } from "../types"
 
@@ -336,20 +336,56 @@ function normalizeEvent(raw: Partial<CalendarEvent> & { title?: string; start?: 
   }
 }
 
+class CalendarHostUnreachableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "CalendarHostUnreachableError"
+  }
+}
+
+/** Clear actionable guidance when Render Static Site has no Node API or VITE_API_BASE_URL is offline. */
+export function calendarApiUnreachableMessage(
+  kind: "url" | "refresh" | "generic" = "generic",
+): string {
+  const hasOverride = Boolean(getApiBaseUrl())
+  if (kind === "url") {
+    return hasOverride
+      ? "Connect URL could not reach your Node API (VITE_API_BASE_URL) and the calendar provider blocked direct browser CORS. Start tAIlor AI Host on your PC, or use Upload .ics or Google .zip above (works in-browser with no backend)."
+      : "Connect URL needs the Node API when a calendar provider blocks direct browser CORS (Google, Apple, Outlook). On Render Static Site, use Upload .ics or Google .zip above (works with no backend), or set VITE_API_BASE_URL to your tAIlor AI Host."
+  }
+  if (kind === "refresh") {
+    return hasOverride
+      ? "Calendar API unreachable at VITE_API_BASE_URL. Upload a .ics/.zip file (works offline) or start tAIlor AI Host."
+      : "No calendar API on this Static Site. Upload a .ics/.zip file to import events in-browser, or configure VITE_API_BASE_URL."
+  }
+  return hasOverride
+    ? "Calendar host is offline or unreachable at the configured API URL."
+    : "Calendar host is offline or unreachable (Static Site has no Node /api)."
+}
+
 async function postCalendarEvents(
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<CalendarEventsResult> {
-  const response = await fetch(getApiUrl("/api/calendar/events"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    signal,
-    body: JSON.stringify(body),
-  })
+  let response: Response
+  try {
+    response = await fetch(getApiUrl("/api/calendar/events"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      signal,
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err
+    }
+    throw new CalendarHostUnreachableError(calendarApiUnreachableMessage("generic"))
+  }
 
   const contentType = response.headers.get("content-type") || ""
   if (!contentType.includes("application/json")) {
-    throw new Error("Calendar host is offline or unreachable.")
+    // Render Static Site returns its HTML SPA fallback for /api/* routes when no backend is configured.
+    throw new CalendarHostUnreachableError(calendarApiUnreachableMessage("generic"))
   }
 
   const payload = (await response.json().catch(() => ({}))) as {
@@ -380,15 +416,74 @@ async function postCalendarEvents(
 
 /** Load upcoming events from env ICS URL (server-side) or demo mock. */
 export async function fetchCalendarEvents(signal?: AbortSignal): Promise<CalendarEventsResult> {
-  return postCalendarEvents({}, signal)
+  try {
+    return await postCalendarEvents({}, signal)
+  } catch (err) {
+    if (err instanceof CalendarHostUnreachableError) {
+      throw new Error(calendarApiUnreachableMessage("refresh"))
+    }
+    throw err
+  }
 }
 
-/** Fetch a public/secret Google Calendar .ics URL via the Node proxy. */
+/**
+ * Fetch a public/secret .ics URL via the Node proxy first (CORS-safe), then
+ * attempt direct browser fetch+parse for CORS-enabled feeds when on a Static Site.
+ */
 export async function fetchCalendarEventsFromUrl(
   url: string,
   signal?: AbortSignal,
 ): Promise<CalendarEventsResult> {
-  return postCalendarEvents({ url, limit: 200, horizonHours: 1440 }, signal)
+  const normalizedUrl = url.trim().replace(/^webcals?:\/\//i, "https://")
+  try {
+    return await postCalendarEvents(
+      { url: normalizedUrl, limit: 250, horizonHours: 2880 },
+      signal,
+    )
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error
+    }
+    if (!(error instanceof CalendarHostUnreachableError)) {
+      throw error instanceof Error ? error : new Error(String(error))
+    }
+
+    // Node API is unreachable (e.g. Render Static Site with no active host):
+    // attempt direct browser fetch+parse in case the feed endpoint allows CORS.
+    try {
+      const parsedUrl = new URL(normalizedUrl)
+      if (parsedUrl.protocol === "https:" || parsedUrl.protocol === "http:") {
+        const directResp = await fetch(parsedUrl.toString(), {
+          method: "GET",
+          headers: { Accept: "text/calendar, text/plain, */*" },
+          signal,
+        })
+        if (directResp.ok) {
+          const text = await directResp.text()
+          if (/BEGIN:VCALENDAR|BEGIN:VEVENT/i.test(text)) {
+            const events = parseIcsCalendar(text, {
+              pastDays: 60,
+              futureDays: 120,
+              limit: 250,
+            })
+            return {
+              events,
+              source: "url",
+              feedUrl: normalizedUrl,
+              note: `Loaded ${events.length} event${events.length === 1 ? "" : "s"} from URL in the browser.`,
+            }
+          }
+        }
+      }
+    } catch (directErr) {
+      if (directErr instanceof DOMException && directErr.name === "AbortError") {
+        throw directErr
+      }
+      // Expected when Google/Apple/Outlook block browser CORS — fall through to actionable Static-Site guidance.
+    }
+
+    throw new Error(calendarApiUnreachableMessage("url"))
+  }
 }
 
 /** Parse an uploaded .ics file directly in the browser (no backend required). */
@@ -396,9 +491,9 @@ export async function parseUploadedIcs(
   icsText: string,
 ): Promise<CalendarEventsResult> {
   const events = parseIcsCalendar(icsText, {
-    pastDays: 7,
-    futureDays: 60,
-    limit: 200,
+    pastDays: 60,
+    futureDays: 120,
+    limit: 250,
   })
   return {
     events,

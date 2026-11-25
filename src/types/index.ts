@@ -257,6 +257,8 @@ export type MannequinMaterialId =
   | "walnut"
   | "charcoal"
 
+export type GarmentFitStyle = "fitted" | "standard" | "relaxed"
+
 export interface MannequinCustomization {
   bodyPreset: MannequinBodyPreset
   height: number
@@ -265,6 +267,7 @@ export interface MannequinCustomization {
   waistHips: number
   limbBuild: number
   materialId: MannequinMaterialId
+  fitStyle?: GarmentFitStyle
   includeMyFace: boolean
   faceImageData?: string
 }

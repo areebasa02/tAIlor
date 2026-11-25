@@ -314,18 +314,23 @@ export interface ParseIcsOptions {
   now?: Date
 }
 
+export const MAX_ICS_TEXT_BYTES = 15_000_000
+
 /**
  * Parse an `.ics` calendar string in the browser, including `RRULE` recurring
- * events, keeping a multi-week window suitable for List, Week, and Month views.
+ * events, keeping a multi-month window suitable for List, Week, and Month views.
  */
 export function parseIcsCalendar(
   icsText: string,
   options: ParseIcsOptions = {},
 ): CalendarEvent[] {
+  if (typeof icsText === "string" && icsText.length > MAX_ICS_TEXT_BYTES) {
+    throw new Error("Calendar file is too large (max 15 MB).")
+  }
   const now = options.now instanceof Date ? options.now : new Date()
-  const pastDays = Math.max(0, options.pastDays ?? 7)
-  const futureDays = Math.max(1, options.futureDays ?? 60)
-  const limit = Math.max(1, options.limit ?? 200)
+  const pastDays = Math.max(0, options.pastDays ?? 60)
+  const futureDays = Math.max(1, options.futureDays ?? 120)
+  const limit = Math.max(1, options.limit ?? 250)
 
   const windowStart = new Date(startOfLocalDay(now).getTime() - pastDays * DAY_MS)
   const windowEnd = new Date(endOfLocalDay(now).getTime() + futureDays * DAY_MS)

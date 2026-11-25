@@ -241,7 +241,7 @@ export default function CalendarTab() {
           }
         }
         mergedEvents.sort((a, b) => Date.parse(a.dtstart) - Date.parse(b.dtstart))
-        const capped = mergedEvents.slice(0, 200)
+        const capped = mergedEvents.slice(0, 250)
         setCalendarFromUpload(
           capped,
           `Imported ${capped.length} event${capped.length === 1 ? "" : "s"} from ${file.name}.`,
@@ -249,8 +249,8 @@ export default function CalendarTab() {
         showToast(
           "Calendar imported",
           capped.length > 0
-            ? `${capped.length} upcoming event${capped.length === 1 ? "" : "s"} extracted from ${file.name}.`
-            : "Unzipped your calendar, but found no events in the next 60 days.",
+            ? `${capped.length} event${capped.length === 1 ? "" : "s"} extracted from ${file.name}.`
+            : "Unzipped your calendar, but found no events in the active window.",
           capped.length > 0 ? "success" : "info",
         )
         setShowWalkthrough(false)

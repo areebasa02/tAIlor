@@ -348,6 +348,7 @@ class TryOnRequest(BaseModel):
     face_image: str | None = Field(default=None, alias="faceImage")
     pose_label: str | None = Field(default=None, alias="poseLabel")
     body_preset: str | None = Field(default=None, alias="bodyPreset")
+    fit_style: str | None = Field(default="standard", alias="fitStyle")
     material_id: str | None = Field(default="porcelain", alias="materialId")
     seed: int | None = None
 
@@ -817,12 +818,14 @@ def virtual_try_on(request: TryOnRequest):
             status_code=503,
             detail=f"Host PC is still loading startup models ({model_load_stage}). Try again in a moment.",
         )
+    is_back_view = (request.camera_preset or "").strip().lower() == "back"
     if request.openpose_image:
         openpose_img = decode_image_fullres(request.openpose_image)
     elif request.keypoints:
         openpose_img = render_openpose_from_keypoints(
             request.keypoints,
-            include_face_features=bool(request.include_my_face and request.face_image),
+            include_face_features=bool(request.include_my_face and request.face_image and not is_back_view),
+            is_back_view=is_back_view,
         )
     else:
         raise HTTPException(
@@ -832,7 +835,7 @@ def virtual_try_on(request: TryOnRequest):
 
     face_img = (
         decode_image_fullres(request.face_image)
-        if (request.include_my_face and request.face_image)
+        if (request.include_my_face and request.face_image and not is_back_view)
         else None
     )
 
@@ -849,8 +852,9 @@ def virtual_try_on(request: TryOnRequest):
                 backdrop_preset=request.backdrop_preset,
                 pose_label=request.pose_label,
                 body_preset=request.body_preset,
+                fit_style=request.fit_style,
                 material_id=request.material_id,
-                include_my_face=request.include_my_face,
+                include_my_face=request.include_my_face and not is_back_view,
                 face_img=face_img,
                 seed=request.seed,
                 hf_token=HF_TOKEN,
