@@ -898,6 +898,9 @@ async function handleStylist(request, response) {
   const body = await readJsonBody(request, 256_000)
   const event = typeof body.event === "string" ? body.event.trim() : ""
   const dresscode = typeof body.dresscode === "string" ? body.dresscode.trim() : ""
+  const everyday = body.everyday === true
+  const reasonConstraint =
+    typeof body.reasonConstraint === "string" ? body.reasonConstraint.trim() : ""
   const sensorySensitive = Boolean(body.sensorySensitive)
   const stylistNotes = typeof body.stylistNotes === "string" ? body.stylistNotes.trim() : ""
   const weatherSummary = typeof body.weather === "string" ? body.weather.trim() : ""
@@ -925,11 +928,15 @@ async function handleStylist(request, response) {
 
   const sharedPrompt = [
     "You are a practical personal stylist.",
-    `Create one outfit recommendation for this event: ${event}.`,
+    everyday
+      ? "Create one practical, comfortable outfit for everyday wear today, not for a specific event."
+      : `Create one outfit recommendation for this event: ${event}.`,
+    everyday ? "Prioritize versatile pieces suitable for ordinary daily activities." : "",
     dresscode ? `Target dress code: ${dresscode}.` : "",
     weatherSummary ? `Current weather: ${weatherSummary}.` : "",
     sensorySensitive ? "Prioritize soft, breathable, tagless/non-scratchy fabrics." : "",
     stylistNotes ? `Wearer preferences: ${stylistNotes}.` : "",
+    reasonConstraint ? `Additional wearer request: ${reasonConstraint}.` : "",
     wardrobe ? `Available wardrobe: ${wardrobe}. Use only these items.` : "",
     "Return ONLY these labeled lines, with no markdown or extra text:",
     "LABEL: short outfit name",
@@ -947,10 +954,15 @@ async function handleStylist(request, response) {
 
   let generated
   try {
-    const rawOutfits = await Promise.all([
-      requestModel(`${sharedPrompt}\nMake this look polished and understated.`, 0.3),
-      requestModel(`${sharedPrompt}\nMake this look more expressive and distinctive.`, 0.55),
-    ])
+    const prompts = everyday
+      ? [`${sharedPrompt}\nMake the everyday look cohesive and comfortable.`]
+      : [
+          `${sharedPrompt}\nMake this look polished and understated.`,
+          `${sharedPrompt}\nMake this look more expressive and distinctive.`,
+        ]
+    const rawOutfits = await Promise.all(
+      prompts.map((prompt, index) => requestModel(prompt, index === 0 ? 0.3 : 0.55)),
+    )
     const previousOutfitNames = new Set()
     generated = await Promise.all(rawOutfits.map(async (raw, index) => {
       const parsedResponse = raw.match(/```(?:text)?\s*([\s\S]*?)```/i)
@@ -1077,10 +1089,12 @@ async function handleStylist(request, response) {
       }
       const explanationPrompt = [
         "You are a personal stylist explaining one completed outfit to the wearer.",
-        `Event: ${event}.`,
+        everyday ? "Context: everyday wear today, not a specific event." : `Event: ${event}.`,
         dresscode ? `Dress code: ${dresscode}.` : "",
         `Final outfit items: ${finalItems.map((item) => `${item.desc} (${item.type})`).join(", ")}.`,
-        "Explain in 2 or 3 natural sentences why these exact items work together for the event.",
+        everyday
+          ? "Explain in 2 or 3 natural sentences why these exact pieces work for comfortable everyday wear."
+          : "Explain in 2 or 3 natural sentences why these exact items work together for the event.",
         "Mention specific choices such as color, silhouette, comfort, formality, or how the pieces balance one another.",
         "Do not give a new outfit, suggest substitutions, use a fixed list format, or begin with 'For this'. Return only the explanation.",
       ]
@@ -1102,7 +1116,9 @@ async function handleStylist(request, response) {
       return {
         id: index + 1,
         label: finalLabel,
-        dresscodeMatch: `${dresscode || "Chosen dress code"} recommendation`,
+        dresscodeMatch: everyday
+          ? "Everyday wear recommendation"
+          : `${dresscode || "Chosen dress code"} recommendation`,
         rationale,
         whyExplanation: rationale,
         usedFallback,
@@ -1125,9 +1141,11 @@ async function handleStylist(request, response) {
   }
 
   sendJson(response, 200, {
-    advice: `Two ${dresscode || "personalized"} looks selected from your wardrobe: ${generated
-      .map((outfit) => outfit.label)
-      .join(" and ")}.`,
+    advice: everyday
+      ? `Today's everyday outfit: ${generated[0]?.label || "personalized look"}.`
+      : `Two ${dresscode || "personalized"} looks selected from your wardrobe: ${generated
+          .map((outfit) => outfit.label)
+          .join(" and ")}.`,
     outfits: generated,
     model: textModel,
   })

@@ -61,18 +61,21 @@ export function UncertaintyBanner({ message }: { message: string }) {
 
 export function AnimatedStepProgress({
   steps,
+  currentStep,
   intervalMs = 750,
   onComplete,
 }: {
   steps: string[]
+  currentStep?: number
   intervalMs?: number
   onComplete?: () => void
 }) {
-  const [current, setCurrent] = useState(0)
+  const [automaticStep, setAutomaticStep] = useState(0)
 
   useEffect(() => {
+    if (currentStep !== undefined) return
     const timer = setInterval(() => {
-      setCurrent((prev) => {
+      setAutomaticStep((prev) => {
         if (prev < steps.length - 1) return prev + 1
         clearInterval(timer)
         onComplete?.()
@@ -80,7 +83,12 @@ export function AnimatedStepProgress({
       })
     }, intervalMs)
     return () => clearInterval(timer)
-  }, [steps.length, intervalMs, onComplete])
+  }, [steps.length, intervalMs, onComplete, currentStep])
+
+  const current = Math.max(
+    0,
+    Math.min(currentStep ?? automaticStep, steps.length - 1),
+  )
 
   return (
     <div role="status" aria-live="polite" className="space-y-2.5">
@@ -237,7 +245,7 @@ export function ImageUploadWidget({
         className="space-y-2 p-4 rounded-2xl bg-card border border-border"
       >
         <div className="flex justify-between text-[11px] text-muted-foreground font-medium">
-          <span>Uploading item photo…</span>
+          <span>Preparing item photo…</span>
           <span className="text-turquoise font-bold">{progress}%</span>
         </div>
         <div
@@ -245,7 +253,7 @@ export function ImageUploadWidget({
           aria-valuenow={progress}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Uploading item photo"
+          aria-label="Preparing item photo"
           className="h-1.5 rounded-full overflow-hidden bg-muted"
         >
           <div
@@ -262,22 +270,19 @@ export function ImageUploadWidget({
       <div
         role="status"
         aria-live="polite"
-        className="space-y-2.5 p-4 rounded-2xl bg-card border border-border"
+        aria-busy="true"
+        className="space-y-3 p-4 rounded-2xl bg-card border border-border"
       >
         <div className="flex items-center gap-2 text-turquoise text-xs font-semibold">
           <span aria-hidden="true" className="w-2 h-2 rounded-full bg-turquoise animate-ping" />
           <span>{analyzingLabel}</span>
         </div>
-        <div className="space-y-1">
-          {[
-            "Detecting garment silhouette / category",
-            "Reading dominant hue",
-            "Estimating fabric & care tags",
-          ].map((msg, i) => (
-            <p key={i} className="text-[10px] text-muted-foreground">
-              • {msg}
-            </p>
-          ))}
+        <div
+          role="progressbar"
+          aria-label="AI image analysis in progress"
+          className="h-1.5 rounded-full overflow-hidden bg-muted"
+        >
+          <div className="h-full w-full rounded-full bg-turquoise/35 animate-pulse" />
         </div>
       </div>
     )

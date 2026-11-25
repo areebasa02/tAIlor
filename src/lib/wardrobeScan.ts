@@ -31,7 +31,10 @@ export type MockSampleId =
 
 const MAX_BYTES = 10 * 1024 * 1024
 
-export function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
+export function fileToBase64(
+  file: File,
+  onProgress?: (percentage: number) => void,
+): Promise<{ base64: string; mimeType: string }> {
   if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
     return Promise.reject(new Error("Please choose a JPEG, PNG, or WebP image."))
   }
@@ -41,10 +44,16 @@ export function fileToBase64(file: File): Promise<{ base64: string; mimeType: st
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error("Could not read the selected image."))
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100))
+      }
+    }
     reader.onload = () => {
       const result = String(reader.result || "")
       const comma = result.indexOf(",")
       const base64 = comma >= 0 ? result.slice(comma + 1) : result
+      onProgress?.(100)
       resolve({ base64, mimeType: file.type || "image/jpeg" })
     }
     reader.readAsDataURL(file)
