@@ -1,5 +1,6 @@
 import { getApiUrl } from "../lib/aiHost"
-import type { CalendarEvent } from "../types"
+import { parseIcsCalendar } from "../lib/icsParser"
+import type { CalendarEvent, PersonaId } from "../types"
 
 export type CalendarEventsSource = "env" | "url" | "upload" | "mock"
 
@@ -8,6 +9,300 @@ export type CalendarEventsResult = {
   source: CalendarEventsSource
   feedUrl?: string | null
   note?: string
+}
+
+export type StoredCalendarState = {
+  events: CalendarEvent[]
+  source: CalendarEventsSource
+  feedUrl?: string | null
+  note?: string
+  savedAt: number
+}
+
+const CALENDAR_STORAGE_PREFIX = "tailor_calendar_"
+
+export function loadSavedCalendar(personaId: PersonaId): StoredCalendarState | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(`${CALENDAR_STORAGE_PREFIX}${personaId}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredCalendarState
+    if (!Array.isArray(parsed?.events)) return null
+    if (parsed.source !== "upload" && parsed.source !== "url") return null
+    return {
+      events: parsed.events,
+      source: parsed.source,
+      feedUrl: parsed.feedUrl ?? null,
+      note: typeof parsed.note === "string" ? parsed.note : "",
+      savedAt: Number(parsed.savedAt) || Date.now(),
+    }
+  } catch {
+    return null
+  }
+}
+
+export function saveCalendarForPersona(
+  personaId: PersonaId,
+  state: Omit<StoredCalendarState, "savedAt">,
+): void {
+  if (typeof window === "undefined") return
+  try {
+    const payload: StoredCalendarState = {
+      ...state,
+      savedAt: Date.now(),
+    }
+    window.localStorage.setItem(
+      `${CALENDAR_STORAGE_PREFIX}${personaId}`,
+      JSON.stringify(payload),
+    )
+  } catch {
+    // Ignore storage quota or private mode errors.
+  }
+}
+
+export function clearSavedCalendarForPersona(personaId: PersonaId): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.removeItem(`${CALENDAR_STORAGE_PREFIX}${personaId}`)
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+type DemoEventTemplate = {
+  dayOffset: number
+  hour: number
+  minute: number
+  durationMinutes: number
+  summary: string
+  location: string
+  description: string
+}
+
+const PERSONA_DEMO_TEMPLATES: Record<PersonaId, DemoEventTemplate[]> = {
+  eliora: [
+    {
+      dayOffset: 0,
+      hour: 9,
+      minute: 30,
+      durationMinutes: 60,
+      summary: "Morning coffee & journaling",
+      location: "Neighborhood café",
+      description: "Quiet start in soft, comfortable layers.",
+    },
+    {
+      dayOffset: 0,
+      hour: 13,
+      minute: 30,
+      durationMinutes: 90,
+      summary: "Design studio critique",
+      location: "Art building",
+      description: "Creative afternoon session — expressive colors welcome.",
+    },
+    {
+      dayOffset: 0,
+      hour: 19,
+      minute: 0,
+      durationMinutes: 120,
+      summary: "Indie vinyl night",
+      location: "Local listening bar",
+      description: "Evening show with friends — layered pastel-goth vibe.",
+    },
+    {
+      dayOffset: 1,
+      hour: 11,
+      minute: 0,
+      durationMinutes: 60,
+      summary: "Thrift & vintage market",
+      location: "Arts district",
+      description: "Easy walking shoes and breathable fabrics.",
+    },
+  ],
+  ethan: [
+    {
+      dayOffset: 0,
+      hour: 9,
+      minute: 0,
+      durationMinutes: 45,
+      summary: "Coffee with mentor",
+      location: "Midtown café",
+      description: "Informational catch-up — smart-casual.",
+    },
+    {
+      dayOffset: 0,
+      hour: 13,
+      minute: 30,
+      durationMinutes: 60,
+      summary: "Project presentation",
+      location: "Conference room B",
+      description: "Polished business-casual presentation.",
+    },
+    {
+      dayOffset: 0,
+      hour: 18,
+      minute: 30,
+      durationMinutes: 90,
+      summary: "Alumni networking dinner",
+      location: "Downtown bistro",
+      description: "Evening mixer — smart casual.",
+    },
+    {
+      dayOffset: 1,
+      hour: 12,
+      minute: 0,
+      durationMinutes: 60,
+      summary: "Lunch with college friends",
+      location: "Garden patio",
+      description: "Relaxed midday catch-up.",
+    },
+  ],
+  jordan: [
+    {
+      dayOffset: 0,
+      hour: 9,
+      minute: 30,
+      durationMinutes: 60,
+      summary: "Morning walk & errands",
+      location: "Local park",
+      description: "Low-key morning outdoors in comfortable basics.",
+    },
+    {
+      dayOffset: 0,
+      hour: 13,
+      minute: 0,
+      durationMinutes: 120,
+      summary: "Afternoon library work",
+      location: "Campus library",
+      description: "Focused study block — relaxed, breathable layers.",
+    },
+    {
+      dayOffset: 0,
+      hour: 18,
+      minute: 30,
+      durationMinutes: 90,
+      summary: "Casual dinner with friends",
+      location: "Neighborhood tacos",
+      description: "Easy evening hangout.",
+    },
+    {
+      dayOffset: 1,
+      hour: 10,
+      minute: 30,
+      durationMinutes: 60,
+      summary: "Weekend farmers market",
+      location: "Town square",
+      description: "Simple everyday outfit for walking.",
+    },
+  ],
+  josephine: [
+    {
+      dayOffset: 0,
+      hour: 10,
+      minute: 0,
+      durationMinutes: 75,
+      summary: "Book club meetup",
+      location: "Community center",
+      description: "Cozy morning discussion in soft natural fibers.",
+    },
+    {
+      dayOffset: 0,
+      hour: 14,
+      minute: 0,
+      durationMinutes: 90,
+      summary: "Museum audio tour",
+      location: "City art museum",
+      description: "Afternoon exhibit walk — comfortable shoes.",
+    },
+    {
+      dayOffset: 0,
+      hour: 18,
+      minute: 30,
+      durationMinutes: 90,
+      summary: "Acoustic jazz evening",
+      location: "Listening room",
+      description: "Relaxed evening out with high-contrast layers.",
+    },
+    {
+      dayOffset: 1,
+      hour: 11,
+      minute: 0,
+      durationMinutes: 60,
+      summary: "Botanical garden stroll",
+      location: "Conservatory",
+      description: "Light layers for indoor/outdoor temps.",
+    },
+  ],
+  areeba: [
+    {
+      dayOffset: 0,
+      hour: 9,
+      minute: 30,
+      durationMinutes: 45,
+      summary: "Morning espresso & sketch",
+      location: "Corner bakery",
+      description: "Creative start before campus.",
+    },
+    {
+      dayOffset: 0,
+      hour: 13,
+      minute: 0,
+      durationMinutes: 90,
+      summary: "Senior capstone workshop",
+      location: "Campus studio",
+      description: "Smart-casual collaborative session.",
+    },
+    {
+      dayOffset: 0,
+      hour: 18,
+      minute: 30,
+      durationMinutes: 90,
+      summary: "Gallery opening",
+      location: "Arts district",
+      description: "Creative chic evening with statement accents.",
+    },
+    {
+      dayOffset: 1,
+      hour: 12,
+      minute: 30,
+      durationMinutes: 60,
+      summary: "Brunch with classmates",
+      location: "Sunny courtyard",
+      description: "Light, breathable layers for humid weather.",
+    },
+  ],
+}
+
+export function getPersonaDemoEvents(
+  personaId: PersonaId,
+  now = new Date(),
+): CalendarEvent[] {
+  const templates = PERSONA_DEMO_TEMPLATES[personaId] || PERSONA_DEMO_TEMPLATES.eliora
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const d = now.getDate()
+
+  return templates.map((tpl) => {
+    const start = new Date(y, m, d + tpl.dayOffset, tpl.hour, tpl.minute, 0, 0)
+    const end = new Date(
+      y,
+      m,
+      d + tpl.dayOffset,
+      tpl.hour,
+      tpl.minute + tpl.durationMinutes,
+      0,
+      0,
+    )
+    return {
+      id: `demo-${personaId}-${tpl.dayOffset}-${tpl.summary.toLowerCase().replace(/\s+/g, "-")}`,
+      summary: tpl.summary,
+      dtstart: start.toISOString(),
+      dtend: end.toISOString(),
+      location: tpl.location,
+      description: tpl.description,
+      allDay: false,
+      timeLabel: start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    }
+  })
 }
 
 function normalizeEvent(raw: Partial<CalendarEvent> & { title?: string; start?: string; end?: string }): CalendarEvent | null {
@@ -93,15 +388,23 @@ export async function fetchCalendarEventsFromUrl(
   url: string,
   signal?: AbortSignal,
 ): Promise<CalendarEventsResult> {
-  return postCalendarEvents({ url }, signal)
+  return postCalendarEvents({ url, limit: 200, horizonHours: 1440 }, signal)
 }
 
-/** Parse an uploaded .ics file through the Node parser. */
+/** Parse an uploaded .ics file directly in the browser (no backend required). */
 export async function parseUploadedIcs(
   icsText: string,
-  signal?: AbortSignal,
 ): Promise<CalendarEventsResult> {
-  return postCalendarEvents({ ics: icsText }, signal)
+  const events = parseIcsCalendar(icsText, {
+    pastDays: 7,
+    futureDays: 60,
+    limit: 200,
+  })
+  return {
+    events,
+    source: "upload",
+    feedUrl: null,
+  }
 }
 
 export function formatEventForStylist(event: CalendarEvent): string {

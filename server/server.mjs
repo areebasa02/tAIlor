@@ -1353,9 +1353,9 @@ function buildMockCalendarEvents(now = new Date()) {
       allDay: false,
     })
   return [
-    mk(9, 30, 30, "Team standup", "Zoom", "Quick sync before the day starts."),
-    mk(12, 15, 60, "Client lunch", "Downtown bistro", "Business-casual lunch meeting."),
-    mk(18, 30, 90, "Networking dinner", "Rooftop venue", "Evening mixer — smart casual."),
+    mk(9, 30, 60, "Morning coffee & walk", "Neighborhood café", "Relaxed start to the day."),
+    mk(13, 0, 60, "Afternoon study / work block", "Local studio", "Comfortable, breathable layers."),
+    mk(18, 30, 90, "Dinner with friends", "Downtown bistro", "Casual evening out."),
   ].filter(Boolean)
 }
 
@@ -1430,8 +1430,8 @@ function sanitizeIncomingCalendarEvents(rawEvents) {
 }
 
 async function resolveCalendarEvents(body = {}) {
-  const limit = Math.max(1, Math.min(20, Number(body.limit) || 8))
-  const horizonHours = Math.max(6, Math.min(72, Number(body.horizonHours) || 36))
+  const limit = Math.max(1, Math.min(200, Number(body.limit) || 8))
+  const horizonHours = Math.max(6, Math.min(1440, Number(body.horizonHours) || 36))
   const icsText = typeof body.ics === "string" ? body.ics : ""
   const requestedUrl = typeof body.url === "string" ? body.url.trim() : ""
   const envUrl = typeof process.env.GOOGLE_CALENDAR_ICS_URL === "string"
@@ -1602,8 +1602,10 @@ async function handleWeatherAdvice(request, response) {
       : [],
   }
 
+  const hasExplicitCalendar =
+    Array.isArray(body?.calendarEvents) || Array.isArray(body?.events)
   let calendarEvents = sanitizeIncomingCalendarEvents(body?.calendarEvents || body?.events)
-  if (calendarEvents.length === 0) {
+  if (!hasExplicitCalendar && calendarEvents.length === 0) {
     const resolved = await resolveCalendarEvents({})
     if (!resolved.error && Array.isArray(resolved.events)) {
       calendarEvents = resolved.events

@@ -33,10 +33,15 @@ import {
   isFullBodyGarment,
 } from "../lib/garmentCategories"
 import {
+  clearSavedCalendarForPersona,
   fetchCalendarEvents,
   fetchCalendarEventsFromUrl,
+  getPersonaDemoEvents,
+  loadSavedCalendar,
+  saveCalendarForPersona,
   type CalendarEventsSource,
 } from "../services/calendarService"
+import { getUpcomingEventsForWeather } from "../lib/icsParser"
 import {
   aggregateWearCounts,
   outfitKeyFromLabel,
@@ -1416,6 +1421,7 @@ export interface AppContextType {
   refreshCalendar: () => Promise<void>
   setCalendarFromUpload: (events: CalendarEvent[], note?: string) => void
   setCalendarFromUrl: (url: string) => Promise<void>
+  clearCalendar: () => void
 
   // User testing script state: stylist tab first-run network error
   stylistNetworkErrorTriggered: boolean
@@ -1957,30 +1963,58 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   weatherRef.current = weather
   const lastSuccessfulAdviceKeyRef = useRef<string | null>(null)
 
+  const loadDefaultPersonaCalendar = (personaId: PersonaId, personaName: string) => {
+    const demoEvents = getPersonaDemoEvents(personaId)
+    setCalendarEvents(demoEvents)
+    setCalendarSource("mock")
+    setCalendarNote(`Demo schedule for ${personaName} — upload a .ics file or connect a URL anytime.`)
+    lastSuccessfulAdviceKeyRef.current = null
+    setAdviceRefreshNonce((n) => n + 1)
+  }
+
   const refreshCalendar = async () => {
+    const saved = loadSavedCalendar(currentUser.id)
+    if (saved?.source === "upload") {
+      setCalendarEvents(saved.events)
+      setCalendarSource("upload")
+      setCalendarNote(saved.note || `Loaded ${saved.events.length} event${saved.events.length === 1 ? "" : "s"} from .ics.`)
+      return
+    }
+    if (saved?.source === "url" && saved.feedUrl) {
+      await setCalendarFromUrl(saved.feedUrl)
+      return
+    }
     setCalendarLoading(true)
     try {
       const result = await fetchCalendarEvents()
-      setCalendarEvents(result.events)
-      setCalendarSource(result.source)
-      setCalendarNote(result.note || "")
+      if (result.source === "env" && result.events.length > 0) {
+        setCalendarEvents(result.events)
+        setCalendarSource("env")
+        setCalendarNote(result.note || "")
+      } else {
+        loadDefaultPersonaCalendar(currentUser.id, currentUser.name)
+      }
       lastSuccessfulAdviceKeyRef.current = null
       setAdviceRefreshNonce((n) => n + 1)
     } catch {
-      // Keep any previously loaded events if the host is briefly offline.
-      if (calendarEventsRef.current.length === 0) {
-        setCalendarSource("mock")
-        setCalendarNote("Calendar host unreachable — try uploading a .ics file in Ask AI.")
-      }
+      loadDefaultPersonaCalendar(currentUser.id, currentUser.name)
     } finally {
       setCalendarLoading(false)
     }
   }
 
   const setCalendarFromUpload = (events: CalendarEvent[], note?: string) => {
+    const resolvedNote =
+      note || `Loaded ${events.length} event${events.length === 1 ? "" : "s"} from .ics.`
     setCalendarEvents(events)
     setCalendarSource("upload")
-    setCalendarNote(note || `Loaded ${events.length} upcoming event${events.length === 1 ? "" : "s"} from .ics.`)
+    setCalendarNote(resolvedNote)
+    saveCalendarForPersona(currentUser.id, {
+      events,
+      source: "upload",
+      feedUrl: null,
+      note: resolvedNote,
+    })
     lastSuccessfulAdviceKeyRef.current = null
     setAdviceRefreshNonce((n) => n + 1)
   }
@@ -1994,18 +2028,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCalendarLoading(true)
     try {
       const result = await fetchCalendarEventsFromUrl(trimmed)
+      const resolvedNote =
+        result.note ||
+        `Loaded ${result.events.length} event${result.events.length === 1 ? "" : "s"} from URL.`
       setCalendarEvents(result.events)
       setCalendarSource(result.source)
-      setCalendarNote(
-        result.note ||
-          `Loaded ${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} from URL.`,
-      )
+      setCalendarNote(resolvedNote)
+      saveCalendarForPersona(currentUser.id, {
+        events: result.events,
+        source: result.source,
+        feedUrl: trimmed,
+        note: resolvedNote,
+      })
       lastSuccessfulAdviceKeyRef.current = null
       setAdviceRefreshNonce((n) => n + 1)
       showToast(
         "Calendar feed connected",
         result.events.length > 0
-          ? `${result.events.length} upcoming event${result.events.length === 1 ? "" : "s"} loaded.`
+          ? `${result.events.length} event${result.events.length === 1 ? "" : "s"} loaded.`
           : "Feed connected, but no upcoming events were found.",
         result.events.length > 0 ? "success" : "info",
       )
@@ -2020,12 +2060,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const clearCalendar = () => {
+    clearSavedCalendarForPersona(currentUser.id)
+    loadDefaultPersonaCalendar(currentUser.id, currentUser.name)
+    showToast("Calendar reset", `Switched back to ${currentUser.name}'s demo schedule.`, "info")
+  }
+
   useEffect(() => {
     if (!isAuthenticated) return
-    void refreshCalendar()
-    // Intentionally load once per auth session; uploads call setCalendarFromUpload.
+    const saved = loadSavedCalendar(currentUser.id)
+    if (saved) {
+      setCalendarEvents(saved.events)
+      setCalendarSource(saved.source)
+      setCalendarNote(saved.note || "")
+      lastSuccessfulAdviceKeyRef.current = null
+      setAdviceRefreshNonce((n) => n + 1)
+      return
+    }
+    loadDefaultPersonaCalendar(currentUser.id, currentUser.name)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated])
+  }, [isAuthenticated, currentUser.id])
 
   useEffect(() => {
     let cancelled = false
@@ -2099,7 +2153,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       snapshotWeather,
       snapshotUser,
       controller.signal,
-      snapshotCalendar,
+      getUpcomingEventsForWeather(snapshotCalendar),
     )
       .then((result) => {
         if (controller.signal.aborted) return
@@ -3118,6 +3172,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshCalendar,
         setCalendarFromUpload,
         setCalendarFromUrl,
+        clearCalendar,
         stylistNetworkErrorTriggered,
         setStylistNetworkErrorTriggered,
         fontScale,

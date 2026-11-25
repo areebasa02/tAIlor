@@ -12,6 +12,7 @@ export default function CalendarTab() {
     refreshCalendar,
     setCalendarFromUpload,
     setCalendarFromUrl,
+    clearCalendar,
     showToast,
   } = useApp()
   const icsInputRef = useRef<HTMLInputElement | null>(null)
@@ -156,6 +157,16 @@ export default function CalendarTab() {
           >
             Refresh feed
           </button>
+          {(calendarSource === "upload" || calendarSource === "url") && (
+            <button
+              type="button"
+              onClick={() => clearCalendar()}
+              disabled={busy}
+              className="min-h-[34px] px-2.5 rounded-full text-[11px] font-extrabold border-2 border-border bg-card text-foreground hover:border-pink cursor-pointer disabled:opacity-50"
+            >
+              Clear &amp; use demo
+            </button>
+          )}
           {calendarNote ? (
             <p className="text-[11px] font-semibold text-muted-foreground leading-snug self-center">
               {calendarNote}
