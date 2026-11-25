@@ -443,11 +443,18 @@ export async function fetchLiveWeather(options?: {
  * Ask the local Qwen text model for short clothing advice tailored to both
  * the live Open-Meteo weather metrics and the user's preferences.
  */
+export type WeatherAdviceOutfitContext = {
+  wardrobeItems?: string[]
+  currentOutfitLabel?: string
+  currentOutfitItems?: string[]
+}
+
 export async function fetchAiWeatherAdvice(
   weather: WeatherData,
   user: UserProfile,
   signal?: AbortSignal,
   calendarEvents: CalendarEvent[] = [],
+  outfitContext?: WeatherAdviceOutfitContext,
 ): Promise<{ advice: string; model?: string }> {
   const derived = user.quizProfile?.derived
   const response = await fetch(getApiUrl("/api/weather/advice"), {
@@ -489,6 +496,13 @@ export async function fetchAiWeatherAdvice(
         allDay: event.allDay,
         timeLabel: event.timeLabel,
       })),
+      outfitContext: outfitContext
+        ? {
+            wardrobeItems: outfitContext.wardrobeItems?.slice(0, 35),
+            currentOutfitLabel: outfitContext.currentOutfitLabel,
+            currentOutfitItems: outfitContext.currentOutfitItems?.slice(0, 6),
+          }
+        : undefined,
     }),
   })
 

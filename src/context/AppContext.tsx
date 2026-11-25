@@ -1396,7 +1396,11 @@ export interface AppContextType {
   removeCustomStyle: (directionKey: string) => void
   currentOutfit: Outfit
   todayOutfit: Outfit | null
-  generateTodayOutfit: (reasonConstraint?: string, force?: boolean) => Promise<Outfit>
+  generateTodayOutfit: (
+    reasonConstraint?: string,
+    force?: boolean,
+    directionOverride?: Direction,
+  ) => Promise<Outfit>
   wornToday: boolean
   setWornToday: (val: boolean) => void
   regenerateOutfit: (reasonConstraint?: string) => void
@@ -1406,6 +1410,7 @@ export interface AppContextType {
 
   // Weather state in AppContext
   weather: WeatherData
+  liveWeatherReady: boolean
   weatherAdviceLoading: boolean
   weatherLocationSource: WeatherLocationSource | null
   weatherLocating: boolean
@@ -1459,23 +1464,52 @@ export interface AppContextType {
 
 type StoredTodayOutfit = {
   date: string
-  outfit: Outfit
+  weatherSignature?: string
+  byDirection: Record<string, Outfit>
+}
+
+function computeWeatherSignature(w: WeatherData): string {
+  const parsedTemp =
+    typeof w.tempF === "number"
+      ? w.tempF
+      : Number.parseInt(String(w.temp || "").replace(/[^\d-]/g, ""), 10)
+  const tempBand = Number.isFinite(parsedTemp) ? Math.round(parsedTemp / 10) * 10 : 70
+  const cond = String(w.conditionLabel || w.condition || "").toLowerCase()
+  const wetFlag = /rain|storm|shower|snow|sleet|drizzle/.test(cond) ? "wet" : "dry"
+  return `${(w.city || "").toLowerCase()}::${tempBand}::${wetFlag}`
+}
+
+function formatWeatherForStylist(w: WeatherData): string {
+  const parts = [
+    w.city ? `${w.city}` : "",
+    w.conditionLabel || w.condition || "",
+    typeof w.tempF === "number" ? `${w.tempF}°F` : w.temp || "",
+    typeof w.feelsLikeF === "number" && w.feelsLikeF !== w.tempF
+      ? `feels like ${w.feelsLikeF}°F`
+      : "",
+    typeof w.humidity === "number" ? `humidity ${w.humidity}%` : "",
+    typeof w.windMph === "number" ? `wind ${w.windMph} mph` : "",
+  ].filter(Boolean)
+  return parts.join(", ")
 }
 
 function getStoredTodayOutfit(personaId: PersonaId): StoredTodayOutfit | null {
   try {
     const raw = localStorage.getItem(`tailor_today_outfit_${personaId}`)
     if (!raw) return null
-    const stored = JSON.parse(raw) as StoredTodayOutfit
+    const stored = JSON.parse(raw) as Partial<StoredTodayOutfit>
     if (
       stored.date !== toIsoDay() ||
-      !stored.outfit ||
-      typeof stored.outfit.label !== "string" ||
-      !Array.isArray(stored.outfit.items)
+      !stored.byDirection ||
+      typeof stored.byDirection !== "object"
     ) {
       return null
     }
-    return stored
+    return {
+      date: stored.date,
+      weatherSignature: stored.weatherSignature,
+      byDirection: stored.byDirection,
+    }
   } catch {
     return null
   }
@@ -2020,7 +2054,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   const setCalendarFromUrl = async (url: string) => {
-    const trimmed = url.trim()
+    const trimmed = url.trim().replace(/^webcals?:\/\//i, "https://")
     if (!trimmed) {
       showToast("Calendar URL", "Paste a Google Calendar .ics link first.", "warning")
       return
@@ -2135,18 +2169,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     .map((event) => `${event.id}|${event.dtstart}|${event.summary}`)
     .join("::")
 
+  const [todayOutfitGeneratingCount, setTodayOutfitGeneratingCount] = useState(0)
+
+  const currentWeatherSignature = computeWeatherSignature(weather)
+  const validTodayByDirection =
+    todayOutfitRecord?.date === toIsoDay() &&
+    (!liveWeatherReady ||
+      !todayOutfitRecord.weatherSignature ||
+      todayOutfitRecord.weatherSignature === currentWeatherSignature)
+      ? todayOutfitRecord.byDirection
+      : null
+
+  const todayOutfit = validTodayByDirection
+    ? (validTodayByDirection[selectedDirection] ?? null)
+    : null
+  const currentOutfit =
+    todayOutfit || outfits[selectedDirection] || Object.values(outfits)[0]
+
+  const outfitAdviceKey = (currentOutfit?.items || [])
+    .map((item) => item.desc)
+    .join("|")
+
   useEffect(() => {
     if (!isAuthenticated || !liveWeatherReady) return
     if (aiHostStatus !== "online" || aiHostTextLoaded === false) return
     if (aiHostActiveTask === "try-on") return
+    if (todayOutfitGeneratingCount > 0) return
 
-    const requestKey = `${weatherDataKey}::${prefKey}::${calendarKey}::${adviceRefreshNonce}`
+    const requestKey = `${weatherDataKey}::${prefKey}::${calendarKey}::${outfitAdviceKey}::${adviceRefreshNonce}`
     if (lastSuccessfulAdviceKeyRef.current === requestKey) return
 
     const controller = new AbortController()
     const snapshotWeather = weatherRef.current
     const snapshotUser = currentUser
     const snapshotCalendar = calendarEventsRef.current
+    const cleanWardrobe = wardrobe.filter(
+      (item) => item.status !== "dirty" && item.status !== "washing",
+    )
+    const availableWardrobe = cleanWardrobe.length >= 3 ? cleanWardrobe : wardrobe
+    const outfitCtx = {
+      wardrobeItems: availableWardrobe.map((w) => `${w.name} (${w.category})`),
+      currentOutfitLabel: currentOutfit?.label,
+      currentOutfitItems: currentOutfit?.items?.map((i) => `${i.desc} (${i.type})`),
+    }
     setWeatherAdviceLoading(true)
 
     void fetchAiWeatherAdvice(
@@ -2154,6 +2219,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       snapshotUser,
       controller.signal,
       getUpcomingEventsForWeather(snapshotCalendar),
+      outfitCtx,
     )
       .then((result) => {
         if (controller.signal.aborted) return
@@ -2184,6 +2250,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     weatherDataKey,
     prefKey,
     calendarKey,
+    outfitAdviceKey,
+    todayOutfitGeneratingCount,
     aiHostStatus,
     aiHostTextLoaded,
     aiHostActiveTask,
@@ -2191,38 +2259,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     currentUser,
   ])
 
-  const todayOutfit =
-    todayOutfitRecord?.date === toIsoDay() ? todayOutfitRecord.outfit : null
-  const currentOutfit =
-    todayOutfit || outfits[selectedDirection] || Object.values(outfits)[0]
-
-  const setTodayOutfit = (outfit: Outfit | null) => {
+  const setTodayOutfitForDirection = (dir: Direction, outfit: Outfit | null) => {
     const date = toIsoDay()
     const key = `tailor_today_outfit_${currentUser.id}`
-    try {
+    setTodayOutfitRecord((prev) => {
+      const baseMap =
+        prev?.date === date && prev.weatherSignature === currentWeatherSignature
+          ? { ...prev.byDirection }
+          : {}
       if (outfit) {
-        localStorage.setItem(key, JSON.stringify({ date, outfit }))
+        baseMap[dir] = outfit
       } else {
-        localStorage.removeItem(key)
+        delete baseMap[dir]
       }
-    } catch (error) {
-      console.error("Could not save today's outfit.", error)
-    }
-    setTodayOutfitRecord(outfit ? { date, outfit } : null)
+      const nextRecord: StoredTodayOutfit = {
+        date,
+        weatherSignature: currentWeatherSignature,
+        byDirection: baseMap,
+      }
+      try {
+        localStorage.setItem(key, JSON.stringify(nextRecord))
+      } catch (error) {
+        console.error("Could not save today's outfit.", error)
+      }
+      return nextRecord
+    })
   }
 
   const generateTodayOutfit = useCallback(
-    (reasonConstraint?: string, force = false): Promise<Outfit> => {
+    (
+      reasonConstraint?: string,
+      force = false,
+      directionOverride?: Direction,
+    ): Promise<Outfit> => {
       const personaId = currentUser.id
+      const targetDirection = directionOverride || selectedDirection
       const date = toIsoDay()
-      const requestKey = `${personaId}:${date}`
-      const cached =
-        todayOutfitRecord?.date === date ? todayOutfitRecord.outfit : null
+      const weatherSnapshot = weatherRef.current
+      const weatherSig = computeWeatherSignature(weatherSnapshot)
+      const requestKey = `${personaId}:${date}:${targetDirection}:${weatherSig}`
+
+      const existingMap =
+        todayOutfitRecord?.date === date &&
+        (!todayOutfitRecord.weatherSignature ||
+          todayOutfitRecord.weatherSignature === weatherSig)
+          ? todayOutfitRecord.byDirection
+          : {}
+      const cached = existingMap[targetDirection] ?? null
       if (!force && cached) return Promise.resolve(cached)
 
       const inFlight = todayOutfitRequestsRef.current.get(requestKey)
-      if (inFlight) return inFlight
+      if (!force && inFlight) return inFlight
 
+      const preset = outfits[targetDirection]
+      const avoidSet = new Set<string>()
+      // Avoid primary pieces already used by OTHER style directions today so each pill looks distinct.
+      for (const [dirKey, otherOutfit] of Object.entries(existingMap)) {
+        if (dirKey === targetDirection || !otherOutfit?.items) continue
+        for (const item of otherOutfit.items) {
+          const t = item.type.toLowerCase()
+          if (t.includes("top") || t.includes("bottom") || t.includes("full")) {
+            avoidSet.add(item.desc)
+          }
+        }
+      }
+      // Also avoid repeating the currently displayed outfit's primary pieces when regenerating/rejecting.
+      if (force && cached?.items) {
+        for (const item of cached.items) {
+          const t = item.type.toLowerCase()
+          if (t.includes("top") || t.includes("bottom") || t.includes("full")) {
+            avoidSet.add(item.desc)
+          }
+        }
+      }
+
+      const weatherSummary = formatWeatherForStylist(weatherSnapshot)
+      const upcomingEvents = getUpcomingEventsForWeather(calendarEventsRef.current)
+
+      setTodayOutfitGeneratingCount((c) => c + 1)
       const request = (async () => {
         const cleanWardrobe = wardrobe.filter(
           (item) => item.status !== "dirty" && item.status !== "washing",
@@ -2236,11 +2350,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             Accept: "application/json",
           },
           body: JSON.stringify({
-            event: "Everyday wear today.",
+            event: preset?.label
+              ? `Today's ${preset.label} outfit.`
+              : "Everyday wear today.",
             everyday: true,
-            dresscode: "Casual",
+            forceRegenerate: force,
+            styleDirection: {
+              key: targetDirection,
+              label: preset?.label || targetDirection,
+              tagline: preset?.tagline || "",
+              description: preset?.rationale || "",
+            },
+            avoidItems: [...avoidSet],
+            calendarEvents: upcomingEvents,
             reasonConstraint,
-            weather: weather.condition,
+            weather: weatherSummary || weatherSnapshot.condition,
             sensorySensitive: currentUser.accessibility.sensorySensitive,
             stylistNotes: [currentUser.preferredStyle, currentUser.stylistNotes]
               .filter(Boolean)
@@ -2283,36 +2407,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         const outfit: Outfit = {
-          id: `today-${date}-${Date.now()}`,
-          direction: "Everyday",
-          label: generated.label || "Everyday Outfit",
-          tagline: "Everyday outfit",
-          rationale: generated.rationale || result.advice || "Selected for everyday wear.",
+          id: `today-${date}-${targetDirection}-${Date.now()}`,
+          direction: targetDirection,
+          label: preset?.label || generated.label || "Everyday Outfit",
+          tagline: generated.label || preset?.tagline || "Tailored for today",
+          rationale:
+            generated.rationale ||
+            result.advice ||
+            preset?.rationale ||
+            "Selected for today's weather and style.",
           items: generated.items.map((item) => ({
             ...item,
-            reason: "Selected for comfortable everyday wear.",
+            reason: `Selected for ${preset?.label || "today's"} styling & ${weatherSnapshot.temp} weather.`,
           })),
-          accent: THEME_COLORS.pink,
-          bg: "rgba(206,0,90,0.08)",
+          accent: preset?.accent || THEME_COLORS.pink,
+          bg: preset?.bg || "rgba(206,0,90,0.08)",
+          isCustom: preset?.isCustom,
           whyDetails: {
-            weatherReason: `Considered today's weather: ${weather.condition}.`,
-            colorHarmony: generated.rationale || "Pieces selected to work together.",
-            wearFrequency: "Recommended for everyday wear.",
+            weatherReason: `Calibrated for live weather in ${weatherSnapshot.city}: ${weatherSnapshot.condition}.`,
+            colorHarmony: generated.rationale || "Pieces selected to harmonize with your style direction.",
+            wearFrequency: "Rotated across styles to avoid repeating the same garments.",
             sensoryComfort: currentUser.accessibility.sensorySensitive
-              ? "Prioritized sensory comfort."
-              : "Balanced for comfortable daily wear.",
+              ? "Prioritized soft, breathable, sensory-friendly fabrics."
+              : "Balanced for comfortable all-day wear.",
           },
         }
-        try {
-          localStorage.setItem(
-            `tailor_today_outfit_${personaId}`,
-            JSON.stringify({ date, outfit }),
-          )
-        } catch (error) {
-          console.error("Could not save today's outfit.", error)
-        }
+
         if (currentUser.id === personaId && toIsoDay() === date) {
-          setTodayOutfitRecord({ date, outfit })
+          setTodayOutfitRecord((prev) => {
+            const baseMap =
+              prev?.date === date && prev.weatherSignature === weatherSig
+                ? { ...prev.byDirection }
+                : {}
+            baseMap[targetDirection] = outfit
+            const nextRecord: StoredTodayOutfit = {
+              date,
+              weatherSignature: weatherSig,
+              byDirection: baseMap,
+            }
+            try {
+              localStorage.setItem(
+                `tailor_today_outfit_${personaId}`,
+                JSON.stringify(nextRecord),
+              )
+            } catch (error) {
+              console.error("Could not save today's outfit.", error)
+            }
+            return nextRecord
+          })
           setWornToday(false)
         }
         return outfit
@@ -2320,6 +2462,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       todayOutfitRequestsRef.current.set(requestKey, request)
       const clearRequest = () => {
+        setTodayOutfitGeneratingCount((c) => Math.max(0, c - 1))
         if (todayOutfitRequestsRef.current.get(requestKey) === request) {
           todayOutfitRequestsRef.current.delete(requestKey)
         }
@@ -2327,7 +2470,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void request.then(clearRequest, clearRequest)
       return request
     },
-    [currentUser, todayOutfitRecord, wardrobe, weather.condition],
+    [currentUser, outfits, selectedDirection, todayOutfitRecord, wardrobe],
   )
 
   const applyWeatherResult = (
@@ -2535,7 +2678,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         emoji: getGarmentEmoji(replacementItem.category, replacementItem.name),
         reason: `Manually swapped for ${replacementItem.colorName}.`,
       }
-      setTodayOutfit({ ...todayOutfit, items: updatedItems })
+      setTodayOutfitForDirection(selectedDirection, {
+        ...todayOutfit,
+        items: updatedItems,
+      })
       showToast("Item Swapped", `Replaced with ${replacementItem.name}.`, "success")
       return
     }
@@ -3159,6 +3305,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         undoOutfit,
         hasUndo: outfitHistory.length > 0,
         weather,
+        liveWeatherReady,
         weatherAdviceLoading,
         weatherLocationSource,
         weatherLocating,

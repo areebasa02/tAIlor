@@ -426,6 +426,79 @@ export function parseIcsCalendar(
 }
 
 /**
+ * Extract `.ics` text contents from a Google Calendar export `.zip` archive
+ * directly in the browser using the Web Streams `DecompressionStream` API.
+ */
+export async function extractIcsTextsFromZip(buffer: ArrayBuffer): Promise<string[]> {
+  const bytes = new Uint8Array(buffer)
+  const view = new DataView(buffer)
+
+  // Locate End of Central Directory (EOCD) signature 0x06054b50.
+  let eocdOffset = -1
+  const minOffset = Math.max(0, bytes.length - 65557)
+  for (let i = bytes.length - 22; i >= minOffset; i -= 1) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i
+      break
+    }
+  }
+  if (eocdOffset < 0) {
+    throw new Error("Could not read that .zip archive. Please unzip it and upload the .ics file.")
+  }
+
+  const totalEntries = view.getUint16(eocdOffset + 10, true)
+  const cdOffset = view.getUint32(eocdOffset + 16, true)
+  const decoder = new TextDecoder("utf-8")
+  const icsTexts: string[] = []
+
+  let ptr = cdOffset
+  for (let idx = 0; idx < totalEntries && ptr + 46 <= bytes.length; idx += 1) {
+    if (view.getUint32(ptr, true) !== 0x02014b50) break
+    const method = view.getUint16(ptr + 10, true)
+    const compressedSize = view.getUint32(ptr + 20, true)
+    const nameLen = view.getUint16(ptr + 28, true)
+    const extraLen = view.getUint16(ptr + 30, true)
+    const commentLen = view.getUint16(ptr + 32, true)
+    const localHeaderOffset = view.getUint32(ptr + 42, true)
+
+    const fileName = decoder.decode(bytes.subarray(ptr + 46, ptr + 46 + nameLen))
+    ptr += 46 + nameLen + extraLen + commentLen
+
+    if (
+      !/\.ics$/i.test(fileName) ||
+      fileName.startsWith("__MACOSX/") ||
+      /holiday/i.test(fileName)
+    ) {
+      continue
+    }
+
+    if (
+      localHeaderOffset + 30 > bytes.length ||
+      view.getUint32(localHeaderOffset, true) !== 0x04034b50
+    ) {
+      continue
+    }
+    const localNameLen = view.getUint16(localHeaderOffset + 26, true)
+    const localExtraLen = view.getUint16(localHeaderOffset + 28, true)
+    const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen
+    const compressedSlice = bytes.subarray(dataStart, dataStart + compressedSize)
+
+    if (method === 0) {
+      icsTexts.push(decoder.decode(compressedSlice))
+    } else if (method === 8 && typeof DecompressionStream !== "undefined") {
+      const ds = new DecompressionStream("deflate-raw")
+      const writer = ds.writable.getWriter()
+      void writer.write(compressedSlice)
+      void writer.close()
+      const text = await new Response(ds.readable).text()
+      if (text.trim()) icsTexts.push(text)
+    }
+  }
+
+  return icsTexts
+}
+
+/**
  * Filter a full calendar down to today's and near-term (next 36h) events
  * for the AI climate tip prompt.
  */

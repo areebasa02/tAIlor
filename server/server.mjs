@@ -893,22 +893,65 @@ function parseOutfitResponse(raw) {
   return items.length ? { label, items } : null
 }
 
+function hashString(str) {
+  let h = 2166136261
+  for (let i = 0; i < str.length; i += 1) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+function rotateArray(items, offset) {
+  if (!Array.isArray(items) || items.length <= 1) return items
+  const shift = ((offset % items.length) + items.length) % items.length
+  if (shift === 0) return items
+  return [...items.slice(shift), ...items.slice(0, shift)]
+}
+
 async function handleStylist(request, response) {
   const requestId = Math.random().toString(36).slice(2, 8)
   const body = await readJsonBody(request, 256_000)
   const event = typeof body.event === "string" ? body.event.trim() : ""
   const dresscode = typeof body.dresscode === "string" ? body.dresscode.trim() : ""
   const everyday = body.everyday === true
+  const forceRegenerate = body.forceRegenerate === true
   const reasonConstraint =
     typeof body.reasonConstraint === "string" ? body.reasonConstraint.trim() : ""
+  const rawStyleDir =
+    body.styleDirection && typeof body.styleDirection === "object"
+      ? body.styleDirection
+      : null
+  const styleDirection = rawStyleDir
+    ? {
+        key: typeof rawStyleDir.key === "string" ? rawStyleDir.key.trim().slice(0, 60) : "",
+        label: typeof rawStyleDir.label === "string" ? rawStyleDir.label.trim().slice(0, 80) : "",
+        tagline: typeof rawStyleDir.tagline === "string" ? rawStyleDir.tagline.trim().slice(0, 120) : "",
+        description:
+          typeof rawStyleDir.description === "string"
+            ? rawStyleDir.description.trim().slice(0, 260)
+            : "",
+      }
+    : null
+  const avoidItems = Array.isArray(body.avoidItems)
+    ? body.avoidItems
+        .filter((item) => typeof item === "string" && item.trim())
+        .map((item) => item.trim().slice(0, 120))
+        .slice(0, 20)
+    : []
+  const incomingCalendar = sanitizeIncomingCalendarEvents(body.calendarEvents || body.events)
   const sensorySensitive = Boolean(body.sensorySensitive)
   const stylistNotes = typeof body.stylistNotes === "string" ? body.stylistNotes.trim() : ""
   const weatherSummary = typeof body.weather === "string" ? body.weather.trim() : ""
-  const wardrobeItems = Array.isArray(body.wardrobe)
+  const rawWardrobeItems = Array.isArray(body.wardrobe)
     ? body.wardrobe
         .filter((item) => item && typeof item.name === "string")
         .slice(0, 40)
     : []
+  const rotationSeed = hashString(
+    `${styleDirection?.key || styleDirection?.label || event}::${forceRegenerate ? requestId : "base"}`,
+  )
+  const wardrobeItems = rotateArray(rawWardrobeItems, rotationSeed)
   const wardrobe = wardrobeItems
     .map((item) => {
       const mat = item.material ? `, ${item.material}` : ""
@@ -918,6 +961,9 @@ async function handleStylist(request, response) {
   logStylist(requestId, "request", {
     event,
     dresscode,
+    styleDirection: styleDirection?.label || null,
+    avoidCount: avoidItems.length,
+    calendarCount: incomingCalendar.length,
     wardrobeCount: wardrobeItems.length,
   })
 
@@ -926,17 +972,43 @@ async function handleStylist(request, response) {
     return
   }
 
+  const calendarPromptBlock =
+    incomingCalendar.length > 0
+      ? `Today's upcoming schedule: ${incomingCalendar
+          .slice(0, 5)
+          .map((ev) => `${ev.summary}${ev.timeLabel ? ` (${ev.timeLabel})` : ""}${ev.location ? ` at ${ev.location}` : ""}`)
+          .join("; ")}. Factor these plans into formality and comfort.`
+      : ""
+
+  const stylePromptBlock = styleDirection?.label
+    ? [
+        `Target style direction: "${styleDirection.label}"${styleDirection.tagline ? ` (${styleDirection.tagline})` : ""}.`,
+        styleDirection.description ? `Style vibe to embody: ${styleDirection.description}` : "",
+        "Make sure the chosen pieces clearly reflect this specific style direction rather than a generic default look.",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : ""
+
   const sharedPrompt = [
     "You are a practical personal stylist.",
     everyday
-      ? "Create one practical, comfortable outfit for everyday wear today, not for a specific event."
+      ? styleDirection?.label
+        ? `Create one cohesive outfit for today in the "${styleDirection.label}" style direction.`
+        : "Create one practical, comfortable outfit for everyday wear today."
       : `Create one outfit recommendation for this event: ${event}.`,
-    everyday ? "Prioritize versatile pieces suitable for ordinary daily activities." : "",
-    dresscode ? `Target dress code: ${dresscode}.` : "",
-    weatherSummary ? `Current weather: ${weatherSummary}.` : "",
+    stylePromptBlock,
+    !styleDirection?.label && dresscode ? `Target dress code: ${dresscode}.` : "",
+    weatherSummary
+      ? `Current live weather: ${weatherSummary}. Match fabric weight and layering strictly to this live temperature and weather: choose breathable, lighter pieces when warm (>=72°F) and avoid heavy coats/sweaters unless raining; add warm layers or rain protection only when cool (<62°F), windy, or wet.`
+      : "",
+    calendarPromptBlock,
     sensorySensitive ? "Prioritize soft, breathable, tagless/non-scratchy fabrics." : "",
     stylistNotes ? `Wearer preferences: ${stylistNotes}.` : "",
     reasonConstraint ? `Additional wearer request: ${reasonConstraint}.` : "",
+    avoidItems.length > 0
+      ? `IMPORTANT VARIETY RULE: Do NOT select these primary garments that were already used in other style tabs or a rejected look (pick different tops, bottoms, or full-body pieces from the wardrobe instead): ${avoidItems.join(", ")}.`
+      : "",
     wardrobe ? `Available wardrobe: ${wardrobe}. Use only these items.` : "",
     "Return ONLY these labeled lines, with no markdown or extra text:",
     "LABEL: short outfit name",
@@ -944,7 +1016,7 @@ async function handleStylist(request, response) {
     "TOP: exact wardrobe item name (omit if using FULL BODY)",
     "BOTTOM: exact wardrobe item name (omit if using FULL BODY)",
     "SHOES: exact wardrobe item name",
-    "OUTERWEAR: exact wardrobe item name (optional)",
+    "OUTERWEAR: exact wardrobe item name (optional — include ONLY if today's live weather is cool, windy, or rainy, or the style specifically calls for a light layer)",
     "ACCESSORY: exact wardrobe item name (optional)",
     "Copy item names exactly from the available wardrobe. Either select ONE Full Body item OR select ONE top and ONE bottom (never stack a dress/full-body item with a top or bottom), plus one pair of shoes when available; optionally add at most one outerwear item and one accessory. Never include two items from the same category.",
     "Do not describe the outfit in prose. Do not return category objects, colors, multiple JSON objects, or keys other than label and items.",
@@ -955,15 +1027,18 @@ async function handleStylist(request, response) {
   let generated
   try {
     const prompts = everyday
-      ? [`${sharedPrompt}\nMake the everyday look cohesive and comfortable.`]
+      ? [
+          `${sharedPrompt}\nMake this "${styleDirection?.label || "everyday"}" look distinct, weather-appropriate, and true to its style vibe.`,
+        ]
       : [
           `${sharedPrompt}\nMake this look polished and understated.`,
           `${sharedPrompt}\nMake this look more expressive and distinctive.`,
         ]
+    const baseTemp = everyday ? (forceRegenerate ? 0.65 : 0.45) : 0.3
     const rawOutfits = await Promise.all(
-      prompts.map((prompt, index) => requestModel(prompt, index === 0 ? 0.3 : 0.55)),
+      prompts.map((prompt, index) => requestModel(prompt, index === 0 ? baseTemp : 0.55)),
     )
-    const previousOutfitNames = new Set()
+    const previousOutfitNames = new Set(avoidItems.map((name) => name.toLowerCase()))
     generated = await Promise.all(rawOutfits.map(async (raw, index) => {
       const parsedResponse = raw.match(/```(?:text)?\s*([\s\S]*?)```/i)
       const responseText = (parsedResponse ? parsedResponse[1] : raw).trim()
@@ -1089,13 +1164,19 @@ async function handleStylist(request, response) {
       }
       const explanationPrompt = [
         "You are a personal stylist explaining one completed outfit to the wearer.",
-        everyday ? "Context: everyday wear today, not a specific event." : `Event: ${event}.`,
-        dresscode ? `Dress code: ${dresscode}.` : "",
+        everyday
+          ? styleDirection?.label
+            ? `Style direction: ${styleDirection.label}${styleDirection.tagline ? ` (${styleDirection.tagline})` : ""}.`
+            : "Context: everyday wear today."
+          : `Event: ${event}.`,
+        !styleDirection?.label && dresscode ? `Dress code: ${dresscode}.` : "",
+        weatherSummary ? `Live weather: ${weatherSummary}.` : "",
+        calendarPromptBlock,
         `Final outfit items: ${finalItems.map((item) => `${item.desc} (${item.type})`).join(", ")}.`,
         everyday
-          ? "Explain in 2 or 3 natural sentences why these exact pieces work for comfortable everyday wear."
-          : "Explain in 2 or 3 natural sentences why these exact items work together for the event.",
-        "Mention specific choices such as color, silhouette, comfort, formality, or how the pieces balance one another.",
+          ? `Explain in 2 or 3 natural sentences why these exact pieces fit the "${styleDirection?.label || "everyday"}" vibe, today's live weather, and any upcoming plans.`
+          : "Explain in 2 or 3 natural sentences why these exact items work together for the event and weather.",
+        "Mention specific choices such as color, silhouette, fabric comfort for today's temperature, or how the pieces balance one another.",
         "Do not give a new outfit, suggest substitutions, use a fixed list format, or begin with 'For this'. Return only the explanation.",
       ]
         .filter(Boolean)
@@ -1492,7 +1573,12 @@ async function handleCalendarEvents(request, response) {
   })
 }
 
-function buildWeatherAdvicePrompt(weather, preferences, calendarEvents = []) {
+function buildWeatherAdvicePrompt(
+  weather,
+  preferences,
+  calendarEvents = [],
+  outfitContext = {},
+) {
   const weatherFacts = [
     weather.city ? `Location: ${weather.city}` : "",
     weather.conditionLabel || weather.condition
@@ -1547,6 +1633,17 @@ function buildWeatherAdvicePrompt(weather, preferences, calendarEvents = []) {
     })
     .join("\n")
 
+  const wardrobeList = Array.isArray(outfitContext.wardrobeItems)
+    ? outfitContext.wardrobeItems.slice(0, 30).join(", ")
+    : ""
+  const currentOutfitItems = Array.isArray(outfitContext.currentOutfitItems)
+    ? outfitContext.currentOutfitItems.slice(0, 6).join(", ")
+    : ""
+  const currentOutfitLabel =
+    typeof outfitContext.currentOutfitLabel === "string"
+      ? outfitContext.currentOutfitLabel.trim()
+      : ""
+
   const tempLabel =
     typeof weather.tempF === "number" ? `${weather.tempF}°F` : weather.temp || "today's temperature"
 
@@ -1554,11 +1651,22 @@ function buildWeatherAdvicePrompt(weather, preferences, calendarEvents = []) {
     "You are a concise personal wardrobe stylist.",
     `Current live weather: ${weatherFacts}.`,
     prefLines ? `Wearer preferences:\n${prefLines}` : "",
-    calendarLines
-      ? `Today's upcoming calendar events:\n${calendarLines}\nFactor these plans into fabric weight, formality, and layering when relevant.`
+    currentOutfitItems
+      ? `Today's recommended outfit${currentOutfitLabel ? ` (${currentOutfitLabel})` : ""}: ${currentOutfitItems}.`
       : "",
-    `Write 1 or 2 short sentences (under 35 words total) of practical clothing and layering advice tailored to both today's live weather (${tempLabel}) and the wearer's preferences.`,
-    `Base warmth strictly on today's live temperature (${tempLabel}) and weather conditions: choose light, breathable fabrics when warm/humid and extra layers or rain protection only when cool, windy, or wet.`,
+    wardrobeList
+      ? `Wearer's available wardrobe items: ${wardrobeList}.`
+      : "",
+    calendarLines
+      ? `Today's upcoming calendar events:\n${calendarLines}\nFactor these plans into fabric comfort and layering when relevant.`
+      : "",
+    `Write 1 or 2 short sentences (under 35 words total) of practical climate and styling advice for today's live weather (${tempLabel}).`,
+    currentOutfitItems
+      ? "Keep your tip consistent with Today's recommended outfit above (do NOT suggest a competing outfit). If extra rain/wind/cool-evening protection is needed, only mention outerwear or layers that actually exist in the wearer's available wardrobe."
+      : wardrobeList
+        ? "Only mention specific garments if they exist in the wearer's available wardrobe; never invent blazers, skirts, or cardigans the wearer does not own."
+        : "",
+    `Base warmth strictly on today's live temperature (${tempLabel}) and weather conditions: choose light, breathable guidance when warm/humid and extra layers or rain protection only when cool, windy, or wet.`,
     "Return ONLY plain text advice with no markdown, no bullet points, no quotes, and no greeting.",
   ]
     .filter(Boolean)
@@ -1620,8 +1728,36 @@ async function handleWeatherAdvice(request, response) {
     calendarCount: calendarEvents.length,
   })
 
+  const rawOutfitCtx =
+    body?.outfitContext && typeof body.outfitContext === "object"
+      ? body.outfitContext
+      : {}
+  const outfitContext = {
+    wardrobeItems: Array.isArray(rawOutfitCtx.wardrobeItems)
+      ? rawOutfitCtx.wardrobeItems
+          .filter((item) => typeof item === "string" && item.trim())
+          .map((item) => item.trim().slice(0, 100))
+          .slice(0, 35)
+      : [],
+    currentOutfitLabel:
+      typeof rawOutfitCtx.currentOutfitLabel === "string"
+        ? rawOutfitCtx.currentOutfitLabel.trim().slice(0, 80)
+        : "",
+    currentOutfitItems: Array.isArray(rawOutfitCtx.currentOutfitItems)
+      ? rawOutfitCtx.currentOutfitItems
+          .filter((item) => typeof item === "string" && item.trim())
+          .map((item) => item.trim().slice(0, 100))
+          .slice(0, 6)
+      : [],
+  }
+
   try {
-    const prompt = buildWeatherAdvicePrompt(weather, preferences, calendarEvents)
+    const prompt = buildWeatherAdvicePrompt(
+      weather,
+      preferences,
+      calendarEvents,
+      outfitContext,
+    )
     const rawAdvice = await requestModel(prompt, 0.3, { maxTokens: 90, timeoutMs: 45_000 })
     const advice = cleanWeatherAdviceText(rawAdvice)
     if (!advice) {

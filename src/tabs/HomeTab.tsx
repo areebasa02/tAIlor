@@ -73,6 +73,7 @@ export default function HomeTab() {
     setWornToday,
     swapOutfitItem,
     weather,
+    liveWeatherReady,
     weatherAdviceLoading,
     weatherLocationSource,
     weatherLocating,
@@ -192,11 +193,14 @@ export default function HomeTab() {
     }
   };
 
-  const handleRegenerate = (reasonConstraint?: string) => {
+  const handleRegenerate = (
+    reasonConstraint?: string,
+    directionOverride?: string,
+  ) => {
     setLoading(true);
     setTodayOutfitError("");
     setCtrlMode("regenerating");
-    void generateTodayOutfit(reasonConstraint, true)
+    void generateTodayOutfit(reasonConstraint, true, directionOverride)
       .catch((error: unknown) => {
         const message = formatAiErrorMessage(
           error,
@@ -212,6 +216,10 @@ export default function HomeTab() {
   };
 
   useEffect(() => {
+    if (!liveWeatherReady) {
+      setLoading(true);
+      return;
+    }
     if (todayOutfit) {
       setLoading(false);
       setTodayOutfitError("");
@@ -221,7 +229,7 @@ export default function HomeTab() {
     let active = true;
     setLoading(true);
     setTodayOutfitError("");
-    void generateTodayOutfit()
+    void generateTodayOutfit(undefined, false, selectedDirection)
       .catch((error: unknown) => {
         if (active) {
           setTodayOutfitError(
@@ -236,7 +244,7 @@ export default function HomeTab() {
     return () => {
       active = false;
     };
-  }, [todayOutfit, user.id, localDay]);
+  }, [todayOutfit, user.id, localDay, selectedDirection, liveWeatherReady]);
 
   const handleApprove = () => {
     logOutfitWorn({
@@ -478,10 +486,17 @@ export default function HomeTab() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => {
+                    if (active) {
+                      handleRegenerate(
+                        `Create a fresh variation for the ${o.label} style.`,
+                        dirKey,
+                      );
+                      return;
+                    }
                     setSelectedDirection(dirKey);
                     setCtrlMode("default");
                     setWornToday(false);
-                    handleRegenerate(`Use the ${o.label} style direction.`);
+                    setTodayOutfitError("");
                   }}
                   disabled={loading}
                   className={`shrink-0 min-h-[38px] py-1.5 px-3 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold tracking-wide transition-all duration-200 flex items-center gap-1 cursor-pointer border-2 ${
