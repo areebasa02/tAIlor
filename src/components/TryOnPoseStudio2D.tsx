@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { FIT_EASE } from "../lib/bodyMeasurements"
 import type {
   GarmentFitStyle,
+  HandFootPresetId,
   MannequinBodyPreset,
   MannequinCustomization,
   MannequinMaterialId,
@@ -17,9 +18,35 @@ import type {
 } from "../types"
 
 export interface StudioGarmentPreviewLayer {
-  slot: "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes"
+  slot: "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes" | "Accessory"
   name: string
   color: string
+}
+
+export const HAND_FOOT_PRESETS: Record<
+  HandFootPresetId,
+  { label: string; emoji: string; desc: string }
+> = {
+  neutral: {
+    label: "Neutral",
+    emoji: "✋",
+    desc: "Natural open palms & straight studio feet",
+  },
+  runway_turnout: {
+    label: "Runway Turnout",
+    emoji: "👠",
+    desc: "Editorial angled foot turnout for footwear showcase",
+  },
+  hands_hips: {
+    label: "Hip Articulation",
+    emoji: "💃",
+    desc: "Inward wrist bend & flared fingers on waist/hips",
+  },
+  pocket_relax: {
+    label: "Relaxed / Compact",
+    emoji: "🧥",
+    desc: "Compact fingers for coats, pockets, and tote carry",
+  },
 }
 
 export const STUDIO_W = 768
@@ -302,7 +329,10 @@ export const DEFAULT_CUSTOMIZATION: MannequinCustomization = {
   limbBuild: 1.0,
   materialId: "porcelain",
   fitStyle: "standard",
+  subjectMode: "mannequin",
+  handFootPreset: "neutral",
   includeMyFace: false,
+  faceConsentConfirmed: false,
 }
 
 export const JOINT_LABELS: Record<PoseJointId, string> = {
@@ -656,6 +686,7 @@ export function symmetrizePose(pose: Pose2D): Pose2D {
 export interface TryOnPoseCaptureResult {
   imageDataUrl: string
   openposeImageDataUrl: string
+  depthImageDataUrl: string
   keypoints: Record<string, [number, number, number]>
 }
 
@@ -756,6 +787,7 @@ export function renderOpenPoseCanvas(
   projected: ProjectedSkeleton2D,
   includeFaceFeatures = false,
   isBackView = false,
+  handFootPreset: HandFootPresetId = "neutral",
 ): string {
   const canvas = document.createElement("canvas")
   canvas.width = STUDIO_W
@@ -782,7 +814,7 @@ export function renderOpenPoseCanvas(
       : OPENPOSE_LIMBS.filter(
           (l) => l.a !== "eyeR" && l.b !== "eyeR" && l.a !== "eyeL" && l.b !== "eyeL",
         )
-  ctx.globalAlpha = 0.65
+  ctx.globalAlpha = 0.72
   for (const limb of activeLimbs) {
     const p1 = pts[limb.a]
     const p2 = pts[limb.b]
@@ -799,6 +831,79 @@ export function renderOpenPoseCanvas(
     ctx.ellipse(0, 0, len * 0.5, 4.5, 0, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
+  }
+
+  // DWpose 5-finger hand fans + 3-vector heel/toe feet so ControlNetUnion locks hand & shoe orientation
+  ctx.globalAlpha = 0.95
+  ctx.lineCap = "round"
+  const spreadDeg =
+    handFootPreset === "pocket_relax"
+      ? 12
+      : handFootPreset === "hands_hips"
+        ? 22
+        : 16
+  const palmLen = handFootPreset === "pocket_relax" ? 14 : 24
+  const fingerPalette = [
+    "rgb(255, 60, 60)",
+    "rgb(255, 190, 0)",
+    "rgb(80, 255, 60)",
+    "rgb(0, 210, 255)",
+    "rgb(180, 70, 255)",
+  ]
+  for (const [side, elId, wrId] of [
+    [-1, "elbowR", "wristR"],
+    [1, "elbowL", "wristL"],
+  ] as const) {
+    const el = pts[elId]
+    const wr = pts[wrId]
+    let baseAng = Math.atan2(wr[1] - el[1], wr[0] - el[0])
+    if (handFootPreset === "hands_hips") {
+      baseAng += side * -0.35
+    }
+    fingerPalette.forEach((fCol, fi) => {
+      const ang = baseAng + (((fi - 2) * spreadDeg * side) * Math.PI) / 180
+      const mx = wr[0] + Math.cos(ang) * palmLen * 0.52
+      const my = wr[1] + Math.sin(ang) * palmLen * 0.52
+      const tx = wr[0] + Math.cos(ang) * palmLen
+      const ty = wr[1] + Math.sin(ang) * palmLen
+      ctx.strokeStyle = fCol
+      ctx.lineWidth = 2.2
+      ctx.beginPath()
+      ctx.moveTo(wr[0], wr[1])
+      ctx.lineTo(mx, my)
+      ctx.lineTo(tx, ty)
+      ctx.stroke()
+      ctx.fillStyle = fCol
+      ctx.beginPath()
+      ctx.arc(tx, ty, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+    })
+  }
+
+  const turnout = handFootPreset === "runway_turnout" ? 22 : 11
+  for (const [side, akId] of [
+    [-1, "ankleR"],
+    [1, "ankleL"],
+  ] as const) {
+    const ak = pts[akId]
+    const heel: [number, number] = [ak[0] - side * 5, ak[1] + 10]
+    const bigToe: [number, number] = [ak[0] + side * turnout * 0.65, ak[1] + 24]
+    const smallToe: [number, number] = [ak[0] + side * turnout * 1.35, ak[1] + 20]
+    const drawFootRay = (target: [number, number], col: string, w: number) => {
+      ctx.strokeStyle = col
+      ctx.lineWidth = w
+      ctx.beginPath()
+      ctx.moveTo(ak[0], ak[1])
+      ctx.lineTo(target[0], target[1])
+      ctx.stroke()
+      ctx.fillStyle = "rgb(0, 230, 255)"
+      ctx.beginPath()
+      ctx.arc(target[0], target[1], 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    drawFootRay(heel, "rgb(0, 200, 255)", 3)
+    drawFootRay(bigToe, "rgb(0, 255, 190)", 3)
+    drawFootRay(smallToe, "rgb(80, 170, 255)", 2.2)
   }
 
   ctx.globalAlpha = 1.0
@@ -840,6 +945,120 @@ export function renderOpenPoseCanvas(
     ctx.arc(jx, jy, 4.5, 0, Math.PI * 2)
     ctx.fill()
   }
+
+  return canvas.toDataURL("image/png")
+}
+
+/** Synthesize a 3D cylindrical grayscale Depth map (mode=1 for ControlNetUnion) scaled by body sliders. */
+export function renderDepthMapCanvas(
+  projected: ProjectedSkeleton2D,
+  customization: MannequinCustomization,
+): string {
+  const canvas = document.createElement("canvas")
+  canvas.width = STUDIO_W
+  canvas.height = STUDIO_H
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return ""
+
+  // Background depth (far cyclorama = black 0, studio floor ramp = 0..52)
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, STUDIO_H)
+  bgGrad.addColorStop(0, "rgb(0, 0, 0)")
+  bgGrad.addColorStop(0.78, "rgb(4, 4, 4)")
+  bgGrad.addColorStop(1, "rgb(52, 52, 52)")
+  ctx.fillStyle = bgGrad
+  ctx.fillRect(0, 0, STUDIO_W, STUDIO_H)
+
+  const pts = projected.points
+  const limbW = (base: number) => base * customization.limbBuild
+
+  const drawDepthCapsule = (
+    a: [number, number],
+    b: [number, number],
+    width: number,
+    edgeLum: number,
+    coreLum: number,
+  ) => {
+    ctx.lineCap = "round"
+    ctx.strokeStyle = `rgb(${edgeLum}, ${edgeLum}, ${edgeLum})`
+    ctx.lineWidth = width
+    ctx.beginPath()
+    ctx.moveTo(a[0], a[1])
+    ctx.lineTo(b[0], b[1])
+    ctx.stroke()
+
+    ctx.strokeStyle = `rgb(${coreLum}, ${coreLum}, ${coreLum})`
+    ctx.lineWidth = width * 0.58
+    ctx.beginPath()
+    ctx.moveTo(a[0], a[1])
+    ctx.lineTo(b[0], b[1])
+    ctx.stroke()
+  }
+
+  // Legs + feet
+  drawDepthCapsule(pts.hipR, pts.kneeR, limbW(44), 132, 196)
+  drawDepthCapsule(pts.kneeR, pts.ankleR, limbW(31), 128, 190)
+  drawDepthCapsule(pts.hipL, pts.kneeL, limbW(44), 132, 196)
+  drawDepthCapsule(pts.kneeL, pts.ankleL, limbW(31), 128, 190)
+  for (const ak of [pts.ankleR, pts.ankleL]) {
+    ctx.fillStyle = "rgb(205, 205, 205)"
+    ctx.beginPath()
+    ctx.ellipse(ak[0], ak[1] + 15, limbW(18), 11, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // Sculpted torso scaled by shoulders, chest, and waistHips
+  const shR = pts.shoulderR
+  const shL = pts.shoulderL
+  const hpR = pts.hipR
+  const hpL = pts.hipL
+  const waistW = Math.max(24, Math.abs(hpL[0] - hpR[0]) * 0.72 * customization.chest)
+  const waistY = shR[1] * 0.36 + hpR[1] * 0.64
+  const waistCx = pts.pelvis[0] + (pts.pelvis[0] - pts.neck[0]) * 0.2
+
+  const torsoGrad = ctx.createRadialGradient(
+    waistCx,
+    waistY - 22,
+    14,
+    waistCx,
+    waistY,
+    Math.max(90, waistW * 1.5),
+  )
+  torsoGrad.addColorStop(0, "rgb(224, 224, 224)")
+  torsoGrad.addColorStop(0.7, "rgb(178, 178, 178)")
+  torsoGrad.addColorStop(1, "rgb(126, 126, 126)")
+
+  ctx.fillStyle = torsoGrad
+  ctx.beginPath()
+  ctx.moveTo(shR[0] + 6, shR[1] - 10)
+  ctx.quadraticCurveTo((shR[0] + shL[0]) * 0.5, shR[1] - 24, shL[0] - 6, shL[1] - 10)
+  ctx.quadraticCurveTo(waistCx + waistW * 0.96, waistY, hpL[0] + 10, hpL[1] + 18)
+  ctx.quadraticCurveTo((hpL[0] + hpR[0]) * 0.5, hpL[1] + 44, hpR[0] - 10, hpR[1] + 18)
+  ctx.quadraticCurveTo(waistCx - waistW * 0.96, waistY, shR[0] + 6, shR[1] - 10)
+  ctx.closePath()
+  ctx.fill()
+
+  // Neck & head ellipsoid
+  drawDepthCapsule(pts.neck, pts.nose, limbW(25), 145, 206)
+  const headGrad = ctx.createRadialGradient(
+    pts.nose[0],
+    pts.nose[1] - 8,
+    6,
+    pts.nose[0],
+    pts.nose[1] - 4,
+    46,
+  )
+  headGrad.addColorStop(0, "rgb(236, 236, 236)")
+  headGrad.addColorStop(1, "rgb(150, 150, 150)")
+  ctx.fillStyle = headGrad
+  ctx.beginPath()
+  ctx.ellipse(pts.nose[0], pts.nose[1] - 4, 34, 46, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Foreground arms
+  drawDepthCapsule(pts.shoulderR, pts.elbowR, limbW(28), 152, 220)
+  drawDepthCapsule(pts.elbowR, pts.wristR, limbW(22), 162, 234)
+  drawDepthCapsule(pts.shoulderL, pts.elbowL, limbW(28), 152, 220)
+  drawDepthCapsule(pts.elbowL, pts.wristL, limbW(22), 162, 234)
 
   return canvas.toDataURL("image/png")
 }
@@ -1089,9 +1308,11 @@ export default function TryOnPoseStudio2D({
       const proj = projectPoseForView(poseRef.current, custom, camId)
       const openposeImageDataUrl = renderOpenPoseCanvas(
         proj,
-        Boolean(custom.includeMyFace) && !back,
+        (Boolean(custom.includeMyFace) || custom.subjectMode === "human") && !back,
         back,
+        custom.handFootPreset || "neutral",
       )
+      const depthImageDataUrl = renderDepthMapCanvas(proj, custom)
       const imageDataUrl = await renderBareSilhouetteCanvas(
         proj,
         custom,
@@ -1107,7 +1328,7 @@ export default function TryOnPoseStudio2D({
           1.0,
         ]
       })
-      return { imageDataUrl, openposeImageDataUrl, keypoints }
+      return { imageDataUrl, openposeImageDataUrl, depthImageDataUrl, keypoints }
     }
     onRegisterCapture(capture)
   }, [onRegisterCapture])
@@ -1219,6 +1440,12 @@ export default function TryOnPoseStudio2D({
   const fullBodyLayer = garmentPreviewLayers.find((l) => l.slot === "Full Body")
   const outerLayer = garmentPreviewLayers.find((l) => l.slot === "Outerwear")
   const shoesLayer = garmentPreviewLayers.find((l) => l.slot === "Shoes")
+  const bagLayer = garmentPreviewLayers.find(
+    (l) =>
+      l.slot === "Accessory" &&
+      /(bag|tote|crossbody|purse|satchel|backpack|clutch)/i.test(l.name),
+  )
+  const isHumanMode = customization.subjectMode === "human"
 
   const topTorsoPath = [
     `M ${shLeftX - shPad} ${shMidY - 12}`,
@@ -1345,6 +1572,16 @@ export default function TryOnPoseStudio2D({
         <ellipse cx={pts.wristL[0]} cy={pts.wristL[1] + 18} rx={limbW(11)} ry="19" fill={mat.color} />
 
         <path d={torsoPath} fill={mat.color} />
+        {isHumanMode && (
+          <ellipse
+            cx={pts.nose[0]}
+            cy={pts.nose[1] - 12}
+            rx="42"
+            ry="50"
+            fill="#282220"
+            opacity="0.72"
+          />
+        )}
         <ellipse cx={pts.nose[0]} cy={pts.nose[1] - 4} rx="34" ry="46" fill={mat.color} />
 
         {isBackView && (
@@ -1501,6 +1738,56 @@ export default function TryOnPoseStudio2D({
                 strokeOpacity="0.3"
                 strokeWidth="2"
               />
+            </g>
+          )}
+
+          {/* Bag / Tote Layer (FastFit slot 4 preview) */}
+          {bagLayer && (
+            <g opacity="0.76">
+              {/crossbody/i.test(bagLayer.name) ? (
+                <>
+                  <line
+                    x1={pts.shoulderR[0] + 6}
+                    y1={pts.shoulderR[1] - 4}
+                    x2={pts.hipL[0] + 28}
+                    y2={pts.hipL[1] + 24}
+                    stroke={bagLayer.color || "#C8B89A"}
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                  />
+                  <rect
+                    x={pts.hipL[0] + 4}
+                    y={pts.hipL[1] + 12}
+                    width="58"
+                    height="66"
+                    rx="14"
+                    fill={bagLayer.color || "#C8B89A"}
+                    stroke="#11131C"
+                    strokeOpacity="0.35"
+                    strokeWidth="2.5"
+                  />
+                </>
+              ) : (
+                <>
+                  <path
+                    d={`M ${pts.wristL[0] - 8} ${pts.wristL[1] + 14} Q ${pts.wristL[0] + 12} ${pts.wristL[1] - 12} ${pts.wristL[0] + 32} ${pts.wristL[1] + 14}`}
+                    fill="none"
+                    stroke={bagLayer.color || "#C8B89A"}
+                    strokeWidth="6"
+                  />
+                  <rect
+                    x={pts.wristL[0] - 18}
+                    y={pts.wristL[1] + 14}
+                    width="60"
+                    height="74"
+                    rx="12"
+                    fill={bagLayer.color || "#C8B89A"}
+                    stroke="#11131C"
+                    strokeOpacity="0.35"
+                    strokeWidth="2.5"
+                  />
+                </>
+              )}
             </g>
           )}
         </g>

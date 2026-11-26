@@ -1,7 +1,13 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
 import { getContrastTextColor } from "../types"
 import OnboardingQuiz from "../components/OnboardingQuiz"
+import {
+  deleteProfileTryOnPhotoFromDb,
+  fetchProfileTryOnPhoto,
+  saveProfileTryOnPhotoToDb,
+  type SavedProfileTryOnPhoto,
+} from "../lib/aiHost"
 
 export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const {
@@ -16,6 +22,64 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
   } = useApp()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [quizOpen, setQuizOpen] = useState(false)
+  const [savedPhoto, setSavedPhoto] = useState<SavedProfileTryOnPhoto | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoStatusMsg, setPhotoStatusMsg] = useState("")
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setSavedPhoto(null)
+    setPhotoStatusMsg("")
+    void fetchProfileTryOnPhoto(user.id).then((photo) => {
+      if (!active) return
+      setSavedPhoto(photo)
+    })
+    return () => {
+      active = false
+    }
+  }, [user.id])
+
+  const handleSaveProfilePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setPhotoBusy(true)
+    setPhotoStatusMsg("")
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ""))
+        reader.onerror = () => reject(new Error("Could not read that image."))
+        reader.readAsDataURL(file)
+      })
+      const saved = await saveProfileTryOnPhotoToDb(user.id, {
+        imageDataUrl: dataUrl,
+        photoKind: "full_body",
+        consentConfirmed: true,
+      })
+      setSavedPhoto(saved)
+      setPhotoStatusMsg("Saved! Ready to use anytime in Virtual Try-On.")
+    } catch (err) {
+      setPhotoStatusMsg(err instanceof Error ? err.message : "Could not save photo.")
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+  const handleRemoveSavedPhoto = async () => {
+    setPhotoBusy(true)
+    setPhotoStatusMsg("")
+    try {
+      await deleteProfileTryOnPhotoFromDb(user.id)
+      setSavedPhoto(null)
+      setPhotoStatusMsg("Removed your saved photo.")
+    } catch (err) {
+      setPhotoStatusMsg(err instanceof Error ? err.message : "Could not remove photo.")
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!confirmLogout) return
@@ -91,6 +155,68 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             >
               <span aria-hidden="true">✦</span> Retake Quiz
             </button>
+          </div>
+
+          {/* Saved Try-On Photo */}
+          <div className="rounded-2xl p-3.5 space-y-2.5 border-2 shadow-sm bg-card border-border">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
+                <span aria-hidden="true">📸 </span>My Try-On Photo
+              </span>
+              <span className="text-[11px] font-bold text-muted-foreground">
+                {savedPhoto ? "Saved" : "Optional"}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              Add a clear head-to-toe photo (standing or seated) so Virtual Try-On is ready in one tap. Your photo stays private on this device.
+            </p>
+
+            <div className="flex items-center gap-3">
+              {savedPhoto ? (
+                <img
+                  src={savedPhoto.imageDataUrl}
+                  alt={`${user.name} saved try-on photo`}
+                  className="w-16 h-20 rounded-xl object-cover border-2 border-turquoise shrink-0 bg-muted"
+                />
+              ) : (
+                <div className="w-16 h-20 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center text-xl shrink-0">
+                  📸
+                </div>
+              )}
+
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void handleSaveProfilePhotoFile(e)}
+                  />
+                  <button
+                    type="button"
+                    disabled={photoBusy}
+                    onClick={() => photoInputRef.current?.click()}
+                    className="px-3.5 py-2 rounded-xl text-xs font-black bg-turquoise text-[#0D0F18] border border-[#0D0F18]/20 hover:brightness-105 cursor-pointer disabled:opacity-50"
+                  >
+                    {photoBusy ? "Saving…" : savedPhoto ? "Change Photo" : "Upload a Photo"}
+                  </button>
+                  {savedPhoto && (
+                    <button
+                      type="button"
+                      disabled={photoBusy}
+                      onClick={() => void handleRemoveSavedPhoto()}
+                      className="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-muted text-red border border-border hover:border-red cursor-pointer disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            {photoStatusMsg && (
+              <p className="text-[11px] font-bold text-foreground">{photoStatusMsg}</p>
+            )}
           </div>
 
           {/* Demo Profile Switcher */}

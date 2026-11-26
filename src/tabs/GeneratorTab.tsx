@@ -192,6 +192,8 @@ export default function GeneratorTab() {
     toggleFavoriteOutfit,
     saveOutfitFeedback,
     saveGarmentFeedback,
+    setActiveTryOnOutfit,
+    setRequestedTab,
   } = useApp()
   const requestAbortRef = useRef<AbortController | null>(null)
 
@@ -1042,6 +1044,42 @@ export default function GeneratorTab() {
                       String(outfit.id || outfit.label)
                     )}
                   />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const items = outfit.items.map((piece) => {
+                        const match = wardrobe.find(
+                          (w) =>
+                            w.name.trim().toLowerCase() ===
+                            piece.desc.trim().toLowerCase()
+                        )
+                        const slot = normalizeGarmentSlot(piece.type, piece.desc)
+                        return {
+                          type: slot,
+                          name: piece.desc,
+                          color: piece.color,
+                          emoji: getPieceEmoji(piece.type, piece.emoji, piece.desc),
+                          imageData:
+                            match?.imageData ||
+                            getSampleGarmentImage(piece.desc, piece.type),
+                          wardrobeItemId: match?.id,
+                        }
+                      })
+                      setActiveTryOnOutfit({
+                        id: `gen-${outfit.id}-${Date.now()}`,
+                        label: outfit.label,
+                        tagline: outfit.dresscodeMatch || "Generated outfit",
+                        colors: items.map((i) => i.color).slice(0, 3),
+                        items,
+                      })
+                      setRequestedTab("tryon")
+                    }}
+                    className="w-full min-h-[42px] py-2 px-3 rounded-xl text-xs font-black bg-turquoise/15 text-foreground border-2 border-turquoise hover:bg-turquoise/25 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span aria-hidden="true">🪞</span>
+                    <span>Try This Outfit On</span>
+                  </button>
                 </div>
               )
             })}

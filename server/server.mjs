@@ -5,6 +5,14 @@ import { readFile, stat } from "node:fs/promises"
 import { readFileSync } from "node:fs"
 import { extname, join, normalize } from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  deleteProfileTryOnPhoto,
+  getDbStats,
+  getProfileTryOnPhoto,
+  listTryOnHistory,
+  recordTryOnHistory,
+  saveProfileTryOnPhoto,
+} from "./db.mjs"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 try {
@@ -157,7 +165,7 @@ function applyCorsHeaders(request, response) {
     return false
   }
   response.setHeader("Access-Control-Allow-Origin", origin)
-  response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept")
   response.setHeader("Access-Control-Max-Age", "86400")
   response.setHeader("Vary", "Origin")
@@ -316,6 +324,7 @@ async function readJsonBody(request, maxBytes = 10_000) {
 }
 
 const tryOnUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/v1/try-on`
+const tryOnProgressBaseUrl = `${visionBaseUrl.replace(/\/v1$/, "")}/v1/try-on/progress`
 
 function parseTryOnPayload(body) {
   const garments = Array.isArray(body.garments)
@@ -335,11 +344,20 @@ function parseTryOnPayload(body) {
     typeof body.mannequinImage === "string" ? body.mannequinImage.trim() : ""
   const openposeImage =
     typeof body.openposeImage === "string" ? body.openposeImage.trim() : ""
+  const depthImage =
+    typeof body.depthImage === "string" ? body.depthImage.trim() : ""
   const dressedImage =
     typeof body.dressedImage === "string" ? body.dressedImage.trim() : ""
+  const userPhotoImage =
+    typeof body.userPhotoImage === "string" ? body.userPhotoImage.trim() : ""
 
-  if (!mannequinImage && !openposeImage && !dressedImage) {
-    return { error: "No pose image or skeleton was provided." }
+  const subjectMode = typeof body.subjectMode === "string" ? body.subjectMode : "mannequin"
+  const hasMannequinTemplate =
+    subjectMode === "mannequin" &&
+    (typeof body.poseLabel === "string" || typeof body.bodyPreset === "string")
+
+  if (!mannequinImage && !openposeImage && !dressedImage && !userPhotoImage && !hasMannequinTemplate) {
+    return { error: "No pose image, skeleton, or user photo was provided." }
   }
   if (garments.length === 0) {
     return { error: "Select at least one outfit piece to generate a try-on." }
@@ -347,25 +365,50 @@ function parseTryOnPayload(body) {
 
   return {
     payload: {
-      mannequinImage: mannequinImage || openposeImage || dressedImage,
+      mannequinImage: mannequinImage || openposeImage || dressedImage || userPhotoImage || undefined,
       openposeImage: openposeImage || undefined,
+      depthImage: depthImage || undefined,
       dressedImage: dressedImage || undefined,
+      userPhotoImage: userPhotoImage || undefined,
+      photoMode: typeof body.photoMode === "string" ? body.photoMode : "none",
+      userId: typeof body.userId === "string" ? body.userId : undefined,
+      outfitLabel: typeof body.outfitLabel === "string" ? body.outfitLabel : undefined,
       garments,
       keypoints: body.keypoints && typeof body.keypoints === "object" ? body.keypoints : undefined,
+      bodySliders: body.bodySliders && typeof body.bodySliders === "object" ? body.bodySliders : undefined,
+      subjectMode: typeof body.subjectMode === "string" ? body.subjectMode : "mannequin",
+      handFootPreset: typeof body.handFootPreset === "string" ? body.handFootPreset : "neutral",
       cameraPreset: typeof body.cameraPreset === "string" ? body.cameraPreset : "front",
       backdropPreset: typeof body.backdropPreset === "string" ? body.backdropPreset : "cyclorama",
       includeMyFace: Boolean(body.includeMyFace),
       faceImage: typeof body.faceImage === "string" ? body.faceImage : undefined,
+      hasCustomFaceUpload: Boolean(body.hasCustomFaceUpload),
+      faceConsentConfirmed: body.faceConsentConfirmed !== false,
       poseLabel: typeof body.poseLabel === "string" ? body.poseLabel : undefined,
       bodyPreset: typeof body.bodyPreset === "string" ? body.bodyPreset : undefined,
       fitStyle: typeof body.fitStyle === "string" ? body.fitStyle : "standard",
       materialId: typeof body.materialId === "string" ? body.materialId : "porcelain",
       seed: typeof body.seed === "number" ? body.seed : undefined,
+      bypassPoseCache: Boolean(body.bypassPoseCache),
     },
   }
 }
 
-async function executeTryOnOnGpu(payload) {
+async function fetchGpuJobProgress(jobId) {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 900)
+    const resp = await fetch(`${tryOnProgressBaseUrl}/${encodeURIComponent(jobId)}`, {
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
+    if (!resp.ok) return null
+    return await resp.json().catch(() => null)
+  } catch {
+    return null
+  }
+}
+
+async function executeTryOnOnGpu(payload, jobId) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 300_000)
   try {
@@ -377,7 +420,7 @@ async function executeTryOnOnGpu(payload) {
           ? { Authorization: `Bearer ${process.env.LLM_API_KEY}` }
           : {}),
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, jobId }),
       signal: controller.signal,
     })
     const result = await localResp.json().catch(() => ({}))
@@ -389,8 +432,9 @@ async function executeTryOnOnGpu(payload) {
     }
     return {
       imageUrl: result.imageUrl,
-      model: result.model || "RealVisXL-OpenPose-IPAdapter",
+      model: result.model || "RealVisXL-V5-Lightning+ControlNetUnion+FastFit",
       runs: result.runs || payload.garments.length,
+      diagnostics: result.diagnostics || undefined,
     }
   } catch (err) {
     if (err && typeof err === "object" && "statusCode" in err) throw err
@@ -430,11 +474,19 @@ function pumpTryOnQueue() {
     job.startedAt = Date.now()
     console.log(`[try-on:${job.id.slice(0, 8)}] running (${job.payload.garments.length} garments, queued=${tryOnQueue.length})`)
 
-    executeTryOnOnGpu(job.payload)
+    executeTryOnOnGpu(job.payload, job.id)
       .then((result) => {
         job.status = "completed"
         job.result = result
         job.finishedAt = Date.now()
+        if (job.payload?.userId && result?.imageUrl) {
+          recordTryOnHistory({
+            userId: job.payload.userId,
+            outfitLabel: job.payload.outfitLabel || "Studio Try-On",
+            subjectMode: job.payload.subjectMode || "mannequin",
+            imageDataUrl: result.imageUrl,
+          })
+        }
         job.resolveWaiters?.(result)
         console.log(`[try-on:${job.id.slice(0, 8)}] completed in ${job.finishedAt - job.startedAt}ms`)
       })
@@ -554,6 +606,7 @@ async function handleGetTryOnJob(jobId, response) {
       imageUrl: job.result.imageUrl,
       model: job.result.model,
       runs: job.result.runs,
+      diagnostics: job.result.diagnostics,
       elapsedMs: (job.finishedAt || Date.now()) - (job.startedAt || job.createdAt),
     })
     return
@@ -566,12 +619,14 @@ async function handleGetTryOnJob(jobId, response) {
     })
     return
   }
+  const liveProgress = job.status === "running" ? await fetchGpuJobProgress(job.id) : null
   sendJson(response, 200, {
     jobId: job.id,
     status: job.status,
     position: getTryOnQueuePosition(job.id),
     totalQueued: tryOnQueue.length + (activeTryOnJobId ? 1 : 0),
     elapsedMs: job.startedAt ? Date.now() - job.startedAt : 0,
+    ...(liveProgress ? { progress: liveProgress } : {}),
   })
 }
 
@@ -1907,6 +1962,51 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    // Local SQLite Profile Try-On Photo & History API
+    const profilePhotoMatch = url.pathname.match(/^\/api\/profile\/([^/]+)\/tryon-photo$/)
+    if (profilePhotoMatch) {
+      const userId = decodeURIComponent(profilePhotoMatch[1])
+      if (request.method === "GET") {
+        const photo = getProfileTryOnPhoto(userId)
+        sendJson(response, 200, { photo })
+        return
+      }
+      if (request.method === "PUT" || request.method === "POST") {
+        const body = await readJsonBody(request, 16 * 1024 * 1024)
+        if (!body?.imageDataUrl || typeof body.imageDataUrl !== "string") {
+          sendJson(response, 400, { error: "imageDataUrl is required." })
+          return
+        }
+        try {
+          const saved = saveProfileTryOnPhoto({
+            userId,
+            imageDataUrl: body.imageDataUrl,
+            photoKind: body.photoKind === "portrait" ? "portrait" : "full_body",
+            consentConfirmed: body.consentConfirmed !== false,
+          })
+          sendJson(response, 200, { photo: saved })
+        } catch (err) {
+          sendJson(response, 400, {
+            error: err instanceof Error ? err.message : "Could not save profile photo.",
+          })
+        }
+        return
+      }
+      if (request.method === "DELETE") {
+        const result = deleteProfileTryOnPhoto(userId)
+        sendJson(response, 200, result)
+        return
+      }
+    }
+
+    const profileHistoryMatch = url.pathname.match(/^\/api\/profile\/([^/]+)\/tryon-history$/)
+    if (profileHistoryMatch && request.method === "GET") {
+      const userId = decodeURIComponent(profileHistoryMatch[1])
+      const items = listTryOnHistory(userId, 12)
+      sendJson(response, 200, { items })
+      return
+    }
+
     if (url.pathname.startsWith("/api/try-on/jobs/")) {
       const jobId = decodeURIComponent(url.pathname.slice("/api/try-on/jobs/".length)).trim()
       if (!jobId) {
@@ -1993,7 +2093,9 @@ const server = createServer(async (request, response) => {
           wardrobeScan: true,
           tryOn: true,
           calendar: true,
+          profilePhotoDb: true,
         },
+        database: getDbStats(),
         ...(backendError ? { error: backendError } : {}),
       })
       return

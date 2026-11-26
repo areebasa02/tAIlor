@@ -259,6 +259,14 @@ export type MannequinMaterialId =
 
 export type GarmentFitStyle = "fitted" | "standard" | "relaxed"
 
+export type TryOnSubjectMode = "mannequin" | "human"
+
+export type HandFootPresetId =
+  | "neutral"
+  | "runway_turnout"
+  | "hands_hips"
+  | "pocket_relax"
+
 export interface MannequinCustomization {
   bodyPreset: MannequinBodyPreset
   height: number
@@ -268,8 +276,11 @@ export interface MannequinCustomization {
   limbBuild: number
   materialId: MannequinMaterialId
   fitStyle?: GarmentFitStyle
+  subjectMode?: TryOnSubjectMode
+  handFootPreset?: HandFootPresetId
   includeMyFace: boolean
   faceImageData?: string
+  faceConsentConfirmed?: boolean
 }
 
 export type PoseJointId =

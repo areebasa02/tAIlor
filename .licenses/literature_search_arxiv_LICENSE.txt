@@ -1,0 +1,2 @@
+Notification provided to user on 2026-11-25T17:43:35-06:00:
+Please review arXiv's API Terms of Use at https://info.arxiv.org/help/api/index.html and always check the license of individual papers retrieved via the literature-search-arxiv skill for any usage restrictions.

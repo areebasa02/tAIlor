@@ -383,6 +383,87 @@ function drawFullBodyGarment(
   }
 }
 
+function drawShoeFlatLay(
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  rgb: [number, number, number],
+) {
+  const lower = name.toLowerCase()
+  const isBoot = lower.includes("boot")
+  const base = adjustRgb(rgb, 0)
+  const light = adjustRgb(rgb, 24)
+  const shade = adjustRgb(rgb, -28)
+  const stroke = adjustRgb(rgb, -46)
+
+  for (const side of [-1, 1] as const) {
+    const cx = 384 + side * 128
+    const topY = isBoot ? 340 : 470
+    const soleY = 670
+    ctx.save()
+    ctx.fillStyle = base
+    ctx.strokeStyle = stroke
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.roundRect(cx - 72, topY, 144, soleY - topY, [34, 34, 22, 22])
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.fillStyle = light
+    ctx.beginPath()
+    ctx.ellipse(cx, soleY - 42, 62, 46, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.fillStyle = shade
+    ctx.fillRect(cx - 74, soleY - 18, 148, 22)
+    ctx.restore()
+  }
+}
+
+function drawAccessoryFlatLay(
+  ctx: CanvasRenderingContext2D,
+  name: string,
+  rgb: [number, number, number],
+) {
+  const lower = name.toLowerCase()
+  const base = adjustRgb(rgb, 0)
+  const light = adjustRgb(rgb, 22)
+  const stroke = adjustRgb(rgb, -44)
+
+  ctx.save()
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = 5
+  if (
+    lower.includes("bag") ||
+    lower.includes("tote") ||
+    lower.includes("crossbody") ||
+    lower.includes("purse")
+  ) {
+    // Handle arc
+    ctx.beginPath()
+    ctx.arc(384, 330, 95, Math.PI, 0, false)
+    ctx.lineWidth = 16
+    ctx.stroke()
+
+    // Tote body
+    ctx.lineWidth = 5
+    const grad = ctx.createLinearGradient(210, 330, 558, 760)
+    grad.addColorStop(0, light)
+    grad.addColorStop(1, base)
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.roundRect(214, 330, 340, 410, 28)
+    ctx.fill()
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = base
+    ctx.beginPath()
+    ctx.arc(384, 512, 130, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
 function renderGarmentFlatLayDataUrl(item: {
   type: string
   name: string
@@ -404,6 +485,10 @@ function renderGarmentFlatLayDataUrl(item: {
     drawFullBodyGarment(ctx, item.name, rgb)
   } else if (slot === "Bottom") {
     drawBottomGarment(ctx, item.name, rgb)
+  } else if (slot === "Shoes") {
+    drawShoeFlatLay(ctx, item.name, rgb)
+  } else if (slot === "Accessory") {
+    drawAccessoryFlatLay(ctx, item.name, rgb)
   } else {
     drawTopGarment(ctx, item.name, rgb, slot === "Outerwear")
   }
