@@ -15,6 +15,7 @@ import TryOnPoseStudio2D, {
   CAMERA_PRESETS,
   DEFAULT_CUSTOMIZATION,
   DEFAULT_POSE,
+  HAND_FOOT_PRESETS,
   JOINT_LABELS,
   JOINT_ORDER,
   MANNEQUIN_MATERIALS,
@@ -55,7 +56,16 @@ import {
 } from "../lib/garmentCategories"
 import { fileToBase64 } from "../lib/wardrobeScan"
 import { AiHostNoticeBanner } from "../components/AiHostStatus"
-import { formatAiErrorMessage, submitAndPollTryOnJob } from "../lib/aiHost"
+import {
+  deleteProfileTryOnPhotoFromDb,
+  fetchProfileTryOnPhoto,
+  formatAiErrorMessage,
+  saveProfileTryOnPhotoToDb,
+  submitAndPollTryOnJob,
+  type SavedProfileTryOnPhoto,
+  type TryOnDiagnostics,
+  type TryOnLiveProgress,
+} from "../lib/aiHost"
 import {
   getReadableColorLabel,
   speakText,
@@ -65,6 +75,7 @@ import type {
   FavoriteOutfit,
   FavoriteOutfitItem,
   GarmentFitStyle,
+  HandFootPresetId,
   MannequinBodyPreset,
   MannequinCustomization,
   MannequinMaterialId,
@@ -72,14 +83,25 @@ import type {
   Pose2D,
   PoseJointId,
   PosePoint2D,
+  TryOnSubjectMode,
   WardrobeItem,
 } from "../types"
 
 type Step = "studio" | "processing" | "preview" | "error"
+type WizardStage = "outfit" | "subject" | "pose"
+type SubjectChoice = "mannequin" | "picture"
+type PictureSource = "saved" | "temporary"
+type PicturePoseMode = "direct_photo" | "repose_picture"
 type StudioPanelTab = "pose" | "body" | "face"
 type ResultViewMode = "ai" | "compare"
 
-type BuilderSlot = "Top" | "Bottom" | "Full Body" | "Outerwear" | "Shoes"
+type BuilderSlot =
+  | "Top"
+  | "Bottom"
+  | "Full Body"
+  | "Outerwear"
+  | "Shoes"
+  | "Accessory"
 type BuilderMode = "separates" | "full_body"
 
 function getPieceEmoji(
@@ -361,6 +383,7 @@ export default function TryOnTab() {
     "Full Body": true,
     Outerwear: true,
     Shoes: true,
+    Accessory: true,
   })
 
   // Reload studio customization & pose when switching user persona
@@ -438,7 +461,21 @@ export default function TryOnTab() {
   const [swapSlot, setSwapSlot] = useState<BuilderSlot | null>(null)
 
   const [step, setStep] = useState<Step>("studio")
+  const [wizardStage, setWizardStage] = useState<WizardStage>(() =>
+    activeTryOnOutfit ? "subject" : "outfit",
+  )
+  const [subjectChoice, setSubjectChoice] = useState<SubjectChoice>("mannequin")
+  const [pictureSource, setPictureSource] = useState<PictureSource>("saved")
+  const [picturePoseMode, setPicturePoseMode] = useState<PicturePoseMode>("direct_photo")
+  const [savedProfilePhoto, setSavedProfilePhoto] = useState<SavedProfileTryOnPhoto | null>(null)
+  const [tempPictureDataUrl, setTempPictureDataUrl] = useState<string | null>(null)
+  const [pictureConsent, setPictureConsent] = useState<boolean>(true)
+  const [savingProfilePhoto, setSavingProfilePhoto] = useState(false)
+  const tempPhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const savedPhotoInputRef = useRef<HTMLInputElement | null>(null)
+
   const [queueStatusText, setQueueStatusText] = useState<string | null>(null)
+  const [liveProgress, setLiveProgress] = useState<TryOnLiveProgress | null>(null)
   const [poseSnapshot, setPoseSnapshot] = useState<string | null>(null)
   const [barePoseSnapshot, setBarePoseSnapshot] = useState<string | null>(null)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null)
@@ -450,8 +487,15 @@ export default function TryOnTab() {
   const captureFnRef = useRef<(() => Promise<TryOnPoseCaptureResult>) | null>(null)
   const lastKeypointsRef = useRef<Record<string, [number, number, number]> | null>(null)
   const lastOpenposeRef = useRef<string | null>(null)
+  const lastDepthRef = useRef<string | null>(null)
   const faceUploadInputRef = useRef<HTMLInputElement | null>(null)
   const tryOnAbortRef = useRef<AbortController | null>(null)
+  const [lastResultMeta, setLastResultMeta] = useState<{
+    model?: string
+    elapsedMs?: number
+    diagnostics?: TryOnDiagnostics
+  } | null>(null)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
 
   const cancelInflightTryOn = () => {
     if (tryOnAbortRef.current) {
@@ -468,16 +512,119 @@ export default function TryOnTab() {
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    setSavedProfilePhoto(null)
+    void fetchProfileTryOnPhoto(user.id).then((photo) => {
+      if (!active) return
+      setSavedProfilePhoto(photo)
+      if (photo) {
+        setPicturePoseMode(photo.photoKind === "portrait" ? "repose_picture" : "direct_photo")
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [user.id])
+
+  const activeUserPictureUrl =
+    pictureSource === "temporary"
+      ? tempPictureDataUrl
+      : savedProfilePhoto?.imageDataUrl || null
+
+  const handleUploadPictureFile = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    saveToProfile: boolean,
+  ) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ""))
+        reader.onerror = () => reject(new Error("Could not read image file."))
+        reader.readAsDataURL(file)
+      })
+      setPictureConsent(true)
+      if (saveToProfile) {
+        setSavingProfilePhoto(true)
+        const saved = await saveProfileTryOnPhotoToDb(user.id, {
+          imageDataUrl: dataUrl,
+          photoKind: picturePoseMode === "repose_picture" ? "portrait" : "full_body",
+          consentConfirmed: true,
+        })
+        setSavedProfilePhoto(saved)
+        setPictureSource("saved")
+        showToast("Saved to Profile", "Your try-on picture was saved to your local PC database.", "success")
+      } else {
+        setTempPictureDataUrl(dataUrl)
+        setPictureSource("temporary")
+        showToast("Temporary Picture Loaded", "This picture stays in memory for this session only.", "info")
+      }
+    } catch (err) {
+      showToast(
+        "Photo Upload Error",
+        err instanceof Error ? err.message : "Could not load selected picture.",
+        "warning",
+      )
+    } finally {
+      setSavingProfilePhoto(false)
+    }
+  }
+
+  const handleSaveTempToProfile = async () => {
+    if (!tempPictureDataUrl) return
+    setSavingProfilePhoto(true)
+    try {
+      const saved = await saveProfileTryOnPhotoToDb(user.id, {
+        imageDataUrl: tempPictureDataUrl,
+        photoKind: picturePoseMode === "repose_picture" ? "portrait" : "full_body",
+        consentConfirmed: pictureConsent,
+      })
+      setSavedProfilePhoto(saved)
+      setPictureSource("saved")
+      showToast("Saved to Profile", "Picture persisted to your local SQLite profile database.", "success")
+    } catch (err) {
+      showToast(
+        "Save Failed",
+        err instanceof Error ? err.message : "Could not save picture to profile.",
+        "warning",
+      )
+    } finally {
+      setSavingProfilePhoto(false)
+    }
+  }
+
+  const handleDeleteSavedProfilePhoto = async () => {
+    setSavingProfilePhoto(true)
+    try {
+      await deleteProfileTryOnPhotoFromDb(user.id)
+      setSavedProfilePhoto(null)
+      showToast("Removed", "Deleted saved try-on picture from your profile.", "info")
+    } catch (err) {
+      showToast(
+        "Delete Failed",
+        err instanceof Error ? err.message : "Could not remove saved picture.",
+        "warning",
+      )
+    } finally {
+      setSavingProfilePhoto(false)
+    }
+  }
+
   // Sync incoming outfit selected from Wardrobe -> Favorite Outfits
   useEffect(() => {
     if (!activeTryOnOutfit) return
     setSelectedOutfit(activeTryOnOutfit)
     setBuilderMode(outfitUsesFullBody(activeTryOnOutfit) ? "full_body" : "separates")
     setOutfitSelected(true)
+    setWizardStage("subject")
     setBuilderOpen(false)
     setGeneratedImage(null)
     setPoseSnapshot(null)
     lastOpenposeRef.current = null
+    lastDepthRef.current = null
     lastKeypointsRef.current = null
     setStep("studio")
     setActiveTryOnOutfit(null)
@@ -485,6 +632,7 @@ export default function TryOnTab() {
 
   useEffect(() => {
     lastOpenposeRef.current = null
+    lastDepthRef.current = null
     setPoseSnapshot(null)
     setActiveLayers({
       Top: true,
@@ -492,10 +640,15 @@ export default function TryOnTab() {
       "Full Body": true,
       Outerwear: true,
       Shoes: true,
+      Accessory: true,
     })
   }, [selectedOutfit.id, selectedOutfit.label])
 
   const activeFitStyle: GarmentFitStyle = customization.fitStyle || "standard"
+  const activeSubjectMode: TryOnSubjectMode =
+    customization.subjectMode || "mannequin"
+  const activeHandFootPreset: HandFootPresetId =
+    customization.handFootPreset || "neutral"
   const bodyMeasurements = useMemo(
     () => deriveBodyMeasurements(customization),
     [
@@ -523,7 +676,8 @@ export default function TryOnTab() {
           slot === "Bottom" ||
           slot === "Full Body" ||
           slot === "Outerwear" ||
-          slot === "Shoes") &&
+          slot === "Shoes" ||
+          slot === "Accessory") &&
         activeLayers[slot] !== false
       ) {
         out.push({ slot, name: item.name, color: item.color })
@@ -799,7 +953,7 @@ export default function TryOnTab() {
     showToast("Piece Updated", `Swapped ${slot} to ${w.name}.`, "info")
   }
 
-  const handleRemoveSlot = (slot: "Outerwear" | "Shoes") => {
+  const handleRemoveSlot = (slot: "Outerwear" | "Shoes" | "Accessory") => {
     setSelectedOutfit((prev) => {
       const nextItems = prev.items.filter(
         (i) => normalizeSlotType(i.type, i.name) !== slot,
@@ -842,8 +996,8 @@ export default function TryOnTab() {
         faceImageData: dataUrl,
       }))
       showToast(
-        "Face Applied",
-        "Your face photo will be blended onto the generated mannequin.",
+        "Face Uploaded",
+        "Confirm portrait consent below to blend your photo onto the generated preview.",
         "success",
       )
     } catch (error) {
@@ -858,12 +1012,28 @@ export default function TryOnTab() {
   const handleGenerateFromPose = async (
     bypassSimulatedError = false,
     reuseSnapshot?: string,
+    forceFreshStudioBase = false,
   ) => {
     if (simulatedError && !bypassSimulatedError) {
       setGenerationError(
         "Simulated error active. Tap Retry Generation or disable Test Error.",
       )
       setStep("error")
+      return
+    }
+
+    if (
+      customization.includeMyFace &&
+      cameraPreset !== "back" &&
+      customization.faceImageData &&
+      !customization.faceConsentConfirmed
+    ) {
+      setStudioTab("face")
+      showToast(
+        "Portrait Consent Required",
+        "Please check the portrait permission box in the Face tab before generating with an uploaded photo.",
+        "warning",
+      )
       return
     }
 
@@ -875,7 +1045,8 @@ export default function TryOnTab() {
           slot === "Top" ||
           slot === "Bottom" ||
           slot === "Outerwear" ||
-          slot === "Shoes"
+          slot === "Shoes" ||
+          slot === "Accessory"
         if (!isSupported) return false
         return activeLayers[slot as BuilderSlot] !== false
       })
@@ -886,7 +1057,8 @@ export default function TryOnTab() {
           if (s === "Outerwear") return 1
           if (s === "Top") return 2
           if (s === "Bottom") return 3
-          return 4
+          if (s === "Shoes") return 4
+          return 5
         }
         return rank(a.type, a.name) - rank(b.type, b.name)
       })
@@ -916,10 +1088,34 @@ export default function TryOnTab() {
       return
     }
 
+    const usingPicture = subjectChoice === "picture"
+    const directPhotoActive = usingPicture && picturePoseMode === "direct_photo" && Boolean(activeUserPictureUrl)
+    if (usingPicture && !activeUserPictureUrl) {
+      showToast(
+        "Upload a Picture First",
+        "Choose your saved profile picture or upload a temporary picture before generating.",
+        "warning",
+      )
+      setWizardStage("subject")
+      return
+    }
+    if (usingPicture && !pictureConsent) {
+      showToast(
+        "Portrait Consent Required",
+        "Confirm permission to use this picture before generating a try-on.",
+        "warning",
+      )
+      setWizardStage("subject")
+      return
+    }
+
     let bareSnapshot = reuseSnapshot || ""
     let openposeSnapshot = reuseSnapshot ? lastOpenposeRef.current || "" : ""
+    let depthSnapshot = reuseSnapshot ? lastDepthRef.current || "" : ""
     let capturedKeypoints = lastKeypointsRef.current
-    if (!bareSnapshot || !openposeSnapshot) {
+    if (directPhotoActive && activeUserPictureUrl) {
+      bareSnapshot = activeUserPictureUrl
+    } else if (!bareSnapshot || !openposeSnapshot || !depthSnapshot) {
       if (!captureFnRef.current) {
         showToast(
           "Studio Still Loading",
@@ -931,16 +1127,23 @@ export default function TryOnTab() {
       const captureRes = await captureFnRef.current()
       bareSnapshot = captureRes.imageDataUrl
       openposeSnapshot = captureRes.openposeImageDataUrl
+      depthSnapshot = captureRes.depthImageDataUrl
       capturedKeypoints = captureRes.keypoints
       lastKeypointsRef.current = capturedKeypoints
       lastOpenposeRef.current = openposeSnapshot
+      lastDepthRef.current = depthSnapshot
     }
 
     setBarePoseSnapshot(bareSnapshot)
     setPoseSnapshot(bareSnapshot)
     setGeneratedImage(null)
     setGenerationError("")
-    setQueueStatusText("Preparing pose and selected garments…")
+    setLiveProgress({
+      phase: "queued",
+      label: "Submitting job to local GPU worker…",
+      percent: 4,
+    })
+    setQueueStatusText("Submitting job to local GPU worker…")
     setStep("processing")
 
     const abortController = new AbortController()
@@ -968,41 +1171,79 @@ export default function TryOnTab() {
           ? "Custom Pose"
           : POSE_PRESETS[activePosePreset].label
 
+      const startedLocal = performance.now()
+      const effectiveSubjectMode = usingPicture ? "human" : activeSubjectMode
+      const effectivePhotoMode = usingPicture ? picturePoseMode : "none"
       const result = await submitAndPollTryOnJob(
         {
           mannequinImage: bareSnapshot,
-          openposeImage: openposeSnapshot,
+          openposeImage: directPhotoActive ? undefined : openposeSnapshot,
+          depthImage: directPhotoActive ? undefined : depthSnapshot,
+          userPhotoImage: usingPicture ? activeUserPictureUrl || undefined : undefined,
+          photoMode: effectivePhotoMode,
+          userId: user.id,
+          outfitLabel: selectedOutfit.label,
           garments: preparedGarments,
-          keypoints: capturedKeypoints,
+          keypoints: directPhotoActive ? undefined : capturedKeypoints,
+          bodySliders: {
+            height: customization.height,
+            shoulders: customization.shoulders,
+            chest: customization.chest,
+            waistHips: customization.waistHips,
+            limbBuild: customization.limbBuild,
+          },
+          subjectMode: effectiveSubjectMode,
+          handFootPreset: activeHandFootPreset,
           cameraPreset,
           backdropPreset,
           poseLabel,
           bodyPreset: BODY_PRESET_VALUES[customization.bodyPreset].label,
           fitStyle: activeFitStyle,
           materialId: customization.materialId,
-          includeMyFace: customization.includeMyFace && cameraPreset !== "back",
-          faceImage:
-            customization.includeMyFace && cameraPreset !== "back"
+          includeMyFace: usingPicture
+            ? picturePoseMode === "repose_picture" && cameraPreset !== "back"
+            : customization.includeMyFace && cameraPreset !== "back",
+          faceImage: usingPicture
+            ? picturePoseMode === "repose_picture" && cameraPreset !== "back"
+              ? activeUserPictureUrl || undefined
+              : undefined
+            : customization.includeMyFace && cameraPreset !== "back"
               ? customization.faceImageData || defaultFacePortrait
               : undefined,
-          seed: reuseSnapshot ? Math.floor(Math.random() * 2_000_000_000) : undefined,
+          hasCustomFaceUpload: usingPicture
+            ? Boolean(activeUserPictureUrl)
+            : Boolean(customization.faceImageData),
+          faceConsentConfirmed: usingPicture
+            ? pictureConsent
+            : Boolean(customization.faceConsentConfirmed || !customization.faceImageData),
+          bypassPoseCache: forceFreshStudioBase,
+          seed: forceFreshStudioBase
+            ? Math.floor(Math.random() * 2_000_000_000)
+            : undefined,
         },
         {
           signal: abortController.signal,
           onProgress: (progress) => {
+            if (progress.progress) {
+              setLiveProgress(progress.progress)
+              setQueueStatusText(progress.progress.label)
+              return
+            }
             if (progress.status === "queued") {
               const pos = progress.position ?? 1
-              setQueueStatusText(
+              const msg =
                 pos > 1
                   ? `Queued on host GPU (#${pos} in line)…`
-                  : "Queued — waiting for GPU slot…",
-              )
+                  : "Queued — waiting for GPU slot…"
+              setLiveProgress({ phase: "queued", label: msg, percent: 5 })
+              setQueueStatusText(msg)
             } else if (progress.status === "running") {
               const secs = progress.elapsedMs
-                ? ` (${Math.max(1, Math.round(progress.elapsedMs / 1000))}s)`
+                ? ` (${(progress.elapsedMs / 1000).toFixed(1)}s)`
                 : ""
-              setQueueStatusText(`Generating on host RTX GPU${secs}…`)
+              setQueueStatusText(`Running on host GPU${secs}…`)
             } else if (progress.status === "completed") {
+              setLiveProgress({ phase: "completed", label: "Render complete!", percent: 100 })
               setQueueStatusText("Render complete; loading your preview…")
             } else if (progress.status === "failed") {
               setQueueStatusText("Host GPU reported a generation failure.")
@@ -1012,11 +1253,21 @@ export default function TryOnTab() {
       )
 
       setGeneratedImage(result.imageUrl)
+      setLastResultMeta({
+        model: result.model,
+        elapsedMs:
+          result.elapsedMs ?? Math.round(performance.now() - startedLocal),
+        diagnostics: result.diagnostics,
+      })
       setResultView("ai")
       setStep("preview")
       showToast(
-        "AI Try-On Ready!",
-        "Your posed studio virtual try-on render is ready.",
+        result.diagnostics?.stage1Cached
+          ? "Instant Pose-Cached Try-On Ready!"
+          : "AI Try-On Ready!",
+        result.diagnostics?.stage1Cached
+          ? "Reused cached Stage-1 studio pose and draped your new outfit via FastFit."
+          : "Your posed studio virtual try-on render is ready.",
         "success",
       )
     } catch (error) {
@@ -1130,8 +1381,73 @@ export default function TryOnTab() {
 
       <AiHostNoticeBanner featureName="AI Try-On Studio" />
 
-      {/* Step 1: Select or Build an Outfit (collapses once selected) */}
-      {step === "studio" && !outfitSelected && (
+      {/* 4-Step Try-On Wizard Stepper: 1. Outfit -> 2. Model/Picture -> 3. Pose & Lighting -> 4. Generate */}
+      <nav
+        aria-label="Try-On steps"
+        className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-card border-2 border-border shadow-2xs"
+      >
+        {(
+          [
+            { id: "outfit", num: "1", label: "Outfit" },
+            { id: "subject", num: "2", label: "Model / Pic" },
+            { id: "pose", num: "3", label: "Pose & Light" },
+            { id: "generate", num: "4", label: "Generate" },
+          ] as const
+        ).map((s) => {
+          const isActive =
+            (step === "studio" && wizardStage === s.id) ||
+            ((step === "processing" || step === "preview" || step === "error") &&
+              s.id === "generate")
+          const isDone =
+            (s.id === "outfit" && (wizardStage !== "outfit" || step !== "studio")) ||
+            (s.id === "subject" && (wizardStage === "pose" || step !== "studio")) ||
+            (s.id === "pose" && step !== "studio")
+          const canJump =
+            s.id === "outfit" ||
+            (s.id === "subject" && outfitSelected) ||
+            (s.id === "pose" && outfitSelected) ||
+            (s.id === "generate" && Boolean(generatedImage))
+          return (
+            <button
+              key={s.id}
+              type="button"
+              disabled={!canJump}
+              onClick={() => {
+                if (s.id === "outfit") {
+                  setStep("studio")
+                  setOutfitSelected(false)
+                  setWizardStage("outfit")
+                } else if (s.id === "subject") {
+                  setStep("studio")
+                  setOutfitSelected(true)
+                  setWizardStage("subject")
+                } else if (s.id === "pose") {
+                  setStep("studio")
+                  setOutfitSelected(true)
+                  setWizardStage("pose")
+                } else if (s.id === "generate" && generatedImage) {
+                  setStep("preview")
+                }
+              }}
+              className={`min-h-[34px] px-1.5 py-1 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-1 ${
+                isActive
+                  ? "bg-pink text-white shadow-xs"
+                  : isDone
+                    ? "bg-turquoise/15 text-foreground hover:bg-turquoise/25 cursor-pointer"
+                    : canJump
+                      ? "bg-muted text-foreground hover:bg-muted/80 cursor-pointer"
+                      : "text-muted-foreground/55 cursor-not-allowed"
+              }`}
+            >
+              <span aria-hidden="true">{isDone && !isActive ? "✓" : s.num}</span>
+              <span className="truncate">{s.label}</span>
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Step 1: Select or Build an Outfit */}
+      {step === "studio" && wizardStage === "outfit" && (
         <div className="rounded-3xl p-4 border-2 border-border bg-card space-y-3 shadow-sm">
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -1171,6 +1487,7 @@ export default function TryOnTab() {
                         setSelectedOutfit(fav)
                         setBuilderMode(outfitUsesFullBody(fav) ? "full_body" : "separates")
                         setOutfitSelected(true)
+                        setWizardStage("subject")
                         setBuilderOpen(false)
                       }}
                       className={`w-full text-left p-3 rounded-2xl flex items-center justify-between gap-3 border-2 transition-all hover:scale-[1.01] cursor-pointer ${
@@ -1297,18 +1614,28 @@ export default function TryOnTab() {
               {/* Garment Slots */}
               <div className="grid grid-cols-2 gap-1.5">
                 {(builderMode === "full_body"
-                  ? (["Full Body", "Outerwear", "Shoes"] as const)
-                  : (["Top", "Bottom", "Outerwear", "Shoes"] as const)
+                  ? (["Full Body", "Outerwear", "Shoes", "Accessory"] as const)
+                  : (["Top", "Bottom", "Outerwear", "Shoes", "Accessory"] as const)
                 ).map((slot) => {
                   const item = getSlotItem(slot)
-                  const isOptional = slot === "Outerwear" || slot === "Shoes"
+                  const isOptional =
+                    slot === "Outerwear" ||
+                    slot === "Shoes" ||
+                    slot === "Accessory"
                   const slotLabel =
-                    slot === "Full Body" ? "Dress / Full Body" : slot
+                    slot === "Full Body"
+                      ? "Dress / Full Body"
+                      : slot === "Accessory"
+                        ? "Bag / Accessory"
+                        : slot
                   return (
                     <div
                       key={slot}
                       className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-muted border border-border min-w-0 ${
-                        slot === "Full Body" ? "col-span-2" : ""
+                        slot === "Full Body" ||
+                        (builderMode === "separates" && slot === "Accessory")
+                          ? "col-span-2"
+                          : ""
                       }`}
                     >
                       <button
@@ -1447,7 +1774,10 @@ export default function TryOnTab() {
               </button>
               <button
                 type="button"
-                onClick={() => setOutfitSelected(false)}
+                onClick={() => {
+                  setOutfitSelected(false)
+                  setWizardStage("outfit")
+                }}
                 className="min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border-2 border-border hover:border-turquoise cursor-pointer"
               >
                 ✎ Change Outfit
@@ -1465,13 +1795,18 @@ export default function TryOnTab() {
               Layers:
             </span>
             {(outfitUsesFullBody(selectedOutfit)
-              ? (["Full Body", "Outerwear", "Shoes"] as const)
-              : (["Top", "Bottom", "Outerwear", "Shoes"] as const)
+              ? (["Full Body", "Outerwear", "Shoes", "Accessory"] as const)
+              : (["Top", "Bottom", "Outerwear", "Shoes", "Accessory"] as const)
             ).map((layerSlot) => {
               const slotItem = getSlotItem(layerSlot)
               const hasItem = Boolean(slotItem)
               const isOn = hasItem && activeLayers[layerSlot] !== false
-              const shortLabel = layerSlot === "Full Body" ? "Dress" : layerSlot
+              const shortLabel =
+                layerSlot === "Full Body"
+                  ? "Dress"
+                  : layerSlot === "Accessory"
+                    ? "Bag/Acc."
+                    : layerSlot
               return (
                 <button
                   key={layerSlot}
@@ -1508,29 +1843,365 @@ export default function TryOnTab() {
         </div>
       )}
 
-      {/* Step 2 Collapsed Card (default until an outfit is selected) */}
-      {step === "studio" && !outfitSelected && (
-        <div className="rounded-2xl p-3.5 border-2 border-dashed border-border bg-card/70 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-black text-foreground">
-              🔒 2. Pose &amp; Customize Studio Look
-            </p>
-            <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
-              Select an outfit above to open the 2D pose &amp; lighting studio.
+      {/* Step 2: Pick Between Mannequin and Picture (Saved Profile Photo or Temporary Upload) */}
+      {step === "studio" && wizardStage === "subject" && (
+        <div className="rounded-3xl p-4 border-2 border-border bg-card space-y-3.5 shadow-sm">
+          <div>
+            <h2 className="text-sm font-black text-foreground">
+              2. Pick Mannequin or Picture
+            </h2>
+            <p className="text-[11px] font-medium text-muted-foreground">
+              Style on a sculpted studio mannequin, or use your own saved or temporary photo.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setOutfitSelected(true)}
-            className="shrink-0 min-h-[34px] px-3 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-turquoise cursor-pointer"
-          >
-            Open Studio ▼
-          </button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-pressed={subjectChoice === "mannequin"}
+              onClick={() => {
+                setSubjectChoice("mannequin")
+                setCustomization((prev) => ({ ...prev, subjectMode: "mannequin", includeMyFace: false }))
+              }}
+              className={`p-3 rounded-2xl border-2 text-left space-y-1 transition-all cursor-pointer ${
+                subjectChoice === "mannequin"
+                  ? "bg-pink/10 border-pink shadow-xs"
+                  : "bg-muted border-border hover:border-turquoise"
+              }`}
+            >
+              <span className="text-lg block" aria-hidden="true">🗿</span>
+              <p className="text-xs font-black text-foreground">Sculpted Mannequin</p>
+              <p className="text-[10px] font-medium text-muted-foreground leading-snug">
+                Featureless studio mannequin with custom body sliders &amp; finishes.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              aria-pressed={subjectChoice === "picture"}
+              onClick={() => {
+                setSubjectChoice("picture")
+                setCustomization((prev) => ({ ...prev, subjectMode: "human" }))
+              }}
+              className={`p-3 rounded-2xl border-2 text-left space-y-1 transition-all cursor-pointer ${
+                subjectChoice === "picture"
+                  ? "bg-pink/10 border-pink shadow-xs"
+                  : "bg-muted border-border hover:border-turquoise"
+              }`}
+            >
+              <span className="text-lg block" aria-hidden="true">📸</span>
+              <p className="text-xs font-black text-foreground">My Picture</p>
+              <p className="text-[10px] font-medium text-muted-foreground leading-snug">
+                Use your saved profile photo or upload a temporary one-time picture.
+              </p>
+            </button>
+          </div>
+
+          {subjectChoice === "mannequin" && (
+            <div className="rounded-2xl p-3 bg-muted/60 border border-border space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-foreground">
+                  Mannequin Finish
+                </span>
+                <span className="text-[11px] font-bold text-muted-foreground">
+                  {MANNEQUIN_MATERIALS[customization.materialId].label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {(Object.keys(MANNEQUIN_MATERIALS) as MannequinMaterialId[]).map((matId) => {
+                  const mat = MANNEQUIN_MATERIALS[matId]
+                  const active = customization.materialId === matId
+                  return (
+                    <button
+                      key={matId}
+                      type="button"
+                      onClick={() => setCustomization((prev) => ({ ...prev, materialId: matId }))}
+                      aria-label={`Mannequin finish: ${mat.label}`}
+                      aria-pressed={active}
+                      className={`w-7 h-7 rounded-full border-2 cursor-pointer transition-transform ${
+                        active ? "border-pink scale-110 ring-2 ring-pink/30" : "border-black/20"
+                      }`}
+                      style={{ background: mat.swatch }}
+                      title={mat.label}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {subjectChoice === "picture" && (
+            <div className="rounded-2xl p-3 bg-muted/60 border border-border space-y-3">
+              {/* Saved Profile Photo vs Temporary Picture Toggle */}
+              <div
+                role="group"
+                aria-label="Picture source"
+                className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-border"
+              >
+                <button
+                  type="button"
+                  aria-pressed={pictureSource === "saved"}
+                  onClick={() => setPictureSource("saved")}
+                  className={`min-h-[34px] px-2 py-1 rounded-lg text-[11px] font-black cursor-pointer ${
+                    pictureSource === "saved"
+                      ? "bg-pink text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  💾 Saved Profile Photo
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={pictureSource === "temporary"}
+                  onClick={() => setPictureSource("temporary")}
+                  className={`min-h-[34px] px-2 py-1 rounded-lg text-[11px] font-black cursor-pointer ${
+                    pictureSource === "temporary"
+                      ? "bg-turquoise text-[#0D0F18] shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  ⏱ Temporary Upload
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {activeUserPictureUrl ? (
+                  <img
+                    src={activeUserPictureUrl}
+                    alt="Selected try-on picture"
+                    className="w-20 h-24 rounded-xl object-cover border-2 border-turquoise shrink-0 bg-card"
+                  />
+                ) : (
+                  <div className="w-20 h-24 rounded-xl border-2 border-dashed border-border bg-card flex flex-col items-center justify-center text-muted-foreground shrink-0">
+                    <span className="text-xl" aria-hidden="true">📷</span>
+                    <span className="text-[9px] font-bold mt-0.5">No photo</span>
+                  </div>
+                )}
+
+                <div className="flex-1 min-w-0 space-y-2">
+                  <input
+                    ref={savedPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void handleUploadPictureFile(e, true)}
+                  />
+                  <input
+                    ref={tempPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void handleUploadPictureFile(e, false)}
+                  />
+
+                  {pictureSource === "saved" ? (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-foreground leading-snug">
+                        {savedProfilePhoto
+                          ? "Loaded from your profile SQLite database."
+                          : "No saved picture yet — upload one to store in your profile."}
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={savingProfilePhoto}
+                          onClick={() => savedPhotoInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl text-[11px] font-black bg-turquoise text-[#0D0F18] border border-[#0D0F18]/20 hover:brightness-105 cursor-pointer"
+                        >
+                          {savingProfilePhoto
+                            ? "Saving…"
+                            : savedProfilePhoto
+                              ? "Replace Saved Photo"
+                              : "Upload & Save to Profile"}
+                        </button>
+                        {savedProfilePhoto && (
+                          <button
+                            type="button"
+                            disabled={savingProfilePhoto}
+                            onClick={() => void handleDeleteSavedProfilePhoto()}
+                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-card text-red border border-border hover:border-red cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-foreground leading-snug">
+                        Temporary picture stays only in this session (not written to your profile DB).
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => tempPhotoInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl text-[11px] font-black bg-turquoise text-[#0D0F18] border border-[#0D0F18]/20 hover:brightness-105 cursor-pointer"
+                        >
+                          {tempPictureDataUrl ? "Choose Another Photo" : "Upload Temporary Photo"}
+                        </button>
+                        {tempPictureDataUrl && (
+                          <button
+                            type="button"
+                            disabled={savingProfilePhoto}
+                            onClick={() => void handleSaveTempToProfile()}
+                            className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-card text-foreground border border-border hover:border-turquoise cursor-pointer"
+                          >
+                            💾 Also Save to Profile
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Smart Picture Pose Mode */}
+              <div className="space-y-1.5 pt-1 border-t border-border/70">
+                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block">
+                  How should we apply your picture?
+                </span>
+                <div className="grid grid-cols-1 gap-1.5">
+                  <button
+                    type="button"
+                    aria-pressed={picturePoseMode === "direct_photo"}
+                    onClick={() => setPicturePoseMode("direct_photo")}
+                    className={`p-2.5 rounded-xl border-2 text-left cursor-pointer ${
+                      picturePoseMode === "direct_photo"
+                        ? "bg-card border-pink"
+                        : "bg-card/50 border-border hover:border-turquoise"
+                    }`}
+                  >
+                    <p className="text-[11px] font-black text-foreground">
+                      🧍 Full-Body Photo — Keep My Exact Pose &amp; Face (Recommended)
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Drapes clothes directly on your photo; your real face stays 100% untouched pixel-for-pixel.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={picturePoseMode === "repose_picture"}
+                    onClick={() => setPicturePoseMode("repose_picture")}
+                    className={`p-2.5 rounded-xl border-2 text-left cursor-pointer ${
+                      picturePoseMode === "repose_picture"
+                        ? "bg-card border-pink"
+                        : "bg-card/50 border-border hover:border-turquoise"
+                    }`}
+                  >
+                    <p className="text-[11px] font-black text-foreground">
+                      🕺 Re-Pose / Face Portrait — Pick Any Studio Pose + 512×512 Face Detailer
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Poses your look in the 2D Pose Studio and runs a high-res 512×512 facial detail pass so faces stay sharp.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-2 text-[10px] font-semibold text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pictureConsent}
+                  onChange={(e) => setPictureConsent(e.target.checked)}
+                  className="mt-0.5 accent-pink"
+                />
+                <span>
+                  I confirm this is my own photo (or I have explicit consent) for local academic virtual try-on.
+                </span>
+              </label>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setOutfitSelected(false)
+                setWizardStage("outfit")
+              }}
+              className="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-extrabold border-2 border-border bg-muted text-foreground hover:border-turquoise cursor-pointer"
+            >
+              ← Outfit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (subjectChoice === "picture" && !activeUserPictureUrl) {
+                  showToast("Upload a Picture", "Select or upload a picture first, or choose Mannequin.", "warning")
+                  return
+                }
+                setWizardStage("pose")
+              }}
+              className="flex-1 min-h-[44px] py-2 px-4 rounded-xl text-xs font-black bg-pink text-white border-2 border-[#0D0F18]/20 shadow-md shadow-pink/20 hover:brightness-110 cursor-pointer"
+            >
+              Continue to 3. Pose &amp; Lighting →
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Step 2 Expanded: Interactive 2D Pose & AI Try-On Studio */}
-      {step === "studio" && outfitSelected && (
+      {/* Step 3: Pose & Lighting (Direct Photo preview OR Interactive 2D Pose Studio) */}
+      {step === "studio" && wizardStage === "pose" && subjectChoice === "picture" && picturePoseMode === "direct_photo" && activeUserPictureUrl && (
+        <div className="rounded-3xl p-4 border-2 border-border bg-card space-y-3 shadow-sm">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h2 className="text-sm font-black text-foreground">
+                3. Photo &amp; Studio Lighting
+              </h2>
+              <p className="text-[11px] font-medium text-muted-foreground">
+                Keeping your exact pose &amp; face intact. Pick a studio lighting mood or switch to Re-Pose.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPicturePoseMode("repose_picture")}
+              className="px-2.5 py-1 rounded-xl text-[11px] font-extrabold bg-muted text-foreground border border-border hover:border-turquoise cursor-pointer"
+            >
+              🕺 Switch to Re-Pose Studio
+            </button>
+          </div>
+
+          <div
+            className="relative rounded-3xl overflow-hidden border-2 border-border shadow-md mx-auto w-full max-w-[340px] flex items-center justify-center"
+            style={{ background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg }}
+          >
+            <div className="absolute top-2.5 left-2.5 z-20">
+              <StudioBackdropCornerBar value={backdropPreset} onChange={setBackdropPreset} />
+            </div>
+            <img
+              src={activeUserPictureUrl}
+              alt="Your uploaded full-body try-on photo"
+              className="w-full h-auto max-h-[480px] object-contain block"
+            />
+            <span className="absolute bottom-2 left-2.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-black/65 text-white">
+              📸 Real Face &amp; Pose Locked
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setWizardStage("subject")}
+              className="min-h-[46px] px-3.5 py-2 rounded-2xl text-xs font-extrabold border-2 border-border bg-muted text-foreground hover:border-turquoise cursor-pointer"
+            >
+              ← Model / Pic
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleGenerateFromPose()}
+              className="flex-1 min-h-[48px] py-2.5 px-4 rounded-2xl text-sm font-black bg-pink text-white border-2 border-[#0D0F18]/20 shadow-lg shadow-pink/25 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span aria-hidden="true">✨</span>
+              <span>Generate AI Try-On</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3 Expanded: Interactive 2D Pose & Lighting Studio (Mannequin or Re-Posed Picture) */}
+      {step === "studio" &&
+        wizardStage === "pose" &&
+        !(subjectChoice === "picture" && picturePoseMode === "direct_photo" && activeUserPictureUrl) && (
         <div className="space-y-2.5">
           {/* 2D Pose & Silhouette Preview Window */}
           <div
@@ -1590,6 +2261,7 @@ export default function TryOnTab() {
             <div className="absolute bottom-2 left-2.5 right-2.5 z-20 flex items-center justify-between gap-1.5 pointer-events-none flex-wrap">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm bg-white/90 text-neutral-900 border border-black/10">
+                  {activeSubjectMode === "human" ? "🧑 Studio Model" : "🗿 Mannequin"} ·{" "}
                   {BODY_PRESET_VALUES[customization.bodyPreset].label} ·{" "}
                   {FIT_EASE[activeFitStyle].label} ·{" "}
                   {MANNEQUIN_MATERIALS[customization.materialId].label}
@@ -1653,8 +2325,48 @@ export default function TryOnTab() {
             <span>Generate AI Try-On from Pose</span>
           </button>
 
-          {/* Studio Control Panel Tabs (Pose / Body / Face) + Backdrop/Lighting */}
+          {/* Studio Control Panel Tabs (Pose / Body / Face) + Subject Mode Toggle */}
           <div className="rounded-3xl p-3 border-2 border-border bg-card space-y-3 shadow-sm">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                Studio Subject Mode
+              </span>
+              <div
+                role="group"
+                aria-label="Studio subject rendering mode"
+                className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-muted border border-border"
+              >
+                {(
+                  [
+                    { id: "mannequin" as const, label: "🗿 Sculpted Mannequin" },
+                    { id: "human" as const, label: "🧑 Realistic Studio Model" },
+                  ]
+                ).map((m) => {
+                  const active = activeSubjectMode === m.id
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setCustomization((prev) => ({
+                          ...prev,
+                          subjectMode: m.id,
+                        }))
+                      }
+                      className={`min-h-[30px] px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                        active
+                          ? "bg-card text-foreground border border-pink shadow-2xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <div
               role="tablist"
               aria-label="Mannequin studio controls"
@@ -1770,6 +2482,46 @@ export default function TryOnTab() {
                       Random
                     </span>
                   </button>
+                </div>
+
+                {/* DWpose Hand & Foot Micro-Presets */}
+                <div className="space-y-1.5 pt-2 border-t border-border">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-foreground">
+                      DWpose Hand &amp; Foot Articulation
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {HAND_FOOT_PRESETS[activeHandFootPreset].desc}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {(Object.keys(HAND_FOOT_PRESETS) as HandFootPresetId[]).map(
+                      (hfId) => {
+                        const hf = HAND_FOOT_PRESETS[hfId]
+                        const active = activeHandFootPreset === hfId
+                        return (
+                          <button
+                            key={hfId}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() =>
+                              setCustomization((prev) => ({
+                                ...prev,
+                                handFootPreset: hfId,
+                              }))
+                            }
+                            className={`min-h-[34px] px-2 py-1 rounded-xl text-[11px] font-extrabold border transition-all cursor-pointer ${
+                              active
+                                ? "bg-turquoise/15 text-foreground border-turquoise shadow-2xs"
+                                : "bg-muted text-muted-foreground border-border hover:text-foreground"
+                            }`}
+                          >
+                            {hf.emoji} {hf.label}
+                          </button>
+                        )
+                      },
+                    )}
+                  </div>
                 </div>
 
                 {/* Joint Selector + 2D X/Y Fine Tune Sliders */}
@@ -2171,6 +2923,24 @@ export default function TryOnTab() {
                           </button>
                         )}
                       </div>
+                      {customization.faceImageData && (
+                        <label className="flex items-start gap-2 pt-1.5 text-[11px] font-semibold text-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(customization.faceConsentConfirmed)}
+                            onChange={(e) =>
+                              setCustomization((prev) => ({
+                                ...prev,
+                                faceConsentConfirmed: e.target.checked,
+                              }))
+                            }
+                            className="mt-0.5 accent-pink cursor-pointer"
+                          />
+                          <span className="leading-snug text-muted-foreground">
+                            I confirm this is my photo (or I have explicit permission) for local non-commercial AI preview. Face data is processed ephemerally in RAM and never stored remotely.
+                          </span>
+                        </label>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2180,58 +2950,178 @@ export default function TryOnTab() {
         </div>
       )}
 
-      {/* Processing Screen */}
-      {step === "processing" && (
-        <div className="rounded-3xl p-6 text-center space-y-4 max-w-md mx-auto border-2 border-border bg-card shadow-xl">
-          <PulseOrb label="Dressing Your Pose…" />
-
-          {poseSnapshot && (
-            <div className="w-28 h-36 mx-auto rounded-2xl overflow-hidden border-2 border-turquoise shadow-md bg-[#E8E5EE]">
-              <img
-                src={poseSnapshot}
-                alt="Captured 2D pose skeleton reference"
-                className="w-full h-full object-cover"
-              />
+      {/* Processing Screen — Accurate Real-Time GPU Step Progress */}
+      {step === "processing" && (() => {
+        const phase = liveProgress?.phase || "queued"
+        const pct = Math.max(4, Math.min(100, liveProgress?.percent ?? 5))
+        const phaseOrder = ["queued", "validating", "preparing", "stage1", "stage1_cached", "face_detailer", "stage2", "finalizing", "completed"]
+        const curIdx = phaseOrder.indexOf(phase)
+        const needsFacePass = subjectChoice === "picture" && picturePoseMode === "repose_picture" && cameraPreset !== "back"
+        const stages = [
+          {
+            id: "preparing",
+            label: "1. Preparing pose, depth & real garment photos",
+            done: curIdx > phaseOrder.indexOf("preparing"),
+            active: phase === "queued" || phase === "validating" || phase === "preparing",
+            detail: phase === "queued" ? "Waiting in GPU queue" : undefined,
+          },
+          {
+            id: "stage1",
+            label:
+              phase === "stage1_cached"
+                ? "2. Studio pose & lighting (Reused cached pose ⚡)"
+                : "2. Stage 1 — Pose & studio lighting (ControlNet Union)",
+            done: curIdx > phaseOrder.indexOf("stage1_cached"),
+            active: phase === "stage1" || phase === "stage1_cached",
+            detail:
+              phase === "stage1" && liveProgress?.totalSteps
+                ? `Step ${liveProgress.step ?? 0} / ${liveProgress.totalSteps}`
+                : undefined,
+          },
+          ...(needsFacePass
+            ? [
+                {
+                  id: "face_detailer",
+                  label: "3. High-Res 512×512 Face Detailer (preventing distortion)",
+                  done: curIdx > phaseOrder.indexOf("face_detailer"),
+                  active: phase === "face_detailer",
+                  detail:
+                    phase === "face_detailer" && liveProgress?.totalSteps
+                      ? `Step ${liveProgress.step ?? 0} / ${liveProgress.totalSteps}`
+                      : undefined,
+                },
+              ]
+            : []),
+          {
+            id: "stage2",
+            label: `${needsFacePass ? "4" : "3"}. Stage 2 — Draping garments (FastFit-MR-1024)`,
+            done: curIdx > phaseOrder.indexOf("stage2"),
+            active: phase === "stage2",
+            detail:
+              phase === "stage2" && liveProgress?.totalSteps
+                ? `Step ${liveProgress.step ?? 0} / ${liveProgress.totalSteps}`
+                : undefined,
+          },
+          {
+            id: "finalizing",
+            label: `${needsFacePass ? "5" : "4"}. Finalizing preview & AI disclosure metadata`,
+            done: phase === "completed",
+            active: phase === "finalizing",
+            detail: undefined,
+          },
+        ]
+        return (
+          <div className="rounded-3xl p-5 space-y-4 max-w-md mx-auto border-2 border-border bg-card shadow-xl">
+            <div className="flex items-center gap-3">
+              {poseSnapshot && (
+                <div className="w-16 h-20 rounded-xl overflow-hidden border-2 border-turquoise shadow-sm bg-[#E8E5EE] shrink-0">
+                  <img
+                    src={poseSnapshot}
+                    alt="Try-on input reference"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-black text-foreground truncate">
+                    Generating Try-On…
+                  </p>
+                  <span className="text-xs font-black tabular-nums text-pink">
+                    {pct}%
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-muted-foreground leading-snug">
+                  {liveProgress?.label || queueStatusText || "Starting local GPU pipeline…"}
+                </p>
+                <div
+                  role="progressbar"
+                  aria-valuenow={pct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={liveProgress?.label || "AI try-on progress"}
+                  className="h-2.5 rounded-full overflow-hidden bg-muted border border-border"
+                >
+                  <div
+                    aria-hidden="true"
+                    className="h-full rounded-full bg-gradient-to-r from-turquoise to-pink transition-all duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
             </div>
-          )}
 
-          <div className="space-y-2 max-w-sm mx-auto">
-            <p className="text-sm font-black text-foreground">
-              AI try-on in progress
-            </p>
-            <div
-              role="progressbar"
-              aria-label={queueStatusText || "AI try-on request in progress"}
-              className="h-2.5 rounded-full overflow-hidden bg-muted border border-border"
-            >
-              <div
-                aria-hidden="true"
-                className="h-full w-full rounded-full bg-gradient-to-r from-turquoise to-pink animate-pulse"
-              />
+            <ol className="space-y-1.5 text-left">
+              {stages.map((st) => (
+                <li
+                  key={st.id}
+                  className={`px-3 py-2 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 transition-colors ${
+                    st.active
+                      ? "bg-pink/10 border-pink text-foreground"
+                      : st.done
+                        ? "bg-turquoise/10 border-turquoise/40 text-foreground"
+                        : "bg-muted/40 border-border/60 text-muted-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span
+                      aria-hidden="true"
+                      className={`w-4 h-4 rounded-full inline-flex items-center justify-center text-[10px] font-black shrink-0 ${
+                        st.done
+                          ? "bg-turquoise text-[#0D0F18]"
+                          : st.active
+                            ? "bg-pink text-white animate-pulse"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {st.done ? "✓" : st.active ? "•" : "○"}
+                    </span>
+                    <span className="truncate">{st.label}</span>
+                  </span>
+                  {st.detail && (
+                    <span className="text-[10px] font-black tabular-nums text-pink shrink-0">
+                      {st.detail}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  cancelInflightTryOn()
+                  setStep("studio")
+                  setWizardStage("pose")
+                }}
+                className="min-h-[38px] text-xs py-1.5 px-5 rounded-xl font-extrabold border-2 border-border text-foreground bg-muted cursor-pointer"
+              >
+                Cancel &amp; Back to Pose
+              </button>
             </div>
-            <p className="text-xs font-semibold text-muted-foreground">
-              {queueStatusText || `Applying ${selectedOutfit.label} to your posed mannequin`}
-            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              cancelInflightTryOn()
-              setStep("studio")
-            }}
-            className="min-h-[40px] text-xs py-2 px-5 rounded-xl font-extrabold border-2 border-border text-foreground bg-muted cursor-pointer"
-          >
-            Back to Pose Studio
-          </button>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Result Preview & Side-by-Side Comparison */}
       {step === "preview" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <AIStatusPill state="success" label="AI Virtual Try-On Render Ready" />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <AIStatusPill state="success" label="AI Virtual Try-On Ready" />
+              {lastResultMeta?.diagnostics && (
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-turquoise/15 text-foreground border border-turquoise/50">
+                  {lastResultMeta.diagnostics.stage1Cached
+                    ? `⚡ Cached Pose · ${((lastResultMeta.elapsedMs || lastResultMeta.diagnostics.stage2Ms || 0) / 1000).toFixed(1)}s`
+                    : `Stage 1+2 · ${((lastResultMeta.elapsedMs || 0) / 1000).toFixed(1)}s`}{" "}
+                  ·{" "}
+                  {lastResultMeta.diagnostics.passes === 2
+                    ? "2-Pass Layered"
+                    : "1-Pass VTON"}
+                </span>
+              )}
+            </div>
             <div
               role="tablist"
               aria-label="Preview display mode"
@@ -2264,7 +3154,7 @@ export default function TryOnTab() {
           {/* Preview Canvas / Comparison Grid */}
           {resultView === "ai" && generatedImage && (
             <div
-              className="relative rounded-3xl overflow-hidden border-2 border-border shadow-xl mx-auto aspect-[3/4] max-h-[440px] w-full max-w-[330px]"
+              className="relative rounded-3xl overflow-hidden border-2 border-border shadow-xl mx-auto w-full max-w-[360px] flex items-center justify-center"
               style={{ background: STUDIO_BACKDROP_PRESETS[backdropPreset].bg }}
             >
               <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
@@ -2276,8 +3166,14 @@ export default function TryOnTab() {
               <img
                 src={generatedImage}
                 alt={`AI virtual try-on of ${selectedOutfit.label}`}
-                className="w-full h-full object-cover"
+                className="w-full h-auto max-h-[540px] object-contain block"
               />
+              <div className="absolute bottom-2 left-2.5 right-2.5 z-20 flex justify-between items-center pointer-events-none">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-black/65 text-white backdrop-blur-xs">
+                  {lastResultMeta?.diagnostics?.aiDisclosure ||
+                    "AI-Generated Preview"}
+                </span>
+              </div>
             </div>
           )}
 
@@ -2330,7 +3226,7 @@ export default function TryOnTab() {
               onClick={() => setStep("studio")}
               className="min-h-[46px] py-2.5 rounded-xl text-xs font-black border-2 border-border bg-card text-foreground hover:border-pink cursor-pointer"
             >
-              🕺 Re-Pose &amp; Edit
+              🕺 Re-Pose &amp; Swap Layers
             </button>
             <button
               type="button"
@@ -2343,14 +3239,109 @@ export default function TryOnTab() {
             >
               {isCurrentFavorited ? "♥ Saved to Favorites" : "♡ Save to Favorite Outfits"}
             </button>
-            <button
-              type="button"
-              onClick={() => void handleGenerateFromPose(false, poseSnapshot || undefined)}
-              className="min-h-[42px] py-2 rounded-xl text-xs font-extrabold border-2 border-border bg-muted text-foreground hover:border-turquoise cursor-pointer"
-            >
-              ↻ Regenerate Render
-            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => void handleGenerateFromPose(false, poseSnapshot || undefined, false)}
+                title="Re-drape garments using cached Stage-1 studio pose"
+                className="min-h-[42px] px-2 py-2 rounded-xl text-[11px] font-extrabold border-2 border-border bg-muted text-foreground hover:border-turquoise cursor-pointer"
+              >
+                ↻ Re-Drape
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGenerateFromPose(false, poseSnapshot || undefined, true)}
+                title="Re-roll Stage-1 studio lighting/model seed & re-drape"
+                className="min-h-[42px] px-2 py-2 rounded-xl text-[11px] font-extrabold border-2 border-border bg-muted text-foreground hover:border-pink cursor-pointer"
+              >
+                🎲 Fresh Base
+              </button>
+            </div>
           </div>
+
+          {/* Collapsible Pose Conditioning & GPU Cache Inspector + Model Attribution */}
+          {lastResultMeta?.diagnostics && (
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <button
+                type="button"
+                aria-expanded={inspectorOpen}
+                onClick={() => setInspectorOpen((o) => !o)}
+                className="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-xs font-extrabold text-foreground hover:bg-muted/60 cursor-pointer"
+              >
+                <span>
+                  🔍 Pose Conditioning &amp; GPU Cache Inspector
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {inspectorOpen ? "Hide ▲" : "Inspect Maps ▼"}
+                </span>
+              </button>
+              {inspectorOpen && (
+                <div className="px-3.5 pb-3.5 pt-1 border-t border-border space-y-2.5">
+                  <div className="flex flex-wrap gap-2 text-[11px] font-bold text-muted-foreground">
+                    <span>
+                      Stage 1 (ControlNet Union):{" "}
+                      <strong className="text-foreground">
+                        {lastResultMeta.diagnostics.stage1Cached
+                          ? "0 ms (LRU Cache Hit ⚡)"
+                          : `${lastResultMeta.diagnostics.stage1Ms ?? 0} ms`}
+                      </strong>
+                    </span>
+                    <span>·</span>
+                    <span>
+                      Stage 2 (FastFit-MR-1024):{" "}
+                      <strong className="text-foreground">
+                        {lastResultMeta.diagnostics.stage2Ms ?? 0} ms (
+                        {lastResultMeta.diagnostics.passes ?? 1} pass
+                        {lastResultMeta.diagnostics.passes === 2 ? "es" : ""})
+                      </strong>
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {lastResultMeta.diagnostics.dwposePreview && (
+                      <div className="rounded-xl overflow-hidden border border-border bg-black text-center">
+                        <span className="block py-0.5 text-[9px] font-extrabold text-white bg-neutral-900">
+                          DWpose (Hands/Feet)
+                        </span>
+                        <img
+                          src={lastResultMeta.diagnostics.dwposePreview}
+                          alt="DWpose skeleton conditioning map"
+                          className="w-full h-32 object-contain"
+                        />
+                      </div>
+                    )}
+                    {lastResultMeta.diagnostics.depthPreview && (
+                      <div className="rounded-xl overflow-hidden border border-border bg-black text-center">
+                        <span className="block py-0.5 text-[9px] font-extrabold text-white bg-neutral-900">
+                          2D Volume Depth
+                        </span>
+                        <img
+                          src={lastResultMeta.diagnostics.depthPreview}
+                          alt="2D depth volume conditioning map"
+                          className="w-full h-32 object-contain"
+                        />
+                      </div>
+                    )}
+                    {lastResultMeta.diagnostics.maskPreview && (
+                      <div className="rounded-xl overflow-hidden border border-border bg-black text-center">
+                        <span className="block py-0.5 text-[9px] font-extrabold text-white bg-neutral-900">
+                          VTON Slot Mask
+                        </span>
+                        <img
+                          src={lastResultMeta.diagnostics.maskPreview}
+                          alt="FastFit slot inpainting mask"
+                          className="w-full h-32 object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Models: {lastResultMeta.model || "RealVisXL V5.0 Lightning + ControlNet Union + FastFit-MR-1024"}.{" "}
+                    The FastFit Model is licensed by LavieAI under the FastFit Non-Commercial License (Copyright LavieAI; non-commercial academic use only).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

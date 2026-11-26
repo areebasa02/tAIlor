@@ -486,7 +486,7 @@ class HostController:
                     parts = []
                     parts.append(f"Text:{'OK' if loaded.get('text') else '...'}")
                     parts.append(f"Vision:{'OK' if loaded.get('vision') else '...'}")
-                    parts.append(f"SDXL:{'Loaded' if loaded.get('tryon') else 'On-demand'}")
+                    parts.append(f"TryOn:{'Warm' if loaded.get('tryon') else 'On-demand'}")
                     self.models_summary = " · ".join(parts)
 
                     if active_task or running_tryon or queued_tryon:

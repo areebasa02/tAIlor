@@ -26,6 +26,8 @@ export type AiHostHealthPayload = {
     load_error?: string | null
     active_task?: string | null
     queued_tasks?: number
+    vram_free_gb?: number
+    vram_total_gb?: number
     models?: {
       text?: string
       vision?: string
@@ -103,6 +105,13 @@ export function getApiUrl(path: string): string {
 export function formatAiErrorMessage(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : typeof error === "string" ? error : ""
   const lower = raw.toLowerCase()
+  if (
+    lower.includes("content filter") ||
+    lower.includes("portrait consent") ||
+    lower.includes("terms of use")
+  ) {
+    return raw
+  }
   if (
     !raw ||
     lower.includes("failed to fetch") ||
@@ -192,12 +201,102 @@ export async function fetchAiHostHealth(
   }
 }
 
+export type TryOnLiveProgress = {
+  phase:
+    | "queued"
+    | "validating"
+    | "preparing"
+    | "stage1"
+    | "stage1_cached"
+    | "face_detailer"
+    | "stage2"
+    | "finalizing"
+    | "completed"
+    | string
+  label: string
+  percent: number
+  step?: number
+  totalSteps?: number
+  updatedAt?: number
+}
+
 export type TryOnJobProgress = {
   jobId: string
   status: "queued" | "running" | "completed" | "failed"
   position?: number
   totalQueued?: number
   elapsedMs?: number
+  progress?: TryOnLiveProgress
+}
+
+export type TryOnDiagnostics = {
+  passes?: number
+  stage1Cached?: boolean
+  stage1Ms?: number
+  stage2Ms?: number
+  faceRefined?: boolean
+  photoMode?: string
+  dwposePreview?: string
+  depthPreview?: string
+  maskPreview?: string | null
+  aiDisclosure?: string
+}
+
+export type SavedProfileTryOnPhoto = {
+  userId: string
+  imageDataUrl: string
+  photoKind: "full_body" | "portrait"
+  consentConfirmed: boolean
+  updatedAt: number
+}
+
+export async function fetchProfileTryOnPhoto(
+  userId: string,
+): Promise<SavedProfileTryOnPhoto | null> {
+  try {
+    const resp = await fetch(getApiUrl(`/api/profile/${encodeURIComponent(userId)}/tryon-photo`), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    })
+    if (!resp.ok) return null
+    const data = (await resp.json().catch(() => ({}))) as { photo?: SavedProfileTryOnPhoto | null }
+    return data.photo || null
+  } catch {
+    return null
+  }
+}
+
+export async function saveProfileTryOnPhotoToDb(
+  userId: string,
+  payload: {
+    imageDataUrl: string
+    photoKind: "full_body" | "portrait"
+    consentConfirmed: boolean
+  },
+): Promise<SavedProfileTryOnPhoto> {
+  const resp = await fetch(getApiUrl(`/api/profile/${encodeURIComponent(userId)}/tryon-photo`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  })
+  const data = (await resp.json().catch(() => ({}))) as {
+    photo?: SavedProfileTryOnPhoto
+    error?: string
+  }
+  if (!resp.ok || !data.photo) {
+    throw new Error(data.error || `Failed to save profile photo (HTTP ${resp.status}).`)
+  }
+  return data.photo
+}
+
+export async function deleteProfileTryOnPhotoFromDb(userId: string): Promise<void> {
+  const resp = await fetch(getApiUrl(`/api/profile/${encodeURIComponent(userId)}/tryon-photo`), {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to remove saved profile photo (HTTP ${resp.status}).`)
+  }
 }
 
 export type TryOnJobResult = {
@@ -205,6 +304,7 @@ export type TryOnJobResult = {
   model?: string
   runs?: number
   elapsedMs?: number
+  diagnostics?: TryOnDiagnostics
 }
 
 export async function submitAndPollTryOnJob(
@@ -234,6 +334,7 @@ export async function submitAndPollTryOnJob(
     imageUrl?: string
     model?: string
     runs?: number
+    diagnostics?: TryOnDiagnostics
     error?: string
   }
 
@@ -241,12 +342,12 @@ export async function submitAndPollTryOnJob(
     throw new Error(created.error || `Virtual Try-On request failed (HTTP ${createResp.status}).`)
   }
 
-  // Allow direct completion if server responded synchronously
   if (created.imageUrl) {
     return {
       imageUrl: created.imageUrl,
       model: created.model,
       runs: created.runs,
+      diagnostics: created.diagnostics,
     }
   }
 
@@ -283,7 +384,7 @@ export async function submitAndPollTryOnJob(
         const timer = setTimeout(() => {
           options.signal?.removeEventListener("abort", onAbort)
           resolve()
-        }, 1400)
+        }, 350)
         const onAbort = () => {
           clearTimeout(timer)
           reject(new DOMException("Try-On cancelled", "AbortError"))
@@ -311,9 +412,11 @@ export async function submitAndPollTryOnJob(
         position?: number
         totalQueued?: number
         elapsedMs?: number
+        progress?: TryOnLiveProgress
         imageUrl?: string
         model?: string
         runs?: number
+        diagnostics?: TryOnDiagnostics
         error?: string
       }
 
@@ -327,6 +430,7 @@ export async function submitAndPollTryOnJob(
         position: job.position,
         totalQueued: job.totalQueued,
         elapsedMs: job.elapsedMs,
+        progress: job.progress,
       })
 
       if (job.status === "completed" && job.imageUrl) {
@@ -335,6 +439,7 @@ export async function submitAndPollTryOnJob(
           model: job.model,
           runs: job.runs,
           elapsedMs: job.elapsedMs,
+          diagnostics: job.diagnostics,
         }
       }
 

@@ -1,0 +1,9 @@
+The FastFit Model is licensed by LavieAI under the FastFit Non-Commercial License. Copyright LavieAI.
+IN NO EVENT SHALL LAVIEAI BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH USE OF THIS MODEL.
+
+---
+
+Modification & Non-Endorsement Statement (Pursuant to Section 3 of the FastFit Non-Commercial License v1.0.0):
+1. License Grant: Any rights to use the FastFit Models (`zhengchong/FastFit-MR-1024`) and/or Derivatives are granted directly by LavieAI pursuant to the FastFit Non-Commercial License v1.0.0 (included in full in `LICENSE.md`), strictly for Non-Commercial Purposes (academic research, classroom study, personal experimentation, and non-production evaluation).
+2. Statement of Modifications: The `fastfit_vton` Python package in `tAIlor` adapts the FastFit reference inference modules (`Zheng-Chong/FastFit`, Apache-2.0 / FastFit Non-Commercial License) for compatibility with `diffusers>=0.43.0` and `torch>=2.1` on Windows, removes redundant K/V tensor duplication in `FusedAttnProcessor2_0`, disables Triton-dependent `torch.compile` on Windows, adds optional `DDIMScheduler` multi-step sampling, adds open-front outerwear flat-lay reference compositing (`utils.py`), adds deterministic 2D-skeleton slot masking (`masking.py`), and adds content-filtering & AI-output metadata disclosures (`safety.py`). No FastFit model weights were retrained or altered.
+3. Non-Endorsement & Warranty Disclaimer: `tAIlor` is an independent university coursework project (CMPS 4200) and is NOT an official product of, nor endorsed, approved, or validated by, LavieAI. All modifications and integration code are provided "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, AND IN NO EVENT SHALL THE AUTHORS OR LAVIEAI BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR MODEL MATERIALS.
