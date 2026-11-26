@@ -118,7 +118,7 @@ function MainApp() {
         "Laundry and Fabric Care screen. Track clean clothes versus clothes in your hamper and review washing care instructions."
     } else if (tab === "tryon") {
       summary =
-        "Virtual Fitting Room screen. Preview your outfit on a 3D mannequin or photo before getting dressed."
+        "Virtual Try-On screen. Preview your outfit on your own photo or a studio mannequin."
     } else if (tab === "profile") {
       summary = `Profile and Accessibility Settings screen for ${user.name}. Switch test personas or adjust large text, voice narration, color names, simple mode, and sensory fabric filters.`
     }

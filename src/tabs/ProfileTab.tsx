@@ -23,7 +23,6 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [quizOpen, setQuizOpen] = useState(false)
   const [savedPhoto, setSavedPhoto] = useState<SavedProfileTryOnPhoto | null>(null)
-  const [photoKind, setPhotoKind] = useState<"full_body" | "portrait">("full_body")
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoStatusMsg, setPhotoStatusMsg] = useState("")
   const photoInputRef = useRef<HTMLInputElement | null>(null)
@@ -35,7 +34,6 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
     void fetchProfileTryOnPhoto(user.id).then((photo) => {
       if (!active) return
       setSavedPhoto(photo)
-      if (photo) setPhotoKind(photo.photoKind)
     })
     return () => {
       active = false
@@ -52,16 +50,16 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => resolve(String(reader.result || ""))
-        reader.onerror = () => reject(new Error("Could not read image file."))
+        reader.onerror = () => reject(new Error("Could not read that image."))
         reader.readAsDataURL(file)
       })
       const saved = await saveProfileTryOnPhotoToDb(user.id, {
         imageDataUrl: dataUrl,
-        photoKind,
+        photoKind: "full_body",
         consentConfirmed: true,
       })
       setSavedPhoto(saved)
-      setPhotoStatusMsg("Saved to your profile database for future try-ons.")
+      setPhotoStatusMsg("Saved! Ready to use anytime in Virtual Try-On.")
     } catch (err) {
       setPhotoStatusMsg(err instanceof Error ? err.message : "Could not save photo.")
     } finally {
@@ -75,7 +73,7 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
     try {
       await deleteProfileTryOnPhotoFromDb(user.id)
       setSavedPhoto(null)
-      setPhotoStatusMsg("Removed saved try-on picture from your profile.")
+      setPhotoStatusMsg("Removed your saved photo.")
     } catch (err) {
       setPhotoStatusMsg(err instanceof Error ? err.message : "Could not remove photo.")
     } finally {
@@ -159,61 +157,34 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
             </button>
           </div>
 
-          {/* Saved Try-On Picture (SQLite Profile Database) */}
+          {/* Saved Try-On Photo */}
           <div className="rounded-2xl p-3.5 space-y-2.5 border-2 shadow-sm bg-card border-border">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
-                <span aria-hidden="true">📸 </span>Saved Try-On Picture
+                <span aria-hidden="true">📸 </span>My Try-On Photo
               </span>
               <span className="text-[11px] font-bold text-muted-foreground">
-                {savedPhoto ? "Saved in SQLite DB" : "Optional"}
+                {savedPhoto ? "Saved" : "Optional"}
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-snug">
-              Save a personal photo to your profile so Try-On can use it anytime without re-uploading. You can also upload a temporary one-time photo inside Try-On.
+              Add a clear head-to-toe photo (standing or seated) so Virtual Try-On is ready in one tap. Your photo stays private on this device.
             </p>
 
             <div className="flex items-center gap-3">
               {savedPhoto ? (
                 <img
                   src={savedPhoto.imageDataUrl}
-                  alt={`${user.name} saved try-on picture`}
+                  alt={`${user.name} saved try-on photo`}
                   className="w-16 h-20 rounded-xl object-cover border-2 border-turquoise shrink-0 bg-muted"
                 />
               ) : (
                 <div className="w-16 h-20 rounded-xl border-2 border-dashed border-border bg-muted flex items-center justify-center text-xl shrink-0">
-                  🧑
+                  📸
                 </div>
               )}
 
               <div className="flex-1 min-w-0 space-y-2">
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPhotoKind("full_body")}
-                    aria-pressed={photoKind === "full_body"}
-                    className={`px-2 py-1.5 rounded-lg text-[10px] font-black border cursor-pointer ${
-                      photoKind === "full_body"
-                        ? "bg-pink text-white border-pink"
-                        : "bg-muted text-foreground border-border"
-                    }`}
-                  >
-                    🧍 Full-Body
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPhotoKind("portrait")}
-                    aria-pressed={photoKind === "portrait"}
-                    className={`px-2 py-1.5 rounded-lg text-[10px] font-black border cursor-pointer ${
-                      photoKind === "portrait"
-                        ? "bg-pink text-white border-pink"
-                        : "bg-muted text-foreground border-border"
-                    }`}
-                  >
-                    😊 Face Portrait
-                  </button>
-                </div>
-
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <input
                     ref={photoInputRef}
@@ -226,16 +197,16 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
                     type="button"
                     disabled={photoBusy}
                     onClick={() => photoInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl text-[11px] font-black bg-turquoise text-[#0D0F18] border border-[#0D0F18]/20 hover:brightness-105 cursor-pointer disabled:opacity-50"
+                    className="px-3.5 py-2 rounded-xl text-xs font-black bg-turquoise text-[#0D0F18] border border-[#0D0F18]/20 hover:brightness-105 cursor-pointer disabled:opacity-50"
                   >
-                    {photoBusy ? "Saving…" : savedPhoto ? "Replace Photo" : "Upload & Save"}
+                    {photoBusy ? "Saving…" : savedPhoto ? "Change Photo" : "Upload a Photo"}
                   </button>
                   {savedPhoto && (
                     <button
                       type="button"
                       disabled={photoBusy}
                       onClick={() => void handleRemoveSavedPhoto()}
-                      className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-muted text-red border border-border hover:border-red cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-muted text-red border border-border hover:border-red cursor-pointer disabled:opacity-50"
                     >
                       Remove
                     </button>

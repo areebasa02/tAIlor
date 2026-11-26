@@ -351,7 +351,12 @@ function parseTryOnPayload(body) {
   const userPhotoImage =
     typeof body.userPhotoImage === "string" ? body.userPhotoImage.trim() : ""
 
-  if (!mannequinImage && !openposeImage && !dressedImage && !userPhotoImage) {
+  const subjectMode = typeof body.subjectMode === "string" ? body.subjectMode : "mannequin"
+  const hasMannequinTemplate =
+    subjectMode === "mannequin" &&
+    (typeof body.poseLabel === "string" || typeof body.bodyPreset === "string")
+
+  if (!mannequinImage && !openposeImage && !dressedImage && !userPhotoImage && !hasMannequinTemplate) {
     return { error: "No pose image, skeleton, or user photo was provided." }
   }
   if (garments.length === 0) {
@@ -360,7 +365,7 @@ function parseTryOnPayload(body) {
 
   return {
     payload: {
-      mannequinImage: mannequinImage || openposeImage || dressedImage || userPhotoImage,
+      mannequinImage: mannequinImage || openposeImage || dressedImage || userPhotoImage || undefined,
       openposeImage: openposeImage || undefined,
       depthImage: depthImage || undefined,
       dressedImage: dressedImage || undefined,

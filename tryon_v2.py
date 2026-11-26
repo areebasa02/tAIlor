@@ -37,6 +37,7 @@ from fastfit_vton import AI_DISCLOSURE_BADGE
 
 ROOT_DIR = Path(__file__).resolve().parent
 STUDIO_POSES_DIR = ROOT_DIR / "public" / "studio_poses"
+MANNEQUINS_DIR = ROOT_DIR / "public" / "mannequins"
 
 TRYON_EDIT_MODEL = os.environ.get("TRYON_EDIT_MODEL", "FireRedTeam/FireRed-Image-Edit-1.1")
 TRYON_LIGHTNING_REPO = os.environ.get("TRYON_LIGHTNING_REPO", "FireRedTeam/FireRed-Image-Edit-1.1-ComfyUI")
@@ -53,14 +54,52 @@ _firered_pipe: Any = None
 _birefnet_model: Any = None
 _load_lock = threading.Lock()
 
-# Map UI pose labels / preset IDs to canonical pre-rendered studio pose template files
+# Map UI body-shape labels / preset IDs to static mannequin body slugs
+_MANNEQUIN_BODY_ALIASES: dict[str, str] = {
+    "petite": "petite",
+    "standard": "standard",
+    "average": "standard",
+    "regular": "standard",
+    "curvy": "curvy",
+    "plus": "curvy",
+    "tall": "tall",
+    "tall / broad": "tall",
+    "tall/broad": "tall",
+    "broad": "tall",
+    "athletic": "tall",
+}
+
+# Map UI pose labels / preset IDs to static mannequin pose slugs
+_MANNEQUIN_POSE_ALIASES: dict[str, str] = {
+    "standing": "standing",
+    "classic": "standing",
+    "classic studio": "standing",
+    "classic neutral": "standing",
+    "neutral": "standing",
+    "hands_on_hips": "hands_on_hips",
+    "hands on hips": "hands_on_hips",
+    "on hips": "hands_on_hips",
+    "relaxed": "relaxed",
+    "contrapposto": "relaxed",
+    "editorial": "relaxed",
+    "streetwear": "relaxed",
+    "casual": "relaxed",
+    "sitting": "sitting",
+    "seated": "sitting",
+    "chair": "sitting",
+    "wheelchair": "sitting",
+}
+
+# Legacy fallback aliases for public/studio_poses/*.png if mannequins folder is missing
 _POSE_TEMPLATE_ALIASES: dict[str, str] = {
     "classic": "classic",
     "classic neutral": "classic",
     "neutral": "classic",
+    "standing": "classic",
     "contrapposto": "contrapposto",
     "editorial": "contrapposto",
     "editorial contrapposto": "contrapposto",
+    "relaxed": "contrapposto",
     "hands_on_hips": "hands_on_hips",
     "hands on hips": "hands_on_hips",
     "on hips": "hands_on_hips",
@@ -120,6 +159,40 @@ def _encode_preview_jpg(img: Image.Image, max_side: int = 384) -> str:
     buf = io.BytesIO()
     thumb.save(buf, format="JPEG", quality=80)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _resolve_mannequin_template(
+    body_preset: str | None,
+    pose_label: str | None,
+) -> tuple[Image.Image, str, bool]:
+    raw_body = (body_preset or "standard").strip().lower()
+    body_slug = _MANNEQUIN_BODY_ALIASES.get(raw_body)
+    if body_slug is None:
+        for key, mapped in _MANNEQUIN_BODY_ALIASES.items():
+            if key in raw_body:
+                body_slug = mapped
+                break
+    body_slug = body_slug or "standard"
+
+    raw_pose = (pose_label or "standing").strip().lower()
+    pose_slug = _MANNEQUIN_POSE_ALIASES.get(raw_pose)
+    if pose_slug is None:
+        for key, mapped in _MANNEQUIN_POSE_ALIASES.items():
+            if key in raw_pose:
+                pose_slug = mapped
+                break
+    pose_slug = pose_slug or "standing"
+
+    for candidate in (
+        MANNEQUINS_DIR / f"{body_slug}_{pose_slug}.png",
+        MANNEQUINS_DIR / f"standard_{pose_slug}.png",
+        MANNEQUINS_DIR / "standard_standing.png",
+    ):
+        if candidate.exists():
+            return Image.open(candidate).convert("RGB"), f"{body_slug}_{pose_slug}", True
+
+    img, fallback_slug = _resolve_studio_pose_template(pose_label)
+    return img, fallback_slug, False
 
 
 def _resolve_studio_pose_template(pose_label: str | None) -> tuple[Image.Image, str]:
@@ -321,6 +394,8 @@ def _build_roll_call_prompt(
     ordered_items: list[dict[str, Any]],
     *,
     is_user_photo: bool,
+    is_mannequin: bool = False,
+    is_sitting: bool = False,
     fit_style: str | None,
     backdrop_preset: str | None,
 ) -> str:
@@ -330,9 +405,22 @@ def _build_roll_call_prompt(
     if is_user_photo:
         anchor = (
             "Preserve the exact person, face, glasses if worn, hairstyle, skin tone, exact natural body shape and proportions, "
-            "pose, hands, and original background from Picture 1. "
+            "standing or seated pose, hands, any chair or wheelchair if present, and original background from Picture 1. "
             "Completely remove all of their original clothing and shoes, and dress them in the complete outfit shown in Picture 2: "
         )
+    elif is_mannequin:
+        if is_sitting:
+            anchor = (
+                "Preserve the exact featureless matte studio mannequin, body shape, proportions, seated pose on the studio stool, "
+                "hands, feet, and clean light gray studio background from Picture 1. "
+                "Completely replace the mannequin's plain base tank top and leggings with the complete outfit shown in Picture 2: "
+            )
+        else:
+            anchor = (
+                "Preserve the exact featureless matte studio mannequin, body shape, proportions, pose, "
+                "hands, feet, and clean light gray studio background from Picture 1. "
+                "Completely replace the mannequin's plain base tank top and leggings with the complete outfit shown in Picture 2: "
+            )
     else:
         bg_desc = _BACKDROP_DESCRIPTIONS.get(
             (backdrop_preset or "cyclorama").strip().lower(),
@@ -386,14 +474,13 @@ def _build_roll_call_prompt(
     elif fs == "relaxed":
         fit_note = " Comfortable, slightly relaxed drape."
 
-    return (
-        anchor
-        + ", ".join(clauses)
-        + "."
-        + layer_note
-        + fit_note
-        + " Natural realistic fit matching the person's exact body shape, photorealistic fabric folds and shadows, crisp hands and face, clean studio fashion photography."
+    closing = (
+        " Natural realistic fit draped cleanly on the mannequin's exact body shape, photorealistic fabric folds and shadows, clean studio fashion photography."
+        if is_mannequin
+        else " Natural realistic fit matching the person's exact body shape and posture, photorealistic fabric folds and shadows, crisp hands and face, clean natural photography."
     )
+
+    return anchor + ", ".join(clauses) + "." + layer_note + fit_note + closing
 
 
 def generate_sdxl_tryon(
@@ -423,7 +510,7 @@ def generate_sdxl_tryon(
 ) -> dict[str, Any]:
     """Drop-in replacement for the legacy 2-stage SDXL+FastFit generator using FireRed-Image-Edit-1.1."""
     del openpose_img, depth_img, keypoints, body_sliders, subject_mode, hand_foot_preset
-    del camera_preset, body_preset, material_id, include_my_face, face_img, bypass_pose_cache
+    del camera_preset, material_id, include_my_face, face_img, bypass_pose_cache
 
     def _emit(phase: str, label: str, percent: int, step: int = 0, total: int = 0) -> None:
         if progress_cb is not None:
@@ -432,14 +519,15 @@ def generate_sdxl_tryon(
     t_stage1 = time.perf_counter()
     norm_photo_mode = (photo_mode or "none").strip().lower()
     is_user_photo = user_photo_img is not None and norm_photo_mode in {"direct_photo", "repose_picture"}
+    is_mannequin = False
 
     if is_user_photo:
         _emit("subject", "Preparing your photo…", 10)
         base_person = ImageOps.exif_transpose(user_photo_img).convert("RGB")
         pose_used = "direct_photo"
     else:
-        _emit("subject", "Loading studio pose template…", 10)
-        base_person, pose_used = _resolve_studio_pose_template(pose_label)
+        _emit("subject", "Preparing studio mannequin…", 10)
+        base_person, pose_used, is_mannequin = _resolve_mannequin_template(body_preset, pose_label)
 
     w, h = _align_size_32(*base_person.size, target_pixels=TRYON_TARGET_PIXELS)
     person_aligned = base_person.resize((w, h), Image.Resampling.LANCZOS)
@@ -475,7 +563,7 @@ def generate_sdxl_tryon(
     # Cap at 4 items for the 2x2 OOTD collage (prioritizing clothing + shoes over small accessories)
     active_items = resolved_items[:4]
 
-    _emit("collage", "Cutting out garments & building OOTD reference collage…", 20)
+    _emit("collage", "Getting your clothes ready…", 20)
     with _load_lock:
         pipe = _load_firered_pipeline(hf_token=hf_token)
 
@@ -483,6 +571,8 @@ def generate_sdxl_tryon(
     prompt = _build_roll_call_prompt(
         active_items,
         is_user_photo=is_user_photo,
+        is_mannequin=is_mannequin,
+        is_sitting=pose_used.endswith("sitting"),
         fit_style=fit_style,
         backdrop_preset=backdrop_preset,
     )
@@ -493,10 +583,10 @@ def generate_sdxl_tryon(
     def _step_cb(_pipe: Any, step_index: int, _timestep: Any, callback_kwargs: dict[str, Any]) -> dict[str, Any]:
         cur = step_index + 1
         pct = 28 + int(round((cur / max(1, steps)) * 66))
-        _emit("denoising", f"Dressing outfit with FireRed-1.1 (step {cur}/{steps})…", pct, cur, steps)
+        _emit("denoising", f"Fitting your outfit (step {cur} of {steps})…", pct, cur, steps)
         return callback_kwargs
 
-    _emit("denoising", f"Encoding subject & outfit collage (step 0/{steps})…", 26, 0, steps)
+    _emit("denoising", f"Starting outfit preview (step 0 of {steps})…", 26, 0, steps)
     t_stage2 = time.perf_counter()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     gen = torch.Generator(device=device).manual_seed(seed_val)
