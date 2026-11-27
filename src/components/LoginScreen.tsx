@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { Moon, Sun, Zap } from "lucide-react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
 import type { PersonaId, UserProfile } from "../types"
 import { THEME_COLORS } from "../types/theme"
@@ -135,36 +136,27 @@ export default function LoginScreen() {
       </a>
 
       <div
-        className="w-full max-w-[540px] min-h-dvh flex flex-col justify-between pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] min-[380px]:pl-[max(0.875rem,env(safe-area-inset-left))] min-[380px]:pr-[max(0.875rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] border-0 min-[560px]:border-x border-border sm:shadow-2xl overflow-y-auto"
-        style={{ background: "var(--background)" }}
+        className="w-full max-w-[540px] min-h-dvh flex flex-col justify-between pl-[max(0.875rem,env(safe-area-inset-left))] pr-[max(0.875rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] border-0 min-[560px]:border-x border-border sm:shadow-2xl overflow-y-auto"
+        style={{
+          backgroundColor: "var(--background)",
+          backgroundImage: "var(--mobile-glow)",
+        }}
       >
-        <div className="space-y-2.5">
-          {/* Top Bar with Brand Wordmark + Theme Toggle */}
+        <div className="space-y-4">
+          {/* Top Bar with Editorial Wordmark + Theme Toggle */}
           <header className="flex items-center justify-between">
             <div
               role="img"
               aria-label="tAIlor"
-              className="inline-flex items-center gap-0.5"
+              className="font-editorial text-[30px] leading-none tracking-tight inline-flex items-center"
             >
-              <span
-                aria-hidden="true"
-                className="text-3xl italic font-bold leading-none text-pink"
-                style={{ fontFamily: "Nunito, sans-serif" }}
-              >
+              <span aria-hidden="true" className="italic font-bold text-pink">
                 t
               </span>
-              <span
-                aria-hidden="true"
-                className="text-3xl font-black leading-none text-turquoise"
-                style={{ fontFamily: "Nunito, sans-serif" }}
-              >
+              <span aria-hidden="true" className="font-extrabold text-turquoise">
                 AI
               </span>
-              <span
-                aria-hidden="true"
-                className="text-3xl italic font-bold leading-none text-pink"
-                style={{ fontFamily: "Nunito, sans-serif" }}
-              >
+              <span aria-hidden="true" className="italic font-bold text-pink">
                 lor
               </span>
             </div>
@@ -173,49 +165,51 @@ export default function LoginScreen() {
               type="button"
               onClick={toggleTheme}
               aria-pressed={theme === "dark"}
-              className="min-h-[40px] px-3.5 rounded-full flex items-center gap-1.5 text-xs font-bold border-2 border-border bg-card text-foreground shadow-sm hover:border-turquoise/60 transition-all cursor-pointer"
+              className="h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs font-semibold border border-border bg-card/85 text-foreground hover:border-turquoise/60 transition-all cursor-pointer"
               aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
             >
-              <span aria-hidden="true">{theme === "light" ? "🌙" : "☀️"}</span>
+              {theme === "light" ? (
+                <Moon className="w-3.5 h-3.5" />
+              ) : (
+                <Sun className="w-3.5 h-3.5 text-[#FFCB44]" />
+              )}
               <span>{theme === "light" ? "Dark" : "Light"}</span>
             </button>
           </header>
 
-          <main id="login-main" tabIndex={-1} className="space-y-2.5 focus:outline-none">
-            {/* Pitch */}
-            <div>
-              <h1 className="text-base font-black tracking-wide text-turquoise leading-snug">
-                Smart, Easy-Read Wardrobe Assistant
+          <main id="login-main" tabIndex={-1} className="space-y-4 focus:outline-none">
+            {/* Editorial Pitch */}
+            <div className="px-0.5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-turquoise">
+                AI Wardrobe Assistant
+              </p>
+              <h1 className="font-editorial text-2xl font-bold text-foreground leading-tight mt-0.5">
+                Effortless daily outfits, tailored to your closet.
               </h1>
-              <p className="text-[13px] min-[380px]:text-sm mt-1 text-muted-foreground font-semibold leading-snug">
-                Simple daily outfits built for comfort, clarity, and your closet.
+              <p className="text-xs mt-1 text-muted-foreground leading-relaxed">
+                Curated for comfort, clarity, and your personal style.
               </p>
             </div>
 
             {/* Auth Card */}
-            <div
-              className="rounded-2xl p-3.5 space-y-3 shadow-xl relative border-2"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
+            <div className="lumina-card rounded-[22px] overflow-hidden relative">
+              <div aria-hidden="true" className="h-[2.5px] lumina-strip" />
+              <div className="p-4 space-y-3.5">
               {/* Sign In vs Sign Up Tabs */}
               <div
                 role="tablist"
                 aria-label="Account authentication mode"
-                className="grid grid-cols-2 p-1 rounded-2xl border-2 border-border"
-                style={{ background: "var(--muted)" }}
+                className="grid grid-cols-2 p-1 rounded-2xl border border-border bg-muted/80"
               >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={mode === "signin"}
                   onClick={() => setMode("signin")}
-                  className={`min-h-[40px] py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  className={`min-h-[38px] py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     mode === "signin"
-                      ? "bg-pink text-white shadow-md shadow-pink/30"
-                      : "text-foreground/80 hover:text-foreground"
+                      ? "bg-card text-foreground shadow-sm border border-border"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Sign In
@@ -225,10 +219,10 @@ export default function LoginScreen() {
                   role="tab"
                   aria-selected={mode === "signup"}
                   onClick={() => setMode("signup")}
-                  className={`min-h-[40px] py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  className={`min-h-[38px] py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     mode === "signup"
-                      ? "bg-pink text-white shadow-md shadow-pink/30"
-                      : "text-foreground/80 hover:text-foreground"
+                      ? "bg-card text-foreground shadow-sm border border-border"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Create Account
@@ -236,9 +230,10 @@ export default function LoginScreen() {
               </div>
 
               {/* 1-Click Quick Sign In */}
-              <div className="rounded-2xl p-3 space-y-2 border-2 bg-turquoise/10 border-turquoise/45">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-turquoise block">
-                  ⚡ Quick Sign In
+              <div className="rounded-2xl p-3 space-y-2 border border-turquoise/25 bg-turquoise/8">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-turquoise inline-flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-gold" />
+                  Quick Sign In
                 </span>
 
                 <div className="flex flex-wrap gap-2">
@@ -553,6 +548,7 @@ export default function LoginScreen() {
                 >
                   Continue as Guest
                 </button>
+              </div>
               </div>
             </div>
           </main>

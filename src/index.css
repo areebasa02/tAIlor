@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@400;500;600;700;800&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..700&family=Inter:wght@400;500;600;700;800&family=Lexend:wght@400;500;600;700;800&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600;1,700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap');
 @import 'tailwindcss';
 
 @custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
@@ -44,37 +44,42 @@
 :root,
 html[data-theme="light"] {
   color-scheme: light;
-  --app-font-family: 'Nunito', sans-serif;
+  --app-font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --app-heading-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --app-font-scale: 100%;
-  --background: #F4F5FA;
-  --outer-backdrop: #E6E4F0;
-  --desktop-glow: radial-gradient(circle at 82% 14%, rgba(206, 0, 90, 0.09), transparent 42%), radial-gradient(circle at 18% 82%, rgba(0, 120, 128, 0.11), transparent 46%), radial-gradient(circle at 50% 50%, rgba(255, 203, 68, 0.06), transparent 60%);
-  --foreground: #121526;
+  --background: #F8F9FC;
+  --outer-backdrop: #ECEEF5;
+  --desktop-glow: radial-gradient(circle at 86% 10%, rgba(236, 72, 153, 0.10), transparent 40%), radial-gradient(circle at 14% 78%, rgba(6, 182, 212, 0.11), transparent 44%), radial-gradient(circle at 52% 48%, rgba(255, 203, 68, 0.08), transparent 56%);
+  --mobile-glow: radial-gradient(circle at 92% 3%, rgba(236, 72, 153, 0.09), transparent 34%), radial-gradient(circle at 8% 38%, rgba(6, 182, 212, 0.08), transparent 36%);
+  --foreground: #0F172A;
   --card: #FFFFFF;
-  --card-foreground: #121526;
-  --muted: #E9ECF5;
-  --muted-foreground: #464B63;
-  --border: rgba(18, 21, 38, 0.18);
-  --surface-subtle: rgba(18, 21, 38, 0.04);
-  --nav-bg: rgba(255, 255, 255, 0.96);
+  --card-foreground: #0F172A;
+  --muted: #F1F4F9;
+  --muted-foreground: #525B70;
+  --border: rgba(15, 23, 42, 0.095);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --surface-subtle: rgba(15, 23, 42, 0.035);
+  --nav-bg: rgba(255, 255, 255, 0.94);
   --toast-bg: rgba(255, 255, 255, 0.98);
-  --radius: 14px;
+  --card-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --radius: 16px;
 
-  --pink: #c40055;
-  --rose: #a8243c;
-  --gold: #9a6400;
-  --red: #c93506;
+  --pink: #C40055;
+  --rose: #B42343;
+  --gold: #9A6300;
+  --gold-bright: #FFCB44;
+  --red: #C93506;
   --turquoise: #007688;
-  --dark-teal: #00666e;
-  --green: #1b7339;
-  --light-green: #186b35;
+  --dark-teal: #00666E;
+  --green: #157347;
+  --light-green: #16794B;
 
   --primary: var(--pink);
-  --primary-foreground: #ffffff;
+  --primary-foreground: #FFFFFF;
   --secondary: var(--dark-teal);
-  --secondary-foreground: #ffffff;
+  --secondary-foreground: #FFFFFF;
   --accent: var(--turquoise);
-  --accent-foreground: #0D0F18;
+  --accent-foreground: #0F172A;
   --ring: var(--pink);
 
   --magenta: var(--pink);
@@ -88,78 +93,82 @@ html[data-theme="light"] {
 .dark,
 html[data-theme="dark"] {
   color-scheme: dark;
-  --background: #0D0F18;
-  --outer-backdrop: #07080E;
-  --desktop-glow: radial-gradient(circle at 82% 14%, rgba(206, 0, 90, 0.16), transparent 44%), radial-gradient(circle at 18% 82%, rgba(105, 213, 230, 0.12), transparent 46%), radial-gradient(circle at 50% 50%, rgba(0, 120, 128, 0.09), transparent 60%);
-  --foreground: #F0EEF8;
-  --card: #161924;
-  --card-foreground: #F0EEF8;
-  --muted: #1E2133;
-  --muted-foreground: #B6BBD4;
-  --border: rgba(255, 255, 255, 0.16);
+  --background: #0B0D16;
+  --outer-backdrop: #06070D;
+  --desktop-glow: radial-gradient(circle at 86% 12%, rgba(236, 72, 153, 0.18), transparent 42%), radial-gradient(circle at 14% 80%, rgba(34, 211, 238, 0.14), transparent 44%), radial-gradient(circle at 52% 50%, rgba(255, 203, 68, 0.07), transparent 58%);
+  --mobile-glow: radial-gradient(circle at 90% 3%, rgba(236, 72, 153, 0.16), transparent 34%), radial-gradient(circle at 8% 42%, rgba(34, 211, 238, 0.11), transparent 36%);
+  --foreground: #F4F6FB;
+  --card: #141826;
+  --card-foreground: #F4F6FB;
+  --muted: #1B2032;
+  --muted-foreground: #A6AFC7;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.19);
   --surface-subtle: rgba(255, 255, 255, 0.04);
-  --nav-bg: rgba(13, 15, 24, 0.96);
-  --toast-bg: rgba(22, 25, 36, 0.98);
+  --nav-bg: rgba(14, 17, 28, 0.94);
+  --toast-bg: rgba(20, 24, 38, 0.98);
+  --card-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.55);
 
-  --pink: #ce005a;
-  --rose: #e2828f;
-  --gold: #ffcb44;
-  --red: #da400c;
-  --turquoise: #69d5e6;
-  --dark-teal: #007880;
-  --green: #40b066;
-  --light-green: #76e09a;
+  --pink: #E11D74;
+  --rose: #F08A9B;
+  --gold: #FFCB44;
+  --gold-bright: #FFCB44;
+  --red: #EB5628;
+  --turquoise: #67E8F9;
+  --dark-teal: #008B94;
+  --green: #34D399;
+  --light-green: #6EE7B7;
 
-  --accent-foreground: #0D0F18;
-  --ring: #69d5e6;
+  --accent-foreground: #0B0D16;
+  --ring: #67E8F9;
 }
 
 /* Light-mode bright cyan fill for solid bg-turquoise controls + subtle translucent utilities */
 html[data-theme="light"] .bg-turquoise {
-  background-color: #48cae4;
+  background-color: #48CAE4;
 }
 
 html[data-theme="light"] .bg-white\/5,
 html[data-theme="light"] .hover\:bg-white\/5:hover {
-  background-color: rgba(18, 21, 38, 0.04);
+  background-color: rgba(15, 23, 42, 0.035);
 }
 
 html[data-theme="light"] .bg-white\/10,
 html[data-theme="light"] .hover\:bg-white\/10:hover {
-  background-color: rgba(18, 21, 38, 0.08);
+  background-color: rgba(15, 23, 42, 0.07);
 }
 
 html[data-theme="light"] .bg-white\/\[0\.02\] {
-  background-color: rgba(18, 21, 38, 0.025);
+  background-color: rgba(15, 23, 42, 0.02);
 }
 
 html[data-theme="light"] .bg-white\/\[0\.03\] {
-  background-color: rgba(18, 21, 38, 0.035);
+  background-color: rgba(15, 23, 42, 0.03);
 }
 
 html[data-theme="light"] .border-white\/5 {
-  border-color: rgba(18, 21, 38, 0.08);
+  border-color: rgba(15, 23, 42, 0.06);
 }
 
 html[data-theme="light"] .border-white\/10 {
-  border-color: rgba(18, 21, 38, 0.14);
+  border-color: rgba(15, 23, 42, 0.11);
 }
 
 html[data-theme="light"] .border-white\/20 {
-  border-color: rgba(18, 21, 38, 0.2);
+  border-color: rgba(15, 23, 42, 0.18);
 }
 
 html[data-theme="light"] .border-white\/25 {
-  border-color: rgba(18, 21, 38, 0.24);
+  border-color: rgba(15, 23, 42, 0.22);
 }
 
-/* Ensure dark-surface foreground accent text meets WCAG AA (>=4.5:1) while filled bg-* + text-white stay >=5:1 */
+/* Dark-surface foreground accent text meets WCAG AA (>=4.5:1) */
 .dark .text-pink,
 html[data-theme="dark"] .text-pink { color: #FF6BA8; }
 .dark .text-red,
-html[data-theme="dark"] .text-red { color: #FF8463; }
+html[data-theme="dark"] .text-red { color: #FF8766; }
 .dark .text-dark-teal,
-html[data-theme="dark"] .text-dark-teal { color: #4DD0E1; }
+html[data-theme="dark"] .text-dark-teal { color: #5EEAD4; }
 .dark .text-green,
 html[data-theme="dark"] .text-green { color: #56D383; }
 
@@ -169,6 +178,7 @@ html[data-theme="dark"] .text-green { color: #56D383; }
 
 html, body, #root {
   height: 100%;
+  overflow: hidden;
 }
 
 html {
@@ -178,24 +188,136 @@ html {
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--app-font-family, 'Nunito', sans-serif);
+  font-family: var(--app-font-family, 'Plus Jakarta Sans', sans-serif);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--app-font-family, 'Nunito', sans-serif);
-  font-weight: 800;
+h1, h2, .font-editorial {
+  font-family: var(--app-heading-family, 'Playfair Display', Georgia, serif);
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
-/* scrollbar */
+h3, h4, h5, h6 {
+  font-family: var(--app-font-family, 'Plus Jakarta Sans', sans-serif);
+  font-weight: 700;
+}
+
+/* Editorial Lumina Surface & Accent Helpers */
+.lumina-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
+}
+
+.lumina-strip {
+  background: linear-gradient(90deg, #C40055 0%, #FFCB44 52%, #007688 100%);
+}
+
+.dark .lumina-strip,
+html[data-theme="dark"] .lumina-strip {
+  background: linear-gradient(90deg, #EC4899 0%, #FFCB44 52%, #67E8F9 100%);
+}
+
+/* Glossy specular highlight for primary CTAs & Ask AI */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    125deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.06) 38%,
+    transparent 56%
+  );
+  pointer-events: none;
+}
+
+.btn-lumina-primary {
+  background: linear-gradient(135deg, #C40055 0%, #E11D74 56%, #007688 140%);
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px -8px rgba(196, 0, 85, 0.45);
+}
+
+.ask-ai-gradient {
+  background: linear-gradient(135deg, #B8004F 0%, #D1195A 48%, #B45309 100%);
+  color: #FFFFFF;
+  border: 1.5px solid transparent;
+  box-shadow: 0 8px 20px -6px rgba(184, 0, 79, 0.45);
+}
+
+.dark .ask-ai-gradient,
+html[data-theme="dark"] .ask-ai-gradient {
+  background:
+    linear-gradient(135deg, rgba(225, 29, 116, 0.16), rgba(255, 203, 68, 0.10)) padding-box,
+    linear-gradient(#141826, #141826) padding-box,
+    linear-gradient(135deg, #E11D74 0%, #FFCB44 100%) border-box;
+  color: #FFFFFF;
+  border: 1.5px solid transparent;
+  box-shadow: 0 6px 20px -6px rgba(225, 29, 116, 0.5), 0 0 14px -4px rgba(255, 203, 68, 0.32);
+}
+
+/* Smooth Shimmer Skeleton */
+@keyframes luminaShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    var(--surface-subtle) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: luminaShimmer 1.5s ease-in-out infinite;
+}
+
+/* Gentle View & Bottom Sheet Entrance */
+@keyframes luminaFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes luminaSheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-fade-enter {
+  animation: luminaFadeIn 160ms ease-out;
+}
+
+.bottom-sheet-enter {
+  animation: luminaSheetUp 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 
 * {
-  transition-property: color, background-color, border-color, opacity, transform;
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow;
   transition-duration: 150ms;
   transition-timing-function: ease;
 }
@@ -220,7 +342,7 @@ button, a {
 
 /* High-visibility keyboard focus indicator (WCAG 2.4.7 / 2.4.13) */
 :focus-visible {
-  outline: 3px solid var(--ring);
+  outline: 2.5px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -236,20 +358,67 @@ html.font-scale-md, html.font-scale-3 { --app-font-scale: 112.5%; }
 html.font-scale-lg, html.font-scale-4 { --app-font-scale: 125%; }
 html.font-scale-xl, html.font-scale-5 { --app-font-scale: 137.5%; }
 
-/* Switchable accessible font families */
-html.font-nunito { --app-font-family: 'Nunito', sans-serif; }
-html.font-atkinson { --app-font-family: 'Atkinson Hyperlegible', sans-serif; }
-html.font-lexend { --app-font-family: 'Lexend', sans-serif; }
-html.font-opendyslexic { --app-font-family: 'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif; }
-html.font-system { --app-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+/* Curated + Accessible Font Families
+   Accessible fonts (Atkinson, Lexend, OpenDyslexic) automatically override serif headings too. */
+html.font-editorial {
+  --app-heading-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --app-font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html.font-jakarta {
+  --app-heading-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --app-font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html.font-inter {
+  --app-heading-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --app-font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html.font-dm-sans {
+  --app-heading-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --app-font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+html.font-nunito {
+  --app-heading-family: 'Nunito', sans-serif;
+  --app-font-family: 'Nunito', sans-serif;
+}
+html.font-georgia {
+  --app-heading-family: Georgia, 'Times New Roman', serif;
+  --app-font-family: Georgia, 'Times New Roman', serif;
+}
+html.font-atkinson {
+  --app-heading-family: 'Atkinson Hyperlegible', sans-serif;
+  --app-font-family: 'Atkinson Hyperlegible', sans-serif;
+}
+html.font-lexend {
+  --app-heading-family: 'Lexend', sans-serif;
+  --app-font-family: 'Lexend', sans-serif;
+}
+html.font-opendyslexic {
+  --app-heading-family: 'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif;
+  --app-font-family: 'OpenDyslexic', 'Comic Sans MS', cursive, sans-serif;
+}
+html.font-system {
+  --app-heading-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --app-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
 
+/* High Contrast Mode: automatically upgrades slim 1px hairlines to crisp 2px high-contrast borders */
 html.high-contrast-ui {
-  --border: #121526;
+  --border: #0F172A;
+  --border-strong: #0F172A;
+  --mobile-glow: none;
 }
 
 html.dark.high-contrast-ui,
 html[data-theme="dark"].high-contrast-ui {
   --border: #FFFFFF;
+  --border-strong: #FFFFFF;
+  --mobile-glow: none;
+}
+
+html.high-contrast-ui .lumina-card,
+html.high-contrast-ui header,
+html.high-contrast-ui nav {
+  border-width: 2px !important;
 }
 
 /* Hide horizontal scrollbars cleanly on pill carousels */

@@ -191,23 +191,26 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/55 backdrop-blur-[3px] animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-style-modal-title"
-        className="w-full max-w-[410px] rounded-3xl border border-border shadow-2xl overflow-hidden text-left flex flex-col max-h-[92vh]"
-        style={{ background: "var(--card)" }}
+        className="bottom-sheet-enter w-full max-w-[540px] sm:max-w-[430px] rounded-t-[26px] sm:rounded-[26px] border-t sm:border border-border shadow-2xl overflow-hidden text-left flex flex-col max-h-[88dvh] bg-card"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="flex justify-center pt-2.5 pb-0.5 sm:hidden shrink-0">
+          <span aria-hidden="true" className="w-10 h-1 rounded-full bg-foreground/15" />
+        </div>
         {/* Header */}
-        <div className="p-5 border-b border-border flex items-center justify-between">
+        <div className="px-5 pt-2 sm:pt-4 pb-3 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
               aria-hidden="true"
-              className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-bold shadow-md"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-bold shadow-sm"
               style={{
                 background: selectedAccent,
                 color: ["#ffcb44", "#76e09a", "#e2828f", "#69d5e6"].includes(
@@ -222,12 +225,12 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
             <div>
               <h2
                 id="add-style-modal-title"
-                className="text-base font-bold text-foreground"
+                className="font-editorial text-lg font-bold text-foreground leading-tight"
               >
                 Add Custom Style
               </h2>
               <p className="text-xs text-muted-foreground">
-                Add a new recommendation button tailored to your routine
+                Save a quick-switch look for your routine
               </p>
             </div>
           </div>
@@ -235,7 +238,7 @@ export function AddStyleModal({ isOpen, onClose }: AddStyleModalProps) {
             type="button"
             onClick={onClose}
             aria-label="Close Add Custom Style dialog"
-            className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors text-sm cursor-pointer"
+            className="w-8 h-8 rounded-full bg-muted/70 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors text-xs cursor-pointer"
           >
             <span aria-hidden="true">✕</span>
           </button>

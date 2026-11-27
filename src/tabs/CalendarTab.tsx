@@ -305,15 +305,15 @@ export default function CalendarTab() {
             : null
 
   return (
-    <div className="pt-1 pb-4 space-y-3">
-      <div className="min-w-0">
-        <h1
-          className="text-xl font-black leading-tight text-foreground"
-          style={{ fontFamily: "Nunito, sans-serif" }}
-        >
+    <div className="pt-2 pb-4 space-y-3.5">
+      <div className="min-w-0 px-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          Schedule &amp; Wear Log
+        </p>
+        <h1 className="font-editorial text-[26px] font-bold leading-tight text-foreground mt-0.5">
           Calendar
         </h1>
-        <p className="text-xs font-semibold mt-0.5 text-muted-foreground leading-snug">
+        <p className="text-xs mt-0.5 text-muted-foreground leading-snug">
           Sync your schedule (.ics) and outfit wear history — List, Week, or Month.
         </p>
       </div>

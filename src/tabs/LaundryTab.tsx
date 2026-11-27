@@ -283,25 +283,25 @@ export default function LaundryTab() {
   }
 
   return (
-    <div className="pt-1 pb-4 space-y-2.5">
+    <div className="pt-2 pb-4 space-y-3.5">
       {/* Header */}
-      <div>
-        <h1
-          className="text-xl font-black text-foreground leading-tight"
-          style={{ fontFamily: "Nunito, sans-serif" }}
-        >
+      <div className="px-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          Garment Care &amp; Hampers
+        </p>
+        <h1 className="font-editorial text-[26px] font-bold text-foreground leading-tight mt-0.5">
           Laundry &amp; Care
         </h1>
-        <p className="text-xs font-semibold mt-0.5 text-muted-foreground leading-snug">
+        <p className="text-xs mt-0.5 text-muted-foreground leading-snug">
           Track hampers, dirty clothes, and washing tags.
         </p>
       </div>
 
-      {/* Navigation Pills */}
+      {/* Slim Segmented Navigation Pills */}
       <div
         role="tablist"
         aria-label="Laundry and care views"
-        className="grid grid-cols-3 gap-1.5 rounded-2xl p-1.5 bg-muted border-2 border-border"
+        className="grid grid-cols-3 gap-1 rounded-2xl p-1 bg-muted/80 border border-border"
       >
         {(
           [

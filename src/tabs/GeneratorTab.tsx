@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react"
+import { Clock, Mic, Sparkles } from "lucide-react"
+import { StepProgressBar } from "../components/StepProgressBar"
 import {
   AnimatedStepProgress,
   UserControlBar,
@@ -194,6 +196,8 @@ export default function GeneratorTab() {
     saveGarmentFeedback,
     setActiveTryOnOutfit,
     setRequestedTab,
+    pendingStylistPrompt,
+    setPendingStylistPrompt,
   } = useApp()
   const requestAbortRef = useRef<AbortController | null>(null)
 
@@ -208,6 +212,14 @@ export default function GeneratorTab() {
   const [generationStep, setGenerationStep] = useState(0)
   const [eventDesc, setEventDesc] = useState("")
   const [dresscode, setDresscode] = useState("Smart-casual")
+
+  useEffect(() => {
+    if (pendingStylistPrompt) {
+      setEventDesc(pendingStylistPrompt)
+      setStep("input")
+      setPendingStylistPrompt(null)
+    }
+  }, [pendingStylistPrompt, setPendingStylistPrompt])
   const [voiceState, setVoiceState] = useState<VoiceState>("idle")
   const [saved, setSaved] = useState<Set<number>>(new Set())
   const [ctrlMode, setCtrlMode] = useState<Record<number, ControlMode>>({
@@ -437,39 +449,57 @@ export default function GeneratorTab() {
     showToast("Piece Updated", `Swapped in ${replacementName}.`, "info")
   }
 
+  const stepIndex = step === "input" ? 0 : step === "loading" ? 1 : 2
+
   return (
-    <div className="pt-1 pb-4 space-y-2.5">
+    <div className="pt-2 pb-4 space-y-3.5">
       {/* Header */}
-      <div className="min-w-0">
-        <h1
-          className="text-xl font-black leading-tight text-foreground"
-          style={{ fontFamily: "Nunito, sans-serif" }}
-        >
-          Ask AI Stylist
-        </h1>
-        <p className="text-xs font-semibold mt-0.5 text-muted-foreground leading-snug">
-          Tell us where you&apos;re going.
-        </p>
+      <div className="px-0.5 space-y-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Personal Event Stylist
+          </p>
+          <h1 className="font-editorial text-[26px] font-bold leading-tight text-foreground mt-0.5">
+            Ask AI Stylist
+          </h1>
+          <p className="text-xs mt-0.5 text-muted-foreground leading-snug">
+            Tell us where you&apos;re headed and we&apos;ll style from your closet.
+          </p>
+        </div>
+
+        <StepProgressBar
+          ariaLabel="AI Stylist progress"
+          activeIndex={stepIndex}
+          steps={[
+            {
+              id: "input",
+              label: "Describe",
+              onClick: () => setStep("input"),
+            },
+            { id: "loading", label: "Styling" },
+            { id: "results", label: "Looks" },
+          ]}
+        />
       </div>
 
       <AiHostNoticeBanner featureName="AI Stylist" />
 
       {/* Input Form */}
       {step === "input" && (
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           <div>
             <label
               htmlFor="stylist-event-desc"
-              className="text-xs font-extrabold uppercase tracking-wider mb-1.5 block text-foreground"
+              className="text-[11px] font-bold uppercase tracking-wider mb-1.5 block text-muted-foreground"
             >
               Where are you headed?
             </label>
             <div
-              className={`rounded-2xl overflow-hidden shadow-sm transition-colors bg-card border-2 ${
+              className={`lumina-card rounded-2xl overflow-hidden transition-colors ${
                 inputTooVague
-                  ? "border-gold"
+                  ? "border-gold/70"
                   : inputReady
-                    ? "border-green"
+                    ? "border-green/60"
                     : "border-border"
               }`}
             >
@@ -490,15 +520,15 @@ export default function GeneratorTab() {
               />
 
               {/* Voice button bar + status */}
-              <div className="flex items-center justify-between gap-2 px-3 py-2 border-t-2 border-border min-h-[46px] bg-muted/40">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-border min-h-[44px] bg-muted/40">
                 <div className="flex items-center gap-2 min-w-0">
                   {voiceState === "captured" ? (
                     <>
                       <span
                         role="status"
-                        className="text-xs font-extrabold text-green truncate"
+                        className="text-xs font-semibold text-green truncate"
                       >
-                        <span aria-hidden="true">✓ </span>Voice ready
+                        ✓ Voice ready
                       </span>
                       <button
                         type="button"
@@ -506,7 +536,7 @@ export default function GeneratorTab() {
                           setEventDesc("")
                           setVoiceState("idle")
                         }}
-                        className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-card border-2 border-border text-foreground transition-colors shrink-0 cursor-pointer"
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-card border border-border text-foreground transition-colors shrink-0 cursor-pointer"
                       >
                         Clear
                       </button>
@@ -524,17 +554,19 @@ export default function GeneratorTab() {
                             ? "Listening — tap to stop"
                             : "Transcribing voice input"
                       }
-                      className={`flex items-center gap-1.5 text-xs font-extrabold px-3 min-h-[36px] rounded-full transition-all border-2 shrink-0 cursor-pointer ${
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 min-h-[34px] rounded-full transition-all border shrink-0 cursor-pointer ${
                         voiceState === "listening"
                           ? "bg-pink text-white border-pink animate-pulse"
                           : voiceState === "processing"
                             ? "bg-muted text-foreground border-turquoise"
-                            : "bg-card text-foreground border-border hover:border-pink"
+                            : "bg-card text-foreground border-border hover:border-pink/60"
                       }`}
                     >
-                      <span aria-hidden="true">
-                        {voiceState === "processing" ? "⏳" : "🎙"}
-                      </span>
+                      {voiceState === "processing" ? (
+                        <Clock className="w-3.5 h-3.5" />
+                      ) : (
+                        <Mic className="w-3.5 h-3.5 text-pink" />
+                      )}
                       <span>
                         {voiceState === "idle"
                           ? "Speak"
@@ -550,7 +582,7 @@ export default function GeneratorTab() {
                   id="stylist-event-status"
                   role="status"
                   aria-live="polite"
-                  className={`text-xs font-extrabold shrink-0 ${
+                  className={`text-[11px] font-semibold shrink-0 ${
                     inputReady
                       ? "text-green"
                       : inputTooVague
@@ -572,7 +604,7 @@ export default function GeneratorTab() {
           <div className="space-y-1.5">
             <span
               id="dress-code-label"
-              className="text-xs font-extrabold uppercase tracking-wider block text-muted-foreground"
+              className="text-[11px] font-bold uppercase tracking-wider block text-muted-foreground"
             >
               Style (Optional)
             </span>
@@ -588,10 +620,10 @@ export default function GeneratorTab() {
                     type="button"
                     aria-pressed={dresscode === dc}
                     onClick={() => setDresscode(dresscode === dc ? "" : dc)}
-                    className={`min-h-[38px] px-3 py-1 rounded-full text-xs font-extrabold transition-all border-2 shrink-0 cursor-pointer ${
+                    className={`min-h-[34px] px-3 py-1 rounded-full text-xs font-semibold transition-all border shrink-0 cursor-pointer ${
                       dresscode === dc
-                        ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-pink/25"
-                        : "bg-card text-foreground border-border hover:border-pink"
+                        ? "bg-pink text-white border-pink shadow-xs"
+                        : "bg-card text-foreground border-border hover:border-pink/60"
                     }`}
                   >
                     {dc}
@@ -605,21 +637,21 @@ export default function GeneratorTab() {
             type="button"
             onClick={() => void handleGenerate()}
             disabled={!inputReady}
-            className={`w-full min-h-[50px] py-3 rounded-2xl text-[15px] font-black flex items-center justify-center gap-2 border-2 shadow-lg transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+            className={`w-full min-h-[46px] py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer ${
               inputReady
-                ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 shadow-pink/25"
-                : "bg-muted text-muted-foreground border-border"
+                ? "btn-shine btn-lumina-primary hover:brightness-105"
+                : "bg-muted text-muted-foreground border border-border"
             }`}
           >
-            <span aria-hidden="true">✧</span>
-            <span>Generate</span>
+            <Sparkles className="w-4 h-4" />
+            <span>Generate Outfits</span>
           </button>
 
           {/* Quick Ideas */}
-          <div className="p-3 rounded-2xl border-2 border-border bg-card space-y-2 shadow-sm">
+          <div className="lumina-card p-3.5 rounded-2xl space-y-2.5">
             <span
               id="quick-scenarios-heading"
-              className="text-xs font-extrabold uppercase tracking-wider text-foreground block"
+              className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block"
             >
               Quick Ideas (Tap to Fill)
             </span>

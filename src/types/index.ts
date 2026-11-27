@@ -211,7 +211,17 @@ export function getContrastTextColor(hexBg: string): string {
 }
 
 export type FontScale = "xs" | "sm" | "md" | "lg" | "xl"
-export type AccessibleFont = "nunito" | "atkinson" | "lexend" | "opendyslexic" | "system"
+export type AccessibleFont =
+  | "editorial"
+  | "jakarta"
+  | "inter"
+  | "dm-sans"
+  | "nunito"
+  | "georgia"
+  | "atkinson"
+  | "lexend"
+  | "opendyslexic"
+  | "system"
 
 export interface FeedbackRecord {
   id: string

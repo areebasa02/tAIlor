@@ -1,4 +1,14 @@
 import { useState, useEffect } from "react"
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Heart,
+  Lightbulb,
+  RefreshCw,
+  ScanFace,
+  X,
+} from "lucide-react"
 import { CATEGORY_LABELS, WARDROBE_CATEGORIES } from "../lib/garmentCategories"
 import type { WardrobeScanItem } from "../lib/wardrobeScan"
 import type { Category } from "../types"
@@ -406,37 +416,35 @@ export function WhyItWorksDisclosure({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-xl border-2 border-border bg-muted/60 overflow-hidden text-xs min-[380px]:text-[13px] transition-all">
+    <div className="rounded-xl border border-border bg-muted/50 overflow-hidden text-xs transition-all">
       <button
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className="w-full px-3 py-2.5 font-extrabold text-pink flex items-center justify-between text-left hover:bg-muted transition-colors cursor-pointer min-h-[44px]"
+        className="w-full px-3 py-2 font-semibold text-foreground flex items-center justify-between text-left hover:bg-muted/80 transition-colors cursor-pointer min-h-[38px]"
       >
         <span className="flex items-center gap-2">
-          <span aria-hidden="true">💡</span>
+          <Lightbulb className="w-3.5 h-3.5 text-gold shrink-0" strokeWidth={2} />
           <span>Why it works</span>
         </span>
-        <span
+        <ChevronDown
           aria-hidden="true"
-          className={`text-muted-foreground font-black text-xs transition-transform duration-200 ${
+          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
             open ? "rotate-180" : ""
           }`}
-        >
-          ▼
-        </span>
+        />
       </button>
       {open && (
-        <div className="px-3 pb-2.5 pt-1 text-foreground/90 font-medium border-t border-border/40 leading-snug space-y-2 animate-in fade-in duration-150">
-          <p>{rationale}</p>
+        <div className="px-3 pb-3 pt-1.5 text-muted-foreground border-t border-border/70 leading-relaxed space-y-2 animate-in fade-in duration-150">
+          <p className="text-foreground/90">{rationale}</p>
           {onDeepDive && (
             <button
               type="button"
               onClick={onDeepDive}
-              className="text-[11px] font-extrabold text-turquoise hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-turquoise hover:underline inline-flex items-center gap-1 cursor-pointer"
             >
               <span>Full breakdown</span>
-              <span aria-hidden="true">→</span>
+              <ArrowRight className="w-3 h-3" />
             </button>
           )}
         </div>
@@ -778,7 +786,7 @@ export function GarmentFeedbackModal({
 
 export function UserControlBar({
   mode = "default",
-  approveLabel = "Wear This Now",
+  approveLabel = "Wear This Outfit",
   onApprove,
   onEdit: _onEdit,
   onReject,
@@ -788,6 +796,7 @@ export function UserControlBar({
   showWhy: _showWhy = false,
   onFavorite,
   isFavorite = false,
+  onTryOn,
 }: {
   mode?: ControlMode
   approveLabel?: string
@@ -800,77 +809,97 @@ export function UserControlBar({
   showWhy?: boolean
   onFavorite?: () => void
   isFavorite?: boolean
+  onTryOn?: () => void
 }) {
   return (
-    <div className="space-y-2 pt-1">
-      {/* Enlarged Wear This Now primary action */}
+    <div className="space-y-2 pt-0.5">
+      {/* Glossy Editorial Lumina Primary Action */}
       <button
         type="button"
         onClick={onApprove}
-        className="w-full min-h-[54px] py-3.5 px-5 rounded-2xl text-base min-[380px]:text-lg font-black tracking-wide bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-pink/30 flex items-center justify-center gap-2 cursor-pointer"
+        className="btn-shine btn-lumina-primary w-full min-h-[44px] py-2.5 px-4 rounded-xl text-sm font-bold tracking-tight hover:brightness-105 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
       >
-        {approveLabel}
+        <Check className="w-4 h-4" strokeWidth={2.4} />
+        <span>{approveLabel}</span>
       </button>
 
       {mode === "editing" && (
         <div
           role="status"
-          className="rounded-xl px-3 py-2 text-xs font-bold bg-turquoise/15 border-2 border-turquoise text-foreground flex items-center gap-2"
+          className="rounded-xl px-3 py-2 text-xs font-semibold bg-turquoise/12 border border-turquoise/40 text-foreground"
         >
-          <span aria-hidden="true">👆</span>
-          <span>Tap Swap next to any piece above to pick a different item.</span>
+          Tap Swap next to any piece above to pick a different item.
         </div>
       )}
 
-      {/* Exactly 3 side-by-side buttons in a single row */}
-      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Outfit actions">
-        {/* 1. Dislike */}
+      {/* Slim secondary action row (3 or 4 buttons depending on Try-On) */}
+      <div
+        className={`grid gap-1.5 ${onTryOn ? "grid-cols-4" : "grid-cols-3"}`}
+        role="group"
+        aria-label="Outfit actions"
+      >
         <button
           type="button"
           onClick={onReject}
           aria-pressed={mode === "rejected"}
           aria-label="Dislike outfit"
-          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer ${
+          className={`min-h-[38px] py-1.5 px-1.5 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
             mode === "rejected"
-              ? "bg-red text-white border-red shadow-xs"
-              : "bg-card text-foreground border-border shadow-2xs hover:border-red hover:text-red active:scale-95"
+              ? "bg-red text-white border-red"
+              : "bg-muted/60 text-foreground border-border hover:border-red/50 hover:text-red active:scale-95"
           }`}
         >
-          <span aria-hidden="true" className={mode === "rejected" ? "" : "text-red font-black"}>✕</span>
-          <span>Dislike</span>
+          <X className={`w-3.5 h-3.5 shrink-0 ${mode === "rejected" ? "" : "text-red"}`} strokeWidth={2.2} />
+          <span className="truncate">Dislike</span>
         </button>
 
-        {/* 2. New Look */}
         <button
           type="button"
           onClick={onRegenerate}
           aria-pressed={mode === "regenerating"}
           aria-label="Generate new look"
-          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer ${
+          className={`min-h-[38px] py-1.5 px-1.5 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1 border transition-all cursor-pointer ${
             mode === "regenerating"
-              ? "bg-turquoise text-accent-foreground border-[#0D0F18]/30 shadow-xs"
-              : "bg-card text-foreground border-border shadow-2xs hover:border-pink active:scale-95"
+              ? "bg-turquoise text-accent-foreground border-turquoise"
+              : "bg-muted/60 text-foreground border-border hover:border-turquoise/60 active:scale-95"
           }`}
         >
-          <span aria-hidden="true" className={mode === "regenerating" ? "" : "text-pink font-black"}>↺</span>
-          <span>New Look</span>
+          <RefreshCw
+            className={`w-3.5 h-3.5 shrink-0 ${mode === "regenerating" ? "animate-spin" : "text-turquoise"}`}
+            strokeWidth={2}
+          />
+          <span className="truncate">Shuffle</span>
         </button>
 
-        {/* 3. ❤️ Favorite */}
         <button
           type="button"
           onClick={onFavorite}
           aria-pressed={isFavorite}
           aria-label={isFavorite ? "Remove outfit from favorites" : "Add outfit to favorites"}
-          className={`min-h-[46px] py-2 px-1.5 rounded-xl text-xs min-[380px]:text-[13px] font-extrabold flex items-center justify-center gap-1 border-2 transition-all cursor-pointer active:scale-95 ${
+          className={`min-h-[38px] py-1.5 px-1.5 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1 border transition-all cursor-pointer active:scale-95 ${
             isFavorite
-              ? "bg-pink/15 text-pink border-pink shadow-xs"
-              : "bg-card text-foreground border-border shadow-2xs hover:border-pink"
+              ? "bg-pink/12 text-pink border-pink/45"
+              : "bg-muted/60 text-foreground border-border hover:border-pink/50"
           }`}
         >
-          <span aria-hidden="true">❤️</span>
-          <span>Favorite</span>
+          <Heart
+            className={`w-3.5 h-3.5 shrink-0 ${isFavorite ? "fill-pink text-pink" : "text-pink"}`}
+            strokeWidth={2}
+          />
+          <span className="truncate">{isFavorite ? "Saved" : "Save"}</span>
         </button>
+
+        {onTryOn && (
+          <button
+            type="button"
+            onClick={onTryOn}
+            aria-label="Try this outfit on"
+            className="min-h-[38px] py-1.5 px-1.5 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1 border bg-muted/60 text-foreground border-border hover:border-turquoise/60 hover:text-turquoise transition-all active:scale-95 cursor-pointer"
+          >
+            <ScanFace className="w-3.5 h-3.5 shrink-0 text-turquoise" strokeWidth={2} />
+            <span className="truncate">Try On</span>
+          </button>
+        )}
       </div>
     </div>
   )
