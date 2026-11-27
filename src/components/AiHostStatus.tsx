@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { AlertTriangle, Clock, RefreshCw, X } from "lucide-react"
 import { useAiHost } from "../context/AiHostContext"
 
 export function AiHostHeaderPill() {
@@ -27,17 +28,17 @@ export function AiHostHeaderPill() {
 
   const dotClass =
     status === "online"
-      ? "bg-green"
+      ? "bg-green shadow-[0_0_8px_rgba(16,185,129,0.65)]"
       : status === "loading" || status === "checking"
-        ? "bg-gold animate-pulse"
+        ? "bg-[#FFCB44] animate-pulse"
         : "bg-red"
 
   const pillClass =
     status === "online"
-      ? "bg-green/12 border-green/40 text-green"
+      ? "bg-green/10 border-green/25 text-green"
       : status === "loading" || status === "checking"
-        ? "bg-gold/12 border-gold/45 text-gold"
-        : "bg-red/12 border-red/40 text-red"
+        ? "bg-gold/10 border-gold/30 text-gold"
+        : "bg-red/10 border-red/25 text-red"
 
   const shortLabel =
     status === "online"
@@ -70,11 +71,10 @@ export function AiHostHeaderPill() {
         aria-haspopup="dialog"
         aria-label={`AI Host status: ${shortLabel}`}
         title={statusMessage}
-        className={`h-8 px-2 min-[390px]:px-2.5 rounded-full border-2 flex items-center gap-1.5 text-[11px] font-black transition-transform active:scale-95 cursor-pointer ${pillClass}`}
+        className={`h-7 px-2.5 rounded-full border flex items-center gap-1.5 text-[11px] font-semibold transition-transform active:scale-95 cursor-pointer ${pillClass}`}
       >
-        <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
-        <span className="hidden min-[380px]:inline">AI {shortLabel}</span>
-        <span className="min-[380px]:hidden">{shortLabel}</span>
+        <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
+        <span>{shortLabel}</span>
       </button>
 
       {open && (
@@ -82,11 +82,11 @@ export function AiHostHeaderPill() {
           role="dialog"
           aria-modal="false"
           aria-label="AI Host Status Details"
-          className="absolute left-0 top-10 w-72 max-w-[calc(100vw-2rem)] rounded-2xl p-3.5 border-2 border-border bg-card shadow-2xl z-50 space-y-2.5 animate-in fade-in duration-150"
+          className="absolute left-0 top-9 w-72 max-w-[calc(100vw-2rem)] rounded-2xl p-3.5 border border-border bg-card shadow-2xl z-50 space-y-2.5 animate-in fade-in duration-150"
         >
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-xs font-black text-foreground flex items-center gap-1.5">
+              <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <span aria-hidden="true" className={`w-2 h-2 rounded-full ${dotClass}`} />
                 <span>
                   {status === "online"
@@ -106,34 +106,34 @@ export function AiHostHeaderPill() {
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close AI status details"
-              className="text-xs font-bold text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded-lg cursor-pointer"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
             >
-              ✕
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="rounded-xl p-2.5 bg-muted border border-border space-y-1.5 text-[11px]">
+          <div className="rounded-xl p-2.5 bg-muted/70 border border-border space-y-1.5 text-[11px]">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-muted-foreground">Endpoint</span>
-              <span className="font-mono font-bold text-foreground truncate max-w-[165px]">
+              <span className="font-medium text-muted-foreground">Endpoint</span>
+              <span className="font-mono font-semibold text-foreground truncate max-w-[165px]">
                 {hostLabel}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-muted-foreground">Stylist (Qwen 3B)</span>
-              <span className={`font-extrabold ${backendLoaded?.text ? "text-green" : "text-muted-foreground"}`}>
+              <span className="font-medium text-muted-foreground">Stylist (Qwen 3B)</span>
+              <span className={`font-semibold ${backendLoaded?.text ? "text-green" : "text-muted-foreground"}`}>
                 {status === "offline" ? "Offline" : backendLoaded?.text ? "Ready" : "Loading…"}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-muted-foreground">Scanner (Qwen VL)</span>
-              <span className={`font-extrabold ${backendLoaded?.vision ? "text-green" : "text-muted-foreground"}`}>
+              <span className="font-medium text-muted-foreground">Scanner (Qwen VL)</span>
+              <span className={`font-semibold ${backendLoaded?.vision ? "text-green" : "text-muted-foreground"}`}>
                 {status === "offline" ? "Offline" : backendLoaded?.vision ? "Ready" : "Loading…"}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-muted-foreground">Try-On (SDXL)</span>
-              <span className={`font-extrabold ${status === "online" ? "text-green" : "text-muted-foreground"}`}>
+              <span className="font-medium text-muted-foreground">Try-On (SDXL)</span>
+              <span className={`font-semibold ${status === "online" ? "text-green" : "text-muted-foreground"}`}>
                 {status === "offline"
                   ? "Offline"
                   : backendLoaded?.tryon
@@ -145,8 +145,8 @@ export function AiHostHeaderPill() {
             </div>
             {(activeTask || tryOnQueued > 0) && (
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
-                <span className="font-bold text-muted-foreground">GPU Activity</span>
-                <span className="font-extrabold text-turquoise">
+                <span className="font-medium text-muted-foreground">GPU Activity</span>
+                <span className="font-semibold text-turquoise">
                   {activeTask ? `Running ${activeTask}` : `${tryOnQueued} in queue`}
                 </span>
               </div>
@@ -161,9 +161,10 @@ export function AiHostHeaderPill() {
               type="button"
               onClick={() => void handleRefresh()}
               disabled={refreshing}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-black bg-turquoise text-[#0D0F18] hover:brightness-105 disabled:opacity-60 cursor-pointer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-turquoise text-[#0B0D16] hover:brightness-105 disabled:opacity-60 cursor-pointer"
             >
-              {refreshing ? "Checking…" : "↻ Refresh"}
+              <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+              <span>{refreshing ? "Checking…" : "Refresh"}</span>
             </button>
           </div>
         </div>
@@ -190,15 +191,20 @@ export function AiHostNoticeBanner({
     <div
       role="status"
       aria-live="polite"
-      className={`rounded-2xl p-3 border-2 flex items-start justify-between gap-3 ${
+      className={`rounded-2xl p-3 border flex items-start justify-between gap-3 ${
         isLoading
-          ? "bg-gold/10 border-gold/40 text-foreground"
-          : "bg-red/10 border-red/35 text-foreground"
+          ? "bg-gold/10 border-gold/30 text-foreground"
+          : "bg-red/8 border-red/25 text-foreground"
       }`}
     >
       <div className="min-w-0 space-y-0.5">
-        <p className={`text-xs font-black ${isLoading ? "text-gold" : "text-red"}`}>
-          {isLoading ? `⏳ ${featureName} is warming up` : `⚠ Host PC AI is offline`}
+        <p className={`text-xs font-bold flex items-center gap-1.5 ${isLoading ? "text-gold" : "text-red"}`}>
+          {isLoading ? (
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          )}
+          <span>{isLoading ? `${featureName} is warming up` : "Host PC AI is offline"}</span>
         </p>
         <p className="text-[11px] text-muted-foreground leading-snug">
           {isLoading
@@ -218,9 +224,10 @@ export function AiHostNoticeBanner({
             setChecking(false)
           }
         }}
-        className="shrink-0 min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-black border border-border bg-card text-foreground hover:border-turquoise disabled:opacity-60 cursor-pointer"
+        className="shrink-0 min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-semibold border border-border bg-card text-foreground hover:border-turquoise inline-flex items-center gap-1 disabled:opacity-60 cursor-pointer"
       >
-        {checking ? "Checking…" : "↻ Check Again"}
+        <RefreshCw className={`w-3 h-3 ${checking ? "animate-spin" : ""}`} />
+        <span>{checking ? "Checking…" : "Retry"}</span>
       </button>
     </div>
   )

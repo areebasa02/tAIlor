@@ -31,6 +31,7 @@ import {
   categoryToOutfitType,
   getGarmentEmoji,
   isFullBodyGarment,
+  normalizeGarmentSlot,
 } from "../lib/garmentCategories"
 import {
   clearSavedCalendarForPersona,
@@ -1405,6 +1406,7 @@ export interface AppContextType {
   setWornToday: (val: boolean) => void
   regenerateOutfit: (reasonConstraint?: string) => void
   swapOutfitItem: (index: number, replacementItem: WardrobeItem) => void
+  toggleOutfitAccessory: (accessoryItem: WardrobeItem) => void
   undoOutfit: () => boolean
   hasUndo: boolean
 
@@ -1454,6 +1456,8 @@ export interface AppContextType {
       | ("home" | "wardrobe" | "generator" | "calendar" | "laundry" | "tryon" | "profile")
       | null,
   ) => void
+  pendingStylistPrompt: string | null
+  setPendingStylistPrompt: (prompt: string | null) => void
 
   // Feedback notes
   outfitFeedbackNotes: Record<string, { notes: string; reasons?: string[]; timestamp: string }>
@@ -1776,16 +1780,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Accessible font family state
   const [accessibleFont, setAccessibleFont] = useState<AccessibleFont>(() => {
     try {
-      const saved = localStorage.getItem("tailor_font_family") as AccessibleFont
-      if (["nunito", "atkinson", "lexend", "opendyslexic", "system"].includes(saved)) return saved
+      const saved = localStorage.getItem("tailor_font_family_v2") as AccessibleFont
+      if (
+        [
+          "editorial",
+          "jakarta",
+          "inter",
+          "dm-sans",
+          "nunito",
+          "georgia",
+          "atkinson",
+          "lexend",
+          "opendyslexic",
+          "system",
+        ].includes(saved)
+      ) {
+        return saved
+      }
     } catch { }
-    return "nunito"
+    return "editorial"
   })
 
   useEffect(() => {
     const root = document.documentElement
     const fontClasses = [
+      "font-editorial",
+      "font-jakarta",
+      "font-inter",
+      "font-dm-sans",
       "font-nunito",
+      "font-georgia",
       "font-atkinson",
       "font-lexend",
       "font-opendyslexic",
@@ -1794,7 +1818,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     root.classList.remove(...fontClasses)
     root.classList.add(`font-${accessibleFont}`)
     try {
-      localStorage.setItem("tailor_font_family", accessibleFont)
+      localStorage.setItem("tailor_font_family_v2", accessibleFont)
     } catch { }
   }, [accessibleFont])
 
@@ -1930,6 +1954,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return buildDefaultFavoriteOutfits(wardrobe, pid)
   })
   const [activeTryOnOutfit, setActiveTryOnOutfit] = useState<FavoriteOutfit | null>(null)
+  const [pendingStylistPrompt, setPendingStylistPrompt] = useState<string | null>(null)
   const [requestedTab, setRequestedTab] = useState<
     | "home"
     | "wardrobe"
@@ -2706,6 +2731,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast("Item Swapped", `Replaced with ${replacementItem.name}.`, "success")
   }
 
+  const toggleOutfitAccessory = (accessoryItem: WardrobeItem) => {
+    setOutfitHistory((prev) => [currentOutfit, ...prev])
+    const applyToggle = (items: OutfitItem[]): { nextItems: OutfitItem[]; added: boolean } => {
+      const existingIdx = items.findIndex(
+        (i) =>
+          normalizeGarmentSlot(i.type, i.desc) === "Accessory" &&
+          i.desc.trim().toLowerCase() === accessoryItem.name.trim().toLowerCase(),
+      )
+      if (existingIdx !== -1) {
+        return {
+          nextItems: items.filter((_, idx) => idx !== existingIdx),
+          added: false,
+        }
+      }
+      return {
+        nextItems: [
+          ...items,
+          {
+            type: "Accessory",
+            desc: accessoryItem.name,
+            color: accessoryItem.color,
+            emoji: getGarmentEmoji(accessoryItem.category, accessoryItem.name),
+            reason: `Added ${accessoryItem.colorName} accent piece.`,
+          },
+        ],
+        added: true,
+      }
+    }
+
+    if (todayOutfit) {
+      const { nextItems, added } = applyToggle(todayOutfit.items)
+      setTodayOutfitForDirection(selectedDirection, {
+        ...todayOutfit,
+        items: nextItems,
+      })
+      showToast(
+        added ? "Accessory Added" : "Accessory Removed",
+        added ? `Added ${accessoryItem.name} to today's look.` : `Removed ${accessoryItem.name}.`,
+        "info",
+      )
+      return
+    }
+
+    let wasAdded = true
+    setOutfits((prev) => {
+      const target = prev[selectedDirection]
+      const { nextItems, added } = applyToggle(target.items)
+      wasAdded = added
+      return {
+        ...prev,
+        [selectedDirection]: {
+          ...target,
+          items: nextItems,
+        },
+      }
+    })
+    showToast(
+      wasAdded ? "Accessory Added" : "Accessory Removed",
+      wasAdded ? `Added ${accessoryItem.name} to today's look.` : `Removed ${accessoryItem.name}.`,
+      "info",
+    )
+  }
+
   const undoOutfit = (): boolean => {
     if (outfitHistory.length > 0) {
       const [reverted, ...rest] = outfitHistory
@@ -3302,6 +3390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setWornToday,
         regenerateOutfit,
         swapOutfitItem,
+        toggleOutfitAccessory,
         undoOutfit,
         hasUndo: outfitHistory.length > 0,
         weather,
@@ -3335,6 +3424,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setActiveTryOnOutfit,
         requestedTab,
         setRequestedTab,
+        pendingStylistPrompt,
+        setPendingStylistPrompt,
         outfitFeedbackNotes,
         saveOutfitFeedback,
         garmentFeedbackNotes,

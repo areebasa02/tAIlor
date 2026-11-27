@@ -256,14 +256,14 @@ export default function ColorsTab() {
 
   return (
     <div className="pt-1 pb-4 space-y-3">
-      <div>
-        <h1
-          className="text-xl font-black text-foreground"
-          style={{ fontFamily: "Nunito, sans-serif" }}
-        >
+      <div className="px-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          Harmony Studio
+        </p>
+        <h1 className="font-editorial text-2xl font-bold text-foreground mt-0.5">
           Color Matcher
         </h1>
-        <p className="text-xs font-semibold mt-0.5 text-muted-foreground">
+        <p className="text-xs mt-0.5 text-muted-foreground">
           Check one color or compare two pieces together.
         </p>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { ArrowLeft, LogOut, Sparkles } from "lucide-react"
 import { useApp, PRESET_PERSONAS } from "../context/AppContext"
 import { getContrastTextColor } from "../types"
 import OnboardingQuiz from "../components/OnboardingQuiz"
@@ -96,65 +97,68 @@ export default function ProfileTab({ onBack }: { onBack: () => void }) {
   const rarelyWorn = wardrobe.filter((i) => i.worn < 5).length
 
   return (
-    <div className="pt-1 pb-4 space-y-3">
+    <div className="pt-2 pb-4 space-y-3.5">
       {/* Back & Sign Out */}
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={onBack}
-          className="text-xs font-extrabold px-3 min-h-[38px] rounded-xl border-2 border-border bg-muted text-foreground hover:border-turquoise flex items-center gap-1 transition-colors cursor-pointer"
+          className="text-xs font-semibold px-3 min-h-[36px] rounded-full border border-border bg-card text-foreground hover:border-turquoise/60 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
         >
-          ← Today
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Today</span>
         </button>
 
         <button
           type="button"
           onClick={() => setConfirmLogout(true)}
-          className="text-xs font-extrabold px-3 min-h-[38px] rounded-xl border-2 border-red text-red hover:bg-red/10 transition-colors cursor-pointer"
+          className="text-xs font-semibold px-3 min-h-[36px] rounded-full border border-red/35 text-red hover:bg-red/10 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
         >
-          Sign Out
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Sign Out</span>
         </button>
       </div>
 
       {/* Single-Column Mobile Shell Stack */}
-      <div className="space-y-3">
+      <div className="space-y-3.5">
         {/* User Hero, Demo Profiles & Closet Analytics */}
-        <div className="space-y-3">
-          {/* User Hero */}
-          <div className="flex flex-col p-3.5 rounded-2xl border-2 shadow-sm bg-card border-border">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-base font-black shadow-md shrink-0 border-2 border-border"
-                style={{
-                  background: user.avatarBg,
-                  color: getContrastTextColor(user.avatarBg),
-                }}
-              >
-                {user.initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1
-                  className="text-xl font-black text-foreground truncate leading-tight"
-                  style={{ fontFamily: "Nunito, sans-serif" }}
+        <div className="space-y-3.5">
+          {/* Editorial Lumina User Hero */}
+          <div className="lumina-card rounded-[20px] overflow-hidden">
+            <div aria-hidden="true" className="h-[2.5px] lumina-strip" />
+            <div className="p-4 flex flex-col">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className="btn-shine w-13 h-13 rounded-full flex items-center justify-center text-base font-bold shadow-md shrink-0 border border-foreground/15"
+                  style={{
+                    background: user.avatarBg,
+                    color: getContrastTextColor(user.avatarBg),
+                  }}
                 >
-                  {user.name}
-                </h1>
-                <p className="text-xs font-semibold text-muted-foreground truncate">
-                  {user.email}
-                </p>
-                <span className="inline-block mt-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-turquoise/15 text-foreground border-2 border-turquoise/50">
-                  {user.roleTitle}
-                </span>
+                  {user.initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="font-editorial text-2xl font-bold text-foreground truncate leading-tight">
+                    {user.name}
+                  </h1>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </p>
+                  <span className="inline-block mt-1.5 text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-turquoise/12 text-turquoise">
+                    {user.roleTitle}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={() => setQuizOpen(true)}
-              className="w-full min-h-[42px] py-2 px-3 rounded-xl border-2 border-turquoise text-foreground bg-turquoise/10 text-xs font-extrabold hover:bg-turquoise/20 transition-colors flex items-center justify-center gap-2 mt-3 cursor-pointer"
-            >
-              <span aria-hidden="true">✦</span> Retake Quiz
-            </button>
+              <button
+                type="button"
+                onClick={() => setQuizOpen(true)}
+                className="w-full min-h-[40px] py-2 px-3 rounded-xl border border-turquoise/40 text-foreground bg-turquoise/10 text-xs font-semibold hover:bg-turquoise/18 transition-colors flex items-center justify-center gap-1.5 mt-3.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-gold" />
+                <span>Retake Style Quiz</span>
+              </button>
+            </div>
           </div>
 
           {/* Saved Try-On Photo */}

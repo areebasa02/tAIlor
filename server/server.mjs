@@ -1,8 +1,8 @@
 import { createServer } from "node:http"
+import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { createReadStream } from "node:fs"
+import { createReadStream, existsSync, readFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
-import { readFileSync } from "node:fs"
 import { extname, join, normalize } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
@@ -2025,6 +2025,64 @@ const server = createServer(async (request, response) => {
 
     if (url.pathname === "/api/try-on" && request.method === "POST") {
       await handleTryOn(request, response)
+      return
+    }
+
+    if (url.pathname === "/api/wardrobe/remove-bg" && request.method === "POST") {
+      try {
+        const body = await readJsonBody(request, 20 * 1024 * 1024)
+        const image = typeof body?.image === "string" ? body.image : ""
+        if (!image) {
+          sendJson(response, 400, { error: "Missing image payload." })
+          return
+        }
+        const venvPy =
+          process.platform === "win32"
+            ? join(root, ".venv", "Scripts", "python.exe")
+            : join(root, ".venv", "bin", "python")
+        const pyExe = existsSync(venvPy) ? venvPy : "python"
+        const scriptPath = join(root, "scripts", "remove_bg_cli.py")
+        const maxDimension = Math.min(1024, Math.max(256, Number(body?.maxDimension) || 560))
+
+        const result = await new Promise((resolve, reject) => {
+          const child = spawn(pyExe, [scriptPath], { cwd: root })
+          let stdout = ""
+          let stderr = ""
+          const timer = setTimeout(() => {
+            child.kill()
+            reject(new Error("Background removal timed out"))
+          }, 15000)
+
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk.toString("utf8")
+          })
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk.toString("utf8")
+          })
+          child.on("error", (err) => {
+            clearTimeout(timer)
+            reject(err)
+          })
+          child.on("close", (code) => {
+            clearTimeout(timer)
+            if (code !== 0) {
+              reject(new Error(stderr.trim() || `remove_bg_cli exited with ${code}`))
+              return
+            }
+            try {
+              resolve(JSON.parse(stdout))
+            } catch (parseErr) {
+              reject(parseErr)
+            }
+          })
+          child.stdin.end(JSON.stringify({ image, maxDimension }))
+        })
+
+        sendJson(response, 200, result)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Background removal failed."
+        sendJson(response, 503, { error: message })
+      }
       return
     }
 

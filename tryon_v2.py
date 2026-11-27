@@ -46,7 +46,7 @@ TRYON_LIGHTNING_WEIGHT = os.environ.get(
     "FireRed-Image-Edit-1.1-Lightning-8steps-v1.2.safetensors",
 )
 TRYON_BIREFNET_MODEL = os.environ.get("TRYON_BIREFNET_MODEL", "ZhengPeng7/BiRefNet_lite")
-TRYON_STEPS = max(4, min(12, int(os.environ.get("TRYON_STEPS", "6"))))
+TRYON_STEPS = max(4, min(12, int(os.environ.get("TRYON_STEPS", "8"))))
 TRYON_TARGET_PIXELS = int(os.environ.get("TRYON_TARGET_PIXELS", str(768 * 1024)))
 TRYON_COLLAGE_SIZE = int(os.environ.get("TRYON_COLLAGE_SIZE", "896"))
 
@@ -344,6 +344,21 @@ def _cutout_garment_birefnet(
 def _normalize_slot(raw_type: str, desc: str) -> str:
     t = (raw_type or "").strip().lower()
     d = (desc or "").strip().lower()
+    # Respect explicit user/wardrobe category first so zip-front shirts or blouses
+    # never get hijacked into outerwear by keyword heuristics.
+    if t in {"top", "tops", "shirt", "blouse", "tee", "sweater"}:
+        return "top"
+    if t in {"outerwear", "outer", "jacket", "coat", "blazer"}:
+        return "outerwear"
+    if t in {"bottom", "bottoms", "pants", "trousers", "jeans", "skirt", "shorts"}:
+        return "bottom"
+    if t in {"full body", "full_body", "full-body", "dress", "dresses", "jumpsuit", "overall"}:
+        return "full_body"
+    if t in {"shoe", "shoes", "footwear", "boots", "sneakers"}:
+        return "shoes"
+    if t in {"accessory", "accessories", "bag", "jewelry"}:
+        return "accessory"
+
     if any(k in t for k in ("full", "dress", "overall", "jumpsuit")) or any(
         k in d for k in ("dress", "gown", "jumpsuit", "romper", "boilersuit", "coverall", "overall")
     ):
@@ -365,6 +380,30 @@ def _normalize_slot(raw_type: str, desc: str) -> str:
     return "top"
 
 
+def _prepare_collage_cutout(
+    g_img: Image.Image,
+    hf_token: str | None = None,
+    bg_rgb: tuple[int, int, int] = (242, 242, 242),
+) -> Image.Image:
+    """Use an existing transparent cutout directly (preserving user edits); run BiRefNet only for opaque photos."""
+    if g_img.mode == "RGBA":
+        arr = np.asarray(g_img, dtype=np.uint8)
+        alpha = arr[:, :, 3]
+        transparent_ratio = float(np.mean(alpha < 24))
+        if transparent_ratio >= 0.12 and np.any(alpha > 24):
+            a_f = (alpha.astype(np.float32) / 255.0)[:, :, None]
+            bg = np.array(bg_rgb, dtype=np.float32)[None, None, :]
+            comp = np.clip(arr[:, :, :3].astype(np.float32) * a_f + bg * (1.0 - a_f), 0, 255).astype(np.uint8)
+            ys, xs = np.where(alpha > 24)
+            y0, y1 = int(ys.min()), int(ys.max()) + 1
+            x0, x1 = int(xs.min()), int(xs.max()) + 1
+            pad = max(8, int(max(y1 - y0, x1 - x0) * 0.04))
+            y0, y1 = max(0, y0 - pad), min(arr.shape[0], y1 + pad)
+            x0, x1 = max(0, x0 - pad), min(arr.shape[1], x1 + pad)
+            return Image.fromarray(comp[y0:y1, x0:x1], mode="RGB")
+    return _cutout_garment_birefnet(g_img.convert("RGB"), hf_token=hf_token, bg_rgb=bg_rgb)
+
+
 def _build_ootd_collage(
     garment_imgs: Sequence[Image.Image],
     hf_token: str | None = None,
@@ -381,7 +420,7 @@ def _build_ootd_collage(
     cell_w, cell_h = canvas_size // cols, canvas_size // rows
     margin = 20
     for idx, g_img in enumerate(items):
-        cut = _cutout_garment_birefnet(g_img, hf_token=hf_token, bg_rgb=bg_color)
+        cut = _prepare_collage_cutout(g_img, hf_token=hf_token, bg_rgb=bg_color)
         cut.thumbnail((cell_w - 2 * margin, cell_h - 2 * margin), Image.Resampling.LANCZOS)
         r, c = divmod(idx, cols)
         ox = c * cell_w + (cell_w - cut.width) // 2
@@ -405,7 +444,8 @@ def _build_roll_call_prompt(
     if is_user_photo:
         anchor = (
             "Preserve the exact person, face, glasses if worn, hairstyle, skin tone, exact natural body shape and proportions, "
-            "standing or seated pose, hands, any chair or wheelchair if present, and original background from Picture 1. "
+            "standing or seated pose, exact original hands with natural unchanged finger lengths and wrists, any held phone or object, "
+            "any chair or wheelchair if present, and original background from Picture 1. "
             "Completely remove all of their original clothing and shoes, and dress them in the complete outfit shown in Picture 2: "
         )
     elif is_mannequin:
@@ -443,10 +483,17 @@ def _build_roll_call_prompt(
             clauses.append(f"({idx}) the {desc} worn as the main full-length garment")
         elif slot == "top":
             inner_idx = idx
-            if has_outerwear:
-                clauses.append(f"({idx}) the {desc} worn neatly as the inner top")
+            d_lower = desc.lower()
+            if any(k in d_lower for k in ("sweater", "knit", "pullover", "henley", "mock-neck", "turtleneck")):
+                drape_cue = "soft-draping knit top with natural waist-length hem"
+            elif any(k in d_lower for k in ("tee", "t-shirt", "tank", "camisole", "scoop")):
+                drape_cue = "lightweight single-layer tee with soft casual drape"
             else:
-                clauses.append(f"({idx}) the {desc} worn on its own with no jacket or coat")
+                drape_cue = "lightweight thin-fabric blouse/shirt with soft fluid drape, flat folded shirt collar, and regular waist-length shirt hem"
+            if has_outerwear:
+                clauses.append(f"({idx}) the {desc} worn neatly as the inner {drape_cue}")
+            else:
+                clauses.append(f"({idx}) the {desc} worn directly as a single-layer {drape_cue}")
         elif slot == "outerwear":
             outer_idx = idx
             if has_inner and inner_idx is not None:
@@ -477,7 +524,7 @@ def _build_roll_call_prompt(
     closing = (
         " Natural realistic fit draped cleanly on the mannequin's exact body shape, photorealistic fabric folds and shadows, clean studio fashion photography."
         if is_mannequin
-        else " Natural realistic fit matching the person's exact body shape and posture, photorealistic fabric folds and shadows, crisp hands and face, clean natural photography."
+        else " Natural realistic fit matching the person's exact body shape and posture, photorealistic fabric folds and shadows, anatomically accurate hands with natural unchanged finger proportions matching Picture 1, crisp face, clean natural photography."
     )
 
     return anchor + ", ".join(clauses) + "." + layer_note + fit_note + closing
@@ -546,8 +593,12 @@ def generate_sdxl_tryon(
         rgba = load_rgba_fn(g)
         if rgba is None:
             continue
-        rgb_f, _ = rgba
-        pil_img = Image.fromarray((np.clip(rgb_f, 0.0, 1.0) * 255.0).astype(np.uint8), mode="RGB")
+        rgb_f, alpha_f = rgba
+        rgb_u8 = (np.clip(rgb_f, 0.0, 1.0) * 255.0).astype(np.uint8)
+        alpha_u8 = (np.clip(alpha_f, 0.0, 1.0) * 255.0).astype(np.uint8)
+        if alpha_u8.ndim == 3:
+            alpha_u8 = alpha_u8[:, :, 0]
+        pil_img = Image.fromarray(np.dstack([rgb_u8, alpha_u8]), mode="RGBA")
 
         label_parts = [p for p in (color_name, desc) if p and p.lower() not in desc.lower()] if color_name else [desc]
         full_desc = " ".join(label_parts).strip() or desc or g_type

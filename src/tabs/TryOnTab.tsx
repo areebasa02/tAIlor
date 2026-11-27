@@ -4,8 +4,10 @@ import {
   useRef,
   useState,
 } from "react"
+import { Square, Volume2 } from "lucide-react"
 import { AIErrorBanner } from "../components/AIComponents"
 import { AiHostNoticeBanner } from "../components/AiHostStatus"
+import { StepProgressBar } from "../components/StepProgressBar"
 import { useApp } from "../context/AppContext"
 import { getSampleGarmentImage } from "../data/personaData"
 import {
@@ -866,77 +868,70 @@ export default function TryOnTab() {
       (i) => normalizeSlotType(i.type, i.name) === slot,
     )
 
+  const tryOnStepIndex =
+    step === "outfit" ? 0 : step === "subject" ? 1 : 2
+
   return (
-    <div className="pt-1 pb-4 space-y-3">
+    <div className="pt-2 pb-4 space-y-3.5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h1
-            className="text-xl font-black text-foreground leading-tight"
-            style={{ fontFamily: "Nunito, sans-serif" }}
-          >
-            Virtual Try-On
-          </h1>
-          <p className="text-xs font-semibold text-muted-foreground mt-0.5 leading-snug">
-            See how your outfits look on you or a studio mannequin.
-          </p>
+      <div className="px-0.5 space-y-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Fitting Studio
+            </p>
+            <h1 className="font-editorial text-[26px] font-bold text-foreground leading-tight mt-0.5">
+              Virtual Try-On
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+              See how your outfits look on you or a studio mannequin.
+            </p>
+          </div>
+          {showListen && (
+            <button
+              type="button"
+              onClick={handleDescribeAloud}
+              aria-pressed={speakingPreview}
+              className={`h-8 px-3 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                speakingPreview
+                  ? "bg-pink text-white border-pink"
+                  : "bg-card text-foreground border-border hover:border-turquoise"
+              }`}
+            >
+              {speakingPreview ? (
+                <Square className="w-3 h-3 fill-current" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+              <span>{speakingPreview ? "Stop" : "Listen"}</span>
+            </button>
+          )}
         </div>
-        {showListen && (
-          <button
-            type="button"
-            onClick={handleDescribeAloud}
-            aria-pressed={speakingPreview}
-            className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-extrabold border-2 shrink-0 cursor-pointer ${
-              speakingPreview
-                ? "bg-pink text-white border-pink"
-                : "bg-card text-foreground border-border hover:border-turquoise"
-            }`}
-          >
-            {speakingPreview ? "⏹ Stop" : "🔊 Listen"}
-          </button>
-        )}
+
+        <StepProgressBar
+          ariaLabel="Virtual Try-On progress"
+          activeIndex={tryOnStepIndex}
+          steps={[
+            {
+              id: "outfit",
+              label: "Outfit",
+              onClick: () => setStep("outfit"),
+            },
+            {
+              id: "subject",
+              label: "Model",
+              onClick: () => setStep("subject"),
+            },
+            { id: "preview", label: "Preview" },
+          ]}
+        />
       </div>
 
       <AiHostNoticeBanner featureName="Virtual Try-On" />
 
-      {/* Simple 2-Step Indicator (shown during setup steps) */}
-      {(step === "outfit" || step === "subject") && (
-        <nav
-          aria-label="Try-On steps"
-          className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-card border-2 border-border shadow-2xs"
-        >
-          <button
-            type="button"
-            onClick={() => setStep("outfit")}
-            aria-current={step === "outfit" ? "step" : undefined}
-            className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              step === "outfit"
-                ? "bg-pink text-white shadow-xs"
-                : "bg-turquoise/15 text-foreground hover:bg-turquoise/25"
-            }`}
-          >
-            <span aria-hidden="true">{step === "subject" ? "✓" : "1"}</span>
-            <span>Choose Outfit</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStep("subject")}
-            aria-current={step === "subject" ? "step" : undefined}
-            className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              step === "subject"
-                ? "bg-pink text-white shadow-xs"
-                : "bg-muted text-foreground hover:bg-muted/80"
-            }`}
-          >
-            <span aria-hidden="true">2</span>
-            <span>Preview &amp; Try On</span>
-          </button>
-        </nav>
-      )}
-
       {/* STEP 1: Choose or Mix an Outfit */}
       {step === "outfit" && (
-        <div className="rounded-3xl p-4 border-2 border-border bg-card space-y-3.5 shadow-sm">
+        <div className="lumina-card rounded-[20px] p-4 space-y-3.5">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-sm font-black text-foreground">

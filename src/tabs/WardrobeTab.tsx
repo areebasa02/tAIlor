@@ -1,5 +1,19 @@
 import { useEffect, useState } from "react"
 import {
+  Heart,
+  Leaf,
+  Palette,
+  Plus,
+  ScanFace,
+  Scissors,
+  Search,
+  Shirt,
+  Square,
+  Trash2,
+  Volume2,
+  X,
+} from "lucide-react"
+import {
   ImageUploadWidget,
   SCAN_ISSUE_OPTIONS,
   WardrobeScanCorrectionModal,
@@ -7,6 +21,9 @@ import {
   type UploadState,
 } from "../components/AIComponents"
 import { AiHostNoticeBanner } from "../components/AiHostStatus"
+import { BackgroundEditorModal } from "../components/BackgroundEditorModal"
+import { BottomSheet } from "../components/BottomSheet"
+import { autoRemoveBackground } from "../lib/backgroundRemover"
 import ColorsTab from "./ColorsTab"
 import { useApp } from "../context/AppContext"
 import {
@@ -86,6 +103,10 @@ export default function WardrobeTab() {
   )
   const [scanNote, setScanNote] = useState("")
   const [pendingImageData, setPendingImageData] = useState<string | undefined>()
+  const [rawUploadedImage, setRawUploadedImage] = useState<string | undefined>()
+  const [cutoutEditorOpen, setCutoutEditorOpen] = useState(false)
+  const [cutoutEditorMode, setCutoutEditorMode] = useState<"pre_scan" | "post_scan">("pre_scan")
+  const [autoCropping, setAutoCropping] = useState(false)
   const [correctionStep, setCorrectionStep] = useState<
     "idle" | "ask_reason" | "modal"
   >("idle")
@@ -209,6 +230,42 @@ export default function WardrobeTab() {
     setUploadState("success")
   }
 
+  const runScanWithCroppedDataUrl = async (croppedDataUrl: string) => {
+    resetCorrectionFlow()
+    setScanError("")
+    setScanNote("")
+    setScanSource("")
+    setPendingImageData(croppedDataUrl)
+    setScanProgressLabel("Qwen2.5-VL scan in progress on your isolated garment…")
+    setUploadState("analyzing")
+
+    try {
+      const commaIdx = croppedDataUrl.indexOf(",")
+      const base64 = commaIdx >= 0 ? croppedDataUrl.slice(commaIdx + 1) : croppedDataUrl
+      const mimeMatch = croppedDataUrl.match(/^data:([^;]+);/)
+      const mimeType = mimeMatch?.[1] || "image/png"
+
+      const result = await scanWardrobePhoto({
+        image: base64,
+        mimeType,
+        useMock: false,
+      })
+
+      applyScanResult(result.item, result.source, result.note)
+      if (result.note) {
+        showToast("Demo scan", result.note, "info")
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Wardrobe scan failed unexpectedly."
+      setScanError(message)
+      setUploadState("error")
+      showToast("Scan failed", message, "warning")
+    }
+  }
+
   const runScan = async (options: {
     mockSample?: MockSampleId
     file?: File
@@ -217,34 +274,41 @@ export default function WardrobeTab() {
     setScanError("")
     setScanNote("")
     setScanSource("")
-    setScanProgressLabel(
-      options.mockSample
-        ? "Loading the selected demo sample…"
-        : "Qwen2.5-VL scan in progress; waiting for garment details…",
-    )
-    setUploadState(options.file ? "uploading" : "analyzing")
+
+    // When a user uploads a real photo, open the cutout editor FIRST so Qwen only scans the isolated garment!
+    if (options.file) {
+      setUploadState("uploading")
+      setUploadProgress(0)
+      try {
+        const encoded = await fileToBase64(options.file, setUploadProgress)
+        const rawDataUrl = `data:${encoded.mimeType};base64,${encoded.base64}`
+        setRawUploadedImage(rawDataUrl)
+        setPendingImageData(rawDataUrl)
+        setCutoutEditorMode("pre_scan")
+        setCutoutEditorOpen(true)
+        setUploadState("empty")
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Could not read that photo."
+        setScanError(message)
+        setUploadState("error")
+        showToast("Upload failed", message, "warning")
+      }
+      return
+    }
+
+    setScanProgressLabel("Loading the selected demo sample…")
+    setUploadState("analyzing")
     setUploadProgress(0)
 
     try {
-      let image: string | undefined
-      let mimeType: string | undefined
-      if (options.file) {
-        const encoded = await fileToBase64(options.file, setUploadProgress)
-        image = encoded.base64
-        mimeType = encoded.mimeType
-        setPendingImageData(`data:${mimeType};base64,${image}`)
-      } else {
-        const sampleImg = QUICK_SAMPLES.find(
-          (s) => s.id === options.mockSample,
-        )?.imageData
-        setPendingImageData(sampleImg)
-      }
-
-      setUploadState("analyzing")
+      const sampleImg = QUICK_SAMPLES.find(
+        (s) => s.id === options.mockSample,
+      )?.imageData
+      setRawUploadedImage(sampleImg)
+      setPendingImageData(sampleImg)
 
       const result = await scanWardrobePhoto({
-        image,
-        mimeType,
         mockSample: options.mockSample,
         useMock: Boolean(options.mockSample),
       })
@@ -294,6 +358,7 @@ export default function WardrobeTab() {
     setScanNote("")
     setScanSource("")
     setPendingImageData(undefined)
+    setRawUploadedImage(undefined)
   }
 
   const handleSaveDetected = () => {
@@ -317,6 +382,7 @@ export default function WardrobeTab() {
       sentimentalValue: manualSentimental,
       cost: manualCost.trim() ? `$${manualCost.replace("$", "")}` : "$40",
       status: "clean",
+      imageData: pendingImageData,
     })
 
     setManualName("")
@@ -479,20 +545,17 @@ export default function WardrobeTab() {
   )
 
   return (
-    <div className="pt-1 pb-4 space-y-2.5">
+    <div className="pt-2 pb-4 space-y-3">
       {/* Wardrobe Header */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-end justify-between gap-2 px-0.5">
         <div className="min-w-0">
-          <h1
-            className="text-xl font-black text-foreground leading-tight"
-            style={{ fontFamily: "Nunito, sans-serif" }}
-          >
-            {user.name.split(" ")[0]}&apos;s Closet
-          </h1>
-          <p className="text-xs font-semibold text-muted-foreground leading-snug mt-0.5">
-            {wardrobe.length} pieces · {favoriteOutfits.length} favorite outfit
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {wardrobe.length} pieces · {favoriteOutfits.length} saved look
             {favoriteOutfits.length === 1 ? "" : "s"}
           </p>
+          <h1 className="font-editorial text-[26px] font-bold text-foreground leading-tight mt-0.5">
+            {user.name.split(" ")[0]}&apos;s Closet
+          </h1>
         </div>
 
         <button
@@ -507,58 +570,63 @@ export default function WardrobeTab() {
             resetCorrectionFlow()
           }}
           aria-label="Add wardrobe item"
-          className="min-h-[40px] px-3.5 rounded-xl flex items-center justify-center font-black text-xs gap-1 whitespace-nowrap shrink-0 shadow-md shadow-pink/25 transition-all active:scale-95 bg-pink text-white border-2 border-[#0D0F18]/20 dark:border-white/25 hover:brightness-110 cursor-pointer"
+          className="btn-shine btn-lumina-primary min-h-[38px] px-3.5 rounded-full flex items-center justify-center font-bold text-xs gap-1.5 whitespace-nowrap shrink-0 transition-all active:scale-95 hover:brightness-105 cursor-pointer"
         >
-          <span aria-hidden="true">+</span>
+          <Plus className="w-3.5 h-3.5" strokeWidth={2.4} />
           <span>Add Piece</span>
         </button>
       </div>
 
-      {/* 3-Button Closet Section Bar */}
-      <div
-        role="tablist"
-        aria-label="Closet sections"
-        className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl border-2 border-border bg-muted"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === "wardrobe"}
-          onClick={() => setSection("wardrobe")}
-          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
-            section === "wardrobe"
-              ? "bg-card text-foreground border-2 border-pink shadow-xs"
-              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
-          }`}
+      {/* Slim Sticky 3-Button Closet Section Bar */}
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-1.5 backdrop-blur-md bg-background/85">
+        <div
+          role="tablist"
+          aria-label="Closet sections"
+          className="grid grid-cols-3 gap-1 p-1 rounded-2xl border border-border bg-muted/80"
         >
-          <span aria-hidden="true">👔 </span>Pieces ({wardrobe.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === "favorites"}
-          onClick={() => setSection("favorites")}
-          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
-            section === "favorites"
-              ? "bg-card text-foreground border-2 border-pink shadow-xs"
-              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
-          }`}
-        >
-          <span aria-hidden="true">❤️ </span>Fav Outfits ({favoriteOutfits.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === "colors"}
-          onClick={() => setSection("colors")}
-          className={`min-h-[38px] px-2 py-1.5 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer truncate ${
-            section === "colors"
-              ? "bg-card text-foreground border-2 border-turquoise shadow-xs"
-              : "text-muted-foreground border-2 border-transparent hover:text-foreground"
-          }`}
-        >
-          <span aria-hidden="true">🎨 </span>Colors
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === "wardrobe"}
+            onClick={() => setSection("wardrobe")}
+            className={`min-h-[36px] px-2 py-1.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 truncate ${
+              section === "wardrobe"
+                ? "bg-card text-foreground shadow-sm border border-border"
+                : "text-muted-foreground border border-transparent hover:text-foreground"
+            }`}
+          >
+            <Shirt className="w-3.5 h-3.5 text-pink shrink-0" />
+            <span>Pieces ({wardrobe.length})</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === "favorites"}
+            onClick={() => setSection("favorites")}
+            className={`min-h-[36px] px-2 py-1.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 truncate ${
+              section === "favorites"
+                ? "bg-card text-foreground shadow-sm border border-border"
+                : "text-muted-foreground border border-transparent hover:text-foreground"
+            }`}
+          >
+            <Heart className="w-3.5 h-3.5 text-pink shrink-0" />
+            <span>Looks ({favoriteOutfits.length})</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={section === "colors"}
+            onClick={() => setSection("colors")}
+            className={`min-h-[36px] px-2 py-1.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 truncate ${
+              section === "colors"
+                ? "bg-card text-foreground shadow-sm border border-border"
+                : "text-muted-foreground border border-transparent hover:text-foreground"
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5 text-turquoise shrink-0" />
+            <span>Colors</span>
+          </button>
+        </div>
       </div>
 
       {section === "colors" && <ColorsTab />}
@@ -1026,6 +1094,50 @@ export default function WardrobeTab() {
             }}
           />
 
+          {/* Auto-Cropped Cutout Preview + 1-Tap Cutout Editor */}
+          {pendingImageData && uploadState === "success" && (
+            <div className="lumina-card rounded-2xl p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className="w-14 h-14 rounded-xl border border-border flex items-center justify-center p-1 shrink-0 overflow-hidden"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(45deg, rgba(128,128,128,0.14) 25%, transparent 25%), linear-gradient(-45deg, rgba(128,128,128,0.14) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.14) 75%), linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.14) 75%)",
+                    backgroundSize: "12px 12px",
+                    backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
+                  }}
+                >
+                  <img
+                    src={pendingImageData}
+                    alt="Cropped garment preview"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-foreground truncate">
+                    {autoCropping ? "Removing background…" : "Background auto-cropped"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Look off? Adjust sensitivity or brush-edit edges.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={autoCropping}
+                onClick={() => {
+                  setCutoutEditorMode("post_scan")
+                  setCutoutEditorOpen(true)
+                }}
+                className="min-h-[36px] px-3 rounded-xl text-xs font-semibold border border-pink/40 bg-pink/10 text-pink hover:bg-pink/18 inline-flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                <span>Edit Cutout</span>
+              </button>
+            </div>
+          )}
+
           {uploadState === "success" && correctionStep === "ask_reason" && (
             <div
               role="region"
@@ -1316,81 +1428,77 @@ export default function WardrobeTab() {
           <label htmlFor="wardrobe-search" className="sr-only">
             Search clothes by name or color
           </label>
-          <span
+          <Search
             aria-hidden="true"
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
-          >
-            🔍
-          </span>
+            className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+          />
           <input
             id="wardrobe-search"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search clothes or colors…"
-            className="w-full min-h-[42px] rounded-xl pl-9 pr-8 py-2 text-xs font-semibold outline-none transition-colors bg-muted text-foreground border-2 border-border focus:border-turquoise"
+            placeholder="Search pieces, fabrics, or colors…"
+            className="w-full min-h-[40px] rounded-xl pl-10 pr-8 py-2 text-xs font-medium outline-none transition-colors bg-card text-foreground border border-border focus:border-turquoise"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
               aria-label="Clear search query"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-foreground p-1.5 rounded cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded-full cursor-pointer"
             >
-              <span aria-hidden="true">✕</span>
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setFavoritesOnly(!favoritesOnly)}
-              aria-pressed={favoritesOnly}
-              aria-label="Filter favorites only"
-              className={`min-h-[42px] px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all border-2 cursor-pointer ${
-                favoritesOnly
-                  ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-pink/25"
-                  : "bg-muted text-foreground border-border hover:border-pink"
-              }`}
-              title="Filter favorites only"
-            >
-              <span aria-hidden="true">{favoritesOnly ? "♥" : "♡"}</span>
-              <span>Favorites</span>
-            </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly(!favoritesOnly)}
+            aria-pressed={favoritesOnly}
+            aria-label="Filter favorites only"
+            className={`min-h-[34px] px-3 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 transition-all border cursor-pointer ${
+              favoritesOnly
+                ? "bg-pink text-white border-pink shadow-xs"
+                : "bg-card text-foreground border-border hover:border-pink/60"
+            }`}
+            title="Filter favorites only"
+          >
+            <Heart className={`w-3.5 h-3.5 ${favoritesOnly ? "fill-white" : "text-pink"}`} />
+            <span>Favorites</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setSensoryOnly(!sensoryOnly)}
-              aria-pressed={sensoryOnly}
-              aria-label="Filter sensory-safe soft breathable clothes only"
-              className={`min-h-[42px] px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all border-2 cursor-pointer ${
-                sensoryOnly
-                  ? "bg-green text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-green/25"
-                  : "bg-muted text-foreground border-border hover:border-green"
-              }`}
-              title="Filter soft fabrics only"
-            >
-              <span aria-hidden="true">🌿</span>
-              <span>Sensory-Safe</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setSensoryOnly(!sensoryOnly)}
+            aria-pressed={sensoryOnly}
+            aria-label="Filter sensory-safe soft breathable clothes only"
+            className={`min-h-[34px] px-3 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 transition-all border cursor-pointer ${
+              sensoryOnly
+                ? "bg-green text-white border-green shadow-xs"
+                : "bg-card text-foreground border-border hover:border-green/60"
+            }`}
+            title="Filter soft fabrics only"
+          >
+            <Leaf className={`w-3.5 h-3.5 ${sensoryOnly ? "" : "text-green"}`} />
+            <span>Soft Fabrics</span>
+          </button>
 
           <select
             aria-label="Sort wardrobe items"
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
-            className="w-full min-h-[42px] px-3 rounded-xl text-xs font-bold outline-none border-2 border-border bg-muted text-foreground"
+            className="ml-auto min-h-[34px] px-2.5 rounded-full text-[11px] font-semibold outline-none border border-border bg-card text-foreground cursor-pointer"
           >
-            <option value="newest">Sort: Newest First</option>
-            <option value="most_worn">Sort: Most Worn</option>
-            <option value="least_worn">Sort: Least Worn</option>
-            <option value="name">Sort: A–Z Name</option>
+            <option value="newest">Newest</option>
+            <option value="most_worn">Most Worn</option>
+            <option value="least_worn">Least Worn</option>
+            <option value="name">A–Z</option>
           </select>
         </div>
 
-        {/* Category Pills */}
+        {/* Slim Editorial Category Tabs */}
         <div
           role="tablist"
           aria-label="Filter wardrobe by category"
@@ -1405,17 +1513,12 @@ export default function WardrobeTab() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setCat(c)}
-                className={`shrink-0 min-h-[38px] px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all cursor-pointer ${
+                className={`shrink-0 min-h-[32px] px-3 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
                   active
-                    ? "bg-pink text-white border-[#0D0F18]/20 dark:border-white/30 shadow-md shadow-pink/25"
-                    : "bg-muted text-foreground border-border hover:border-pink"
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-card text-muted-foreground border-border hover:text-foreground hover:border-foreground/30"
                 }`}
               >
-                {c !== "All" && (
-                  <span aria-hidden="true" className="mr-1">
-                    {CATEGORY_EMOJI[c]}
-                  </span>
-                )}
                 {c === "All" ? "All" : CATEGORY_LABELS[c]}
               </button>
             )
@@ -1423,10 +1526,11 @@ export default function WardrobeTab() {
         </div>
       </div>
 
-      {/* Wardrobe Items Grid */}
-      <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-2.5">
+      {/* Photo-First 2-Column Editorial Lookbook Grid */}
+      <div className="grid grid-cols-2 gap-3">
         {filtered.map((item) => {
-          const sensory = getSensoryInfo(item.name, item.material)
+          const isDirty = item.status === "dirty"
+          const isWashing = item.status === "washing"
           return (
             <div
               key={item.id}
@@ -1443,31 +1547,37 @@ export default function WardrobeTab() {
                   setSelectedItem(item)
                 }
               }}
-              className="rounded-2xl overflow-hidden flex flex-col border-2 border-border bg-card shadow-sm cursor-pointer transition-all hover:scale-[1.01] hover:border-turquoise group text-left"
+              className="lumina-card rounded-[18px] overflow-hidden flex flex-col cursor-pointer transition-all hover:border-turquoise/60 group text-left"
             >
-              {/* Garment Visual Header (Photo thumbnail if present, else color swatch + emoji) */}
+              {/* Photo Showcase */}
               <div
-                className={`h-24 relative flex items-center justify-center border-b-2 border-border overflow-hidden ${
-                  item.imageData ? "p-1" : "p-2"
+                className={`h-32 relative flex items-center justify-center border-b border-border overflow-hidden ${
+                  item.imageData ? "p-2 bg-muted/55" : "p-3"
                 }`}
-                style={{
-                  background: item.imageData ? "#F6F5F9" : item.color,
-                }}
+                style={item.imageData ? undefined : { background: `${item.color}24` }}
               >
                 {item.imageData ? (
                   <img
                     src={item.imageData}
                     alt={item.name}
-                    className="h-full w-full object-contain group-hover:scale-105 transition-transform"
+                    className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-200"
                   />
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="text-3xl drop-shadow-sm group-hover:scale-110 transition-transform"
+                    className="text-3xl drop-shadow-xs group-hover:scale-110 transition-transform"
                   >
                     {CATEGORY_EMOJI[item.category] ?? "👗"}
                   </span>
                 )}
+
+                {/* Subtle Status Dot (Clean / Hamper / Washing) */}
+                <span
+                  title={isDirty ? "In hamper" : isWashing ? "Washing" : "Clean & ready"}
+                  className={`absolute top-2 left-2 w-2.5 h-2.5 rounded-full ring-2 ring-card ${
+                    isDirty ? "bg-rose" : isWashing ? "bg-turquoise" : "bg-green"
+                  }`}
+                />
 
                 {/* Favorite Heart Button */}
                 <button
@@ -1477,10 +1587,10 @@ export default function WardrobeTab() {
                     toggleFavorite(item.id)
                   }}
                   aria-pressed={item.favorite}
-                  className={`absolute top-1.5 right-1.5 w-8 h-8 rounded-full flex items-center justify-center text-xs backdrop-blur-md transition-transform active:scale-90 text-white border-2 border-white/40 cursor-pointer ${
+                  className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-transform active:scale-90 cursor-pointer ${
                     item.favorite
-                      ? "bg-pink shadow-md shadow-pink/30"
-                      : "bg-black/55 hover:bg-black/75"
+                      ? "bg-pink text-white shadow-sm"
+                      : "bg-card/85 text-foreground/75 border border-border hover:text-pink"
                   }`}
                   aria-label={
                     item.favorite
@@ -1488,38 +1598,46 @@ export default function WardrobeTab() {
                       : `Add ${item.name} to favorites`
                   }
                 >
-                  <span aria-hidden="true">{item.favorite ? "♥" : "♡"}</span>
+                  <Heart
+                    className={`w-3.5 h-3.5 ${item.favorite ? "fill-white" : ""}`}
+                    strokeWidth={2}
+                  />
                 </button>
 
-                {/* Status Badge */}
+                {/* Unworn Rediscovery Pill */}
                 {item.worn < 5 && (
-                  <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded-md text-[10px] min-[380px]:text-[11px] font-extrabold uppercase bg-[#0D0F18]/90 text-[#2ED38B] leading-none">
+                  <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-[#0F172A]/82 text-[#FFCB44] leading-none backdrop-blur-xs">
                     Unworn
                   </span>
                 )}
               </div>
 
-              {/* Info Area */}
+              {/* Clean Editorial Caption */}
               <div className="p-2.5 flex-1 flex flex-col justify-between gap-1.5">
-                <p className="text-[14px] min-[380px]:text-[15px] font-extrabold text-foreground line-clamp-2 leading-snug">
-                  {item.name}
-                </p>
+                <div>
+                  <p className="text-[13px] font-semibold text-foreground line-clamp-2 leading-snug">
+                    {item.name}
+                  </p>
+                  <p className="text-[10.5px] text-muted-foreground mt-0.5 truncate">
+                    {item.colorName} · {item.worn}× worn
+                  </p>
+                </div>
 
-                <div className="flex flex-wrap gap-1">
-                  {getClosetItemTags(item).map((tag, tagIdx) => (
-                    <span
-                      key={`${item.id}-tag-${tagIdx}`}
-                      className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted text-muted-foreground border border-border leading-tight"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {user.accessibility.highContrastColors && (
-                    <span className="px-2 py-0.5 rounded-md bg-foreground text-background font-bold text-[10px] font-mono border border-border leading-tight">
+                {user.accessibility.highContrastColors && (
+                  <div className="flex flex-wrap gap-1">
+                    {getClosetItemTags(item).slice(0, 2).map((tag, tagIdx) => (
+                      <span
+                        key={`${item.id}-tag-${tagIdx}`}
+                        className="px-1.5 py-0.5 rounded-md text-[9.5px] font-semibold bg-muted text-muted-foreground leading-tight"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    <span className="px-1.5 py-0.5 rounded-md bg-foreground text-background font-bold text-[9.5px] font-mono leading-tight">
                       {item.color}
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )
@@ -1527,91 +1645,128 @@ export default function WardrobeTab() {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-10 rounded-3xl border-2 border-dashed border-border p-6 bg-card/50">
-          <span aria-hidden="true" className="text-3xl">
-            👗
-          </span>
-          <p className="text-sm font-extrabold text-foreground mt-2">
-            No matching clothes
+        <div className="text-center py-10 rounded-2xl border border-dashed border-border p-6 bg-card/50">
+          <Shirt className="w-8 h-8 text-muted-foreground mx-auto" strokeWidth={1.6} />
+          <p className="font-editorial text-base font-bold text-foreground mt-2">
+            No matching pieces
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Try clearing filters or add a new item.
+            Try clearing filters or add a new item to your closet.
           </p>
           <button
             type="button"
             onClick={() => setAddStep("photo")}
-            className="mt-3 min-h-[42px] px-4 py-2 rounded-xl text-xs font-black bg-pink text-white border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-md shadow-pink/20 transition-all cursor-pointer"
+            className="btn-shine btn-lumina-primary mt-3 min-h-[38px] px-4 py-2 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
           >
-            + Add Item
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Item</span>
           </button>
         </div>
       )}
         </>
       )}
 
-      {/* Item Detail Modal */}
-      {selectedItem && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => {
-            stopSpeaking()
-            setSpeakingItem(false)
-            setSelectedItem(null)
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="wardrobe-item-modal-title"
-            className="rounded-3xl p-5 sm:p-6 max-w-sm w-full space-y-4 shadow-2xl border-2 border-border bg-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0">
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md shrink-0 border-2 border-border overflow-hidden"
-                  style={{
-                    background: selectedItem.imageData
-                      ? "var(--muted)"
-                      : selectedItem.color,
-                  }}
-                >
-                  {selectedItem.imageData ? (
-                    <img
-                      src={selectedItem.imageData}
-                      alt={selectedItem.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <span aria-hidden="true" className="text-2xl">
-                      {CATEGORY_EMOJI[selectedItem.category] ?? "👗"}
-                    </span>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <h2
-                    id="wardrobe-item-modal-title"
-                    className="text-base font-bold text-foreground leading-tight"
-                  >
-                    {selectedItem.name}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedItem.category} · {selectedItem.colorName}
-                  </p>
-                </div>
-              </div>
+      {/* Item Detail Bottom Sheet */}
+      <BottomSheet
+        open={Boolean(selectedItem)}
+        onClose={() => {
+          stopSpeaking()
+          setSpeakingItem(false)
+          setSelectedItem(null)
+        }}
+        title={selectedItem?.name || "Garment Details"}
+        subtitle={
+          selectedItem ? `${selectedItem.category} · ${selectedItem.colorName}` : undefined
+        }
+        titleId="wardrobe-item-modal-title"
+        footer={
+          selectedItem && (
+            <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => {
-                  stopSpeaking()
-                  setSpeakingItem(false)
-                  setSelectedItem(null)
-                }}
-                aria-label="Close garment details dialog"
-                className="text-xs text-muted-foreground hover:text-foreground p-1.5 rounded-lg shrink-0 cursor-pointer"
+                onClick={() => handleTryOnWardrobePiece(selectedItem)}
+                className="btn-shine btn-lumina-primary w-full min-h-[42px] rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <span aria-hidden="true">✕</span>
+                <ScanFace className="w-4 h-4" />
+                <span>Try On Piece in Studio</span>
               </button>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    markItemWorn(selectedItem.id)
+                    showToast(
+                      "Wear Logged",
+                      `+1 wear added to ${selectedItem.name}`,
+                      "success"
+                    )
+                    setSelectedItem((prev) =>
+                      prev ? { ...prev, worn: prev.worn + 1 } : null
+                    )
+                  }}
+                  className="min-h-[38px] rounded-xl text-xs font-semibold text-green bg-green/12 border border-green/30 hover:bg-green/18 cursor-pointer"
+                >
+                  +1 Worn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleFavorite(selectedItem.id)
+                    setSelectedItem((prev) =>
+                      prev ? { ...prev, favorite: !prev.favorite } : null
+                    )
+                  }}
+                  className={`min-h-[38px] rounded-xl text-xs font-semibold border inline-flex items-center justify-center gap-1 cursor-pointer ${
+                    selectedItem.favorite
+                      ? "bg-pink/12 text-pink border-pink/40"
+                      : "bg-muted/70 text-foreground border-border"
+                  }`}
+                >
+                  <Heart
+                    className={`w-3.5 h-3.5 ${selectedItem.favorite ? "fill-pink" : ""}`}
+                  />
+                  <span>{selectedItem.favorite ? "Saved" : "Save"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopSpeaking()
+                    setSpeakingItem(false)
+                    deleteWardrobeItem(selectedItem.id)
+                    setSelectedItem(null)
+                  }}
+                  className="min-h-[38px] rounded-xl text-xs font-semibold text-red bg-red/8 border border-red/25 hover:bg-red/15 inline-flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          )
+        }
+      >
+        {selectedItem && (
+          <div className="space-y-4">
+            {/* Showcase Thumbnail */}
+            <div
+              className="h-44 rounded-2xl border border-border flex items-center justify-center overflow-hidden p-3"
+              style={{
+                background: selectedItem.imageData
+                  ? "var(--muted)"
+                  : `${selectedItem.color}24`,
+              }}
+            >
+              {selectedItem.imageData ? (
+                <img
+                  src={selectedItem.imageData}
+                  alt={selectedItem.name}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span aria-hidden="true" className="text-5xl">
+                  {CATEGORY_EMOJI[selectedItem.category] ?? "👗"}
+                </span>
+              )}
             </div>
 
             {/* Audio description action for low vision */}
@@ -1641,110 +1796,77 @@ export default function WardrobeTab() {
                   }
                 }}
                 aria-pressed={speakingItem}
-                aria-label={
+                className={`w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   speakingItem
-                    ? "Stop reading garment details aloud"
-                    : `Listen to description for ${selectedItem.name} read aloud`
-                }
-                className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-bold border-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  speakingItem
-                    ? "bg-pink text-white border-pink shadow-xs"
-                    : "bg-turquoise text-accent-foreground border-turquoise shadow-xs hover:opacity-90"
+                    ? "bg-pink text-white border-pink"
+                    : "bg-turquoise/12 text-turquoise border-turquoise/40 hover:bg-turquoise/20"
                 }`}
               >
-                <span aria-hidden="true">{speakingItem ? "⏹" : "🔊"}</span>
-                <span>{speakingItem ? "Stop" : "Listen"}</span>
+                {speakingItem ? (
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+                <span>{speakingItem ? "Stop Audio" : "Listen to Description"}</span>
               </button>
             )}
 
-            {/* Spec Details */}
-            <div className="space-y-2 text-xs">
-              <div className="p-2.5 rounded-xl bg-muted border border-border flex justify-between">
-                <span className="text-muted-foreground">Times Worn:</span>
-                <span className="font-bold text-foreground">
+            {/* Clean Hairline Spec Rows */}
+            <div className="divide-y divide-border border-y border-border text-xs">
+              <div className="py-2.5 flex justify-between gap-2">
+                <span className="text-muted-foreground">Times Worn</span>
+                <span className="font-semibold text-foreground">
                   {selectedItem.worn} times
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-muted border border-border flex justify-between">
-                <span className="text-muted-foreground">Storage Location:</span>
+              <div className="py-2.5 flex justify-between gap-2">
+                <span className="text-muted-foreground">Storage Location</span>
                 <span className="font-semibold text-foreground">
                   {selectedItem.storageLocation || "Main Closet"}
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-muted border border-border flex justify-between">
-                <span className="text-muted-foreground">
-                  Fabric &amp; Material:
-                </span>
+              <div className="py-2.5 flex justify-between gap-2">
+                <span className="text-muted-foreground">Fabric &amp; Material</span>
                 <span className="font-semibold text-foreground">
                   {selectedItem.material || "Standard Cotton"}
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-muted border border-border flex justify-between gap-2">
-                <span className="text-muted-foreground shrink-0">
-                  Care Instructions:
-                </span>
-                <span className="font-semibold text-foreground truncate text-right">
+              <div className="py-2.5 flex justify-between gap-3">
+                <span className="text-muted-foreground shrink-0">Care</span>
+                <span className="font-semibold text-foreground text-right">
                   {selectedItem.careInstructions || "Cold wash"}
                 </span>
               </div>
             </div>
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => handleTryOnWardrobePiece(selectedItem)}
-                className="col-span-2 min-h-[44px] py-2.5 rounded-xl text-xs font-black text-white bg-pink border-2 border-[#0D0F18]/20 hover:brightness-110 shadow-md shadow-pink/20 transition-all cursor-pointer"
-              >
-                🪞 Try On Piece in Studio →
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  markItemWorn(selectedItem.id)
-                  showToast(
-                    "Wear Logged",
-                    `+1 wear added to ${selectedItem.name}`,
-                    "success"
-                  )
-                  setSelectedItem((prev) =>
-                    prev ? { ...prev, worn: prev.worn + 1 } : null
-                  )
-                }}
-                className="min-h-[44px] py-2.5 rounded-xl text-xs font-bold text-white bg-green hover:brightness-110 shadow-md shadow-green/20 transition-all cursor-pointer"
-              >
-                +1 Worn
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  toggleFavorite(selectedItem.id)
-                  setSelectedItem((prev) =>
-                    prev ? { ...prev, favorite: !prev.favorite } : null
-                  )
-                }}
-                className="min-h-[44px] py-2.5 rounded-xl text-xs font-bold text-foreground bg-muted border border-border hover:bg-muted/80 transition-colors cursor-pointer"
-              >
-                {selectedItem.favorite ? "♥ Favorited" : "♡ Favorite"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  stopSpeaking()
-                  setSpeakingItem(false)
-                  deleteWardrobeItem(selectedItem.id)
-                  setSelectedItem(null)
-                }}
-                className="col-span-2 py-2 rounded-xl text-xs font-semibold text-red hover:underline transition-colors cursor-pointer"
-              >
-                Delete
-              </button>
-            </div>
           </div>
-        </div>
+        )}
+      </BottomSheet>
+
+      {/* Interactive Background Cutout Editor Bottom Sheet */}
+      {rawUploadedImage && (
+        <BackgroundEditorModal
+          open={cutoutEditorOpen}
+          originalImage={rawUploadedImage}
+          confirmLabel={
+            cutoutEditorMode === "pre_scan"
+              ? "Use Cutout & Scan with AI"
+              : "Save Cutout"
+          }
+          onClose={() => setCutoutEditorOpen(false)}
+          onSave={(croppedUrl) => {
+            setCutoutEditorOpen(false)
+            if (cutoutEditorMode === "pre_scan") {
+              void runScanWithCroppedDataUrl(croppedUrl)
+            } else {
+              setPendingImageData(croppedUrl)
+              showToast(
+                "Cutout Updated",
+                "Your edited garment cutout is ready to save.",
+                "success",
+              )
+            }
+          }}
+        />
       )}
 
       {/* AI Scan Correction Popup Modal */}
